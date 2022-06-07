@@ -5,16 +5,17 @@ Group for Aeronautical Research and Technology Europe (GARTEUR) - Research Civil
 http://garteur.org/wp-content/reports/FM/FM_AG-08_TP-088-3.pdf
 
 The excellent tutorials by Christopher Lum (for Matlab/Simulink) were used as guides:
-1 - Equations/Modeling
-https://www.youtube.com/watch?v=bFFAL9lI2IQ
-2 - Matlab implementation
-https://www.youtube.com/watch?v=m5sEln5bWuM
+<p>
+1 - Equations/Modeling: https://www.youtube.com/watch?v=bFFAL9lI2IQ
+<p>
+2 - Matlab implementation: https://www.youtube.com/watch?v=m5sEln5bWuM
 
 The program runs the integration loop at a user defined frame-rate, adjusting the integration steps to the available computing cycles to render real-time data to FlightGear.
 
 Output is sent to FlightGear (FG), over UDP, at a user specified frame rate.
-The FG interface uses the class implemented by Andrew Tridgel (fgFDM):
-https://github.com/ArduPilot/pymavlink/blob/master/fgFDM.py
+The FG interface uses the class implemented by Andrew Tridgel: 
+<p>
+fgFDM: https://github.com/ArduPilot/pymavlink/blob/master/fgFDM.py
 
 Currently, the UDP address is set to the local machine.
 
