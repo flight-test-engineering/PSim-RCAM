@@ -363,7 +363,7 @@ def control_norm(U:np.array, U_lim:np.array) -> np.array:
     '''
     U_norm = []
     for i in range(U.shape[0]):
-        if U[i] <= U_lim[i][0]:
+        if U[i] <= 0:
            U_norm.append(-U[i] / U_lim[i][0])
         else:
             U_norm.append(U[i] / U_lim[i][1])
