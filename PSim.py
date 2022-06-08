@@ -3,7 +3,7 @@
 # # fgfs --airport=KSFO --runway=28R --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs/Aircraft/org.flightgear.fgaddon.stable_2020/Aircraft/757-200 --native-fdm=socket,in,60,,5500,udp --fdm=null
 # fgfs --airport=KSFO --runway=28R --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs/Aircraft/org.flightgear.fgaddon.stable_2020/Aircraft/757-200 --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --turbulence=0.5 --in-air  --enable-rembrandt
 # fgfs --airport=SBGP  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4
-# DRI_PRIME=1 fgfs --airport=SBGP  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2000
+# DRI_PRIME=1 fgfs --airport=SBGP  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500
 
 # "v" muda o visual
 # https://wiki.flightgear.org/Command_line_options
@@ -305,9 +305,9 @@ def get_joy_inputs(joystick, U_trim, fr):
     # # # JOYSTICK COMMAND
 
     # joystick constants/multipliers to adjust correct movement and amplitude
-    ail_factor = -0.6
-    elev_factor = -0.3
-    rud_factor = -0.3
+    ail_factor = -0.7
+    elev_factor = -0.5
+    rud_factor = -0.52
     thr_factor = -0.2
 
     U[0] = U_trim[0] + joystick.get_axis(0) * ail_factor
@@ -889,7 +889,7 @@ if __name__ == "__main__":
     # start time
     t0 = 0
     # total simulation time
-    tf = 3 * 60 #minutes
+    tf = 1 * 60 #minutes
     # simulation loop frame rate throttling
     simFR = 400 # (Hz) 
     # frames per second to be sent out to FG
