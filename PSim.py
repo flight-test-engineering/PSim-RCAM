@@ -232,7 +232,7 @@ def create_cmd(t_vector=np.zeros(5), input_channel='ail', cmd_type='doublet', at
         
     return input_ch_num, cmd
 
-def set_FDM(this_fgFDM, X, U_norm, latlon, alt):
+def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels):
     '''
     function to set the current time step data to be sent to FlightGear
     inputs are:
@@ -259,6 +259,11 @@ def set_FDM(this_fgFDM, X, U_norm, latlon, alt):
     this_fgFDM.set('right_aileron', +U_norm[0])
     this_fgFDM.set('elevator', U_norm[1])
     this_fgFDM.set('rudder', -U_norm[2])
+
+    this_fgFDM.set('A_X_pilot', body_accels[0], units='mpss')
+    this_fgFDM.set('A_Y_pilot', body_accels[1], units='mpss')
+    this_fgFDM.set('A_Z_pilot', body_accels[2], units='mpss')
+
 
 def get_joy_inputs(joystick, U_trim, fr):
     '''
@@ -288,6 +293,7 @@ def get_joy_inputs(joystick, U_trim, fr):
     T1_af = joystick.get_button(10)
     T2_fd = joystick.get_button(9)
     T2_af = joystick.get_button(11)
+    exit_signal = joystick.get_button(1)
 
     # if trigger is pressed, then zero out aileron, rudder states and make thrust equal on both sides
     if zero_ail_rud_thr == 1:
@@ -317,7 +323,7 @@ def get_joy_inputs(joystick, U_trim, fr):
     U[4] = U_trim[4] + joystick.get_axis(3) * thr_factor
 
 
-    return U, U_trim
+    return U, U_trim, exit_signal
 
 
 
@@ -901,6 +907,8 @@ if __name__ == "__main__":
     # data collectors
     collector = []
     t_vector_collector = []
+    prev_uvw = np.array([0,0,0])
+    current_uvw = np.array([0,0,0])
 
 
     # aircraft initialization (includes trimming)
@@ -923,11 +931,16 @@ if __name__ == "__main__":
     simdt = 1 / simFR # (s) desired simulation time step
     sim_time_adder = 0 # counts the time between integration steps to trigger next simulation frame
     dt = 0 # actual integration time step
+    prev_dt = dt
 
+    grav_accel = 9.81 # m/s
+
+    exit_signal = 0 # if joystick button #1 is pressed, ends simulation
+    
 
     # main loop
 
-    while this_AC_int.t <= tf:
+    while this_AC_int.t <= tf and exit_signal == 0:
         # get clock
         start = time.perf_counter()
 
@@ -938,13 +951,15 @@ if __name__ == "__main__":
             
             # get density, inputs
             current_rho = get_rho(current_alt * m2ft)
-            U_man, U1 = get_joy_inputs(this_joy, U1, simFR)      
+            U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, simFR)   
             U_man = control_sat(U_man)
 
             # set current integration step commands, density and integrate aircraft states
+            prev_uvw = current_uvw
             this_AC_int.set_f_params(U_man, current_rho)
             this_AC_int.integrate(this_AC_int.t + dt)
-            
+            current_uvw = this_AC_int.y[0:3]
+
             # integrate navigation equations
             current_NED = NED(this_AC_int.y[:3], this_AC_int.y[6:])
             this_latlonh_int.set_f_params(current_NED, current_latlon[0], current_alt)
@@ -958,7 +973,23 @@ if __name__ == "__main__":
             
             # check for FG frame trigger
             if send_frame_trigger:
-                set_FDM(my_fgFDM, this_AC_int.y, control_norm(U_man, U_limits), current_latlon, current_alt)
+                # it is easier to calculate body accelerations instead of reaching into the RCAM function
+                if dt == 0:
+                    body_accels = (current_uvw - prev_uvw) / prev_dt
+                else:
+                    body_accels = (current_uvw - prev_uvw) / dt
+                # add gravity
+                g_b = np.array([-grav_accel * np.sin(this_AC_int.y[7]),
+                                 grav_accel * np.cos(this_AC_int.y[7]) * np.sin(this_AC_int.y[6]),
+                                 grav_accel * np.cos(this_AC_int.y[7]) * np.cos(this_AC_int.y[6])])
+                body_accels = body_accels + g_b
+                body_accels[2] = -body_accels[2]
+
+                set_FDM(my_fgFDM, this_AC_int.y, 
+                        control_norm(U_man, U_limits), 
+                        current_latlon, 
+                        current_alt,
+                        body_accels)
                 my_pack = my_fgFDM.pack()
                 sock.sendto(my_pack, (UDP_IP, UDP_PORT))
                 send_frame_trigger = False
@@ -972,9 +1003,11 @@ if __name__ == "__main__":
                 #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon[0]:0.6f}, lon:{current_latlon[1]:0.6f}')
                 #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
                 print(f'time: {this_AC_int.t:0.1f}s, Vcas:{my_fgFDM.get("vcas", units="knots"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, T1/T2={U1[3]:0.3f},{U1[4]:0.3f}')
+                
             
 
             # reset integrator timestep counter
+            prev_dt = dt
             dt = 0
             run_sim_loop = False
 
