@@ -1,9 +1,12 @@
-# fgfs --airport=KSFO --runway=28R --aircraft=ufo --native-fdm=socket,in,60,,5500,udp --fdm=null
-# fgfs --airport=KSFO --runway=28R --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null
-# # fgfs --airport=KSFO --runway=28R --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs/Aircraft/org.flightgear.fgaddon.stable_2020/Aircraft/757-200 --native-fdm=socket,in,60,,5500,udp --fdm=null
-# fgfs --airport=KSFO --runway=28R --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs/Aircraft/org.flightgear.fgaddon.stable_2020/Aircraft/757-200 --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --turbulence=0.5 --in-air  --enable-rembrandt
-# fgfs --airport=SBGP  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4
-# DRI_PRIME=1 fgfs --airport=SBGP  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500
+# FGROOT = /usr/share/games/flightgear
+
+# DRI_PRIME=1 fgfs --airport=SBGP  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/NTPS.xml
+# DRI_PRIME=1 fgfs --airport=LOWI  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/fte.xml 2>/dev/null
+
+
+# FG with JSBSim:
+# DRI_PRIME=1 fgfs --airport=SBGP  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/  --enable-hud  --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning
+# DRI_PRIME=1 fgfs --airport=KSFO --runway=28R  --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs/Aircraft/org.flightgear.fgaddon.stable_2020/Aircraft/757-200  --enable-hud  --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning
 
 # "v" muda o visual
 # https://wiki.flightgear.org/Command_line_options
@@ -33,6 +36,7 @@ fgfs --airport=KSFO --runway=28R --aircraft=ufo --native-fdm=socket,in,60,,5500,
 fgfs --airport=KSFO --runway=28R --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null
 fgfs --airport=KSFO --runway=28R --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs/Aircraft/org.flightgear.fgaddon.stable_2020/Aircraft/757-200 --native-fdm=socket,in,60,,5500,udp --fdm=null
 fgfs --airport=KSFO --runway=28R --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs/Aircraft/org.flightgear.fgaddon.stable_2020/Aircraft/757-200 --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --turbulence=0.5 --in-air  --enable-rembrandt
+DRI_PRIME=1 fgfs --airport=LOWI  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/fte.xml 2>/dev/null
 
 REQUIRES a joystick to work.
 
@@ -154,6 +158,18 @@ def course(V_NED)->float:
     '''
     return np.pi/2 - np.arctan2(V_NED[0], V_NED[1])
 
+@jit
+def add_wind(NED:np.ndarray, std_dev:np.ndarray)->np.ndarray:
+    '''
+    returns wind at altitude Hp.
+    inputs:
+        NED: vector with wind speed
+        std_dev: vector with standard deviations for wind (one value for each N, E, D)
+    output:
+        wind speed vector
+    '''
+    return NED + np.multiply(np.random.rand(3), std_dev)
+
 
 def get_doublet(t_vector, t=0, duration=1, amplitude=0.1):
     '''
@@ -240,6 +256,7 @@ def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels):
     U - controls
     latlon - in radians
     alt - in meters
+    NED - velocities in m/s
     '''
     this_fgFDM.set('phi', X[6])
     this_fgFDM.set('theta', X[7])
@@ -249,7 +266,9 @@ def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels):
     this_fgFDM.set('thetadot', X[4])
     this_fgFDM.set('psidot', X[5])
     
-    this_fgFDM.set('vcas', Vt2Vc(VA(X[:3]), alt*m2ft), units='mps')
+    # this sets units to kts because the HUD does not apply any conversions to the speed
+    # if we send speed in fps as the API requires, the HUD displays wrong value
+    this_fgFDM.set('vcas', Vt2Vc(VA(X[:3]), alt*m2ft) * ms2kt) 
     this_fgFDM.set('cur_time', int(time.perf_counter() ), units='seconds')
     this_fgFDM.set('latitude', latlon[0], units='radians')
     this_fgFDM.set('longitude', latlon[1], units='radians')
@@ -265,6 +284,7 @@ def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels):
     this_fgFDM.set('A_Z_pilot', body_accels[2], units='mpss')
 
 
+
 def get_joy_inputs(joystick, U_trim, fr):
     '''
     function that will read joystick positions and adjust controls:
@@ -278,7 +298,7 @@ def get_joy_inputs(joystick, U_trim, fr):
     # # # TRIM
 
     # multipliers to adjust how much trim is added per integration step.
-    pitch_trim_step = 0.003 / fr
+    pitch_trim_step = 0.006 / fr
     aileron_trim_step = 0.003 / fr
     #rudder_trim_step = 0.005 # not implemented yet
     throttle_trim_step = 0.001 / fr
@@ -797,7 +817,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, v_trim=0.0, phi_trim=0.0, psi_trim=
 
 
 # # Init
-def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000):
+def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t=0.0):
     '''
     this initializes the integrators at a straight and level flight condition
     inputs:
@@ -805,6 +825,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000):
         gamma_t: flight path angle at trim (rad)
         latlon: initial lat and long (rad)
         altitude: trim altitude (ft)
+        psi_t: initial heading (rad)
     outputs:
         AC_integrator: aircraft integrator object
         X0: initial states found at trim point
@@ -821,7 +842,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000):
 
     # trim model
     res4, res4_status = trim_model(VA_trim=VA_t, gamma_trim=gamma_t, v_trim=t0, 
-                                   phi_trim=0.0, psi_trim=0.0, rho_trim=get_rho(altitude))
+                                   phi_trim=0.0, psi_trim=psi_t*deg2rad, rho_trim=get_rho(altitude))
     print(res4_status)
     X0 = res4[:9]
     U0 = res4[9:]
@@ -846,7 +867,11 @@ if __name__ == "__main__":
     # Network socket to communicate with FlightGear
     UDP_IP = "127.0.0.1"
     UDP_PORT = 5500
+    UDP_IP2 = "192.168.0.163"
+    UDP_PORT2 = 5501
     sock = socket.socket(socket.AF_INET, # Internet
+                        socket.SOCK_DGRAM) # UDP
+    sock2 = socket.socket(socket.AF_INET, # Internet
                         socket.SOCK_DGRAM) # UDP
 
     pygame.init() # automatically initializes joystick also
@@ -862,13 +887,27 @@ if __name__ == "__main__":
 
     signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2']
 
+############################################################################
+    # INITIAL CONDITIONS
 
-    # initial airport conditions
-    init_alt = 2500 #ft
-    #init_latlon = np.array([37.6213, -122.3790]) #in degrees - the func initialize transforms to radians internally
-    init_latlon = np.array([-21.7632, -48.4051]) #in degrees - SBGP
-    v_trim = 200 * kt2ms
+    # Altitude
+    init_alt = 2100 #ft
+    
+    # IAS
+    v_trim = 140 * kt2ms
+
+    # Gamma
     gamma_trim = 0.0 * deg2rad
+    
+    # Lat/Lon
+    #init_latlon = np.array([37.6213, -122.3790]) #in degrees - the func initialize transforms to radians internally
+    #init_latlon = np.array([-21.7632, -48.4051]) #in degrees - SBGP
+    init_latlon = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
+
+    # Heading
+    init_psi = 82.0
+    
+############################################################################
 
     # instantiate FG comms object and initialize it
     my_fgFDM = fgFDM()
@@ -895,11 +934,14 @@ if __name__ == "__main__":
     # start time
     t0 = 0
     # total simulation time
-    tf = 1 * 60 #minutes
+    tf = 10 * 60 #minutes
     # simulation loop frame rate throttling
     simFR = 400 # (Hz) 
     # frames per second to be sent out to FG
     fgFR = 60 # (Hz) 
+
+    wind_speed = np.array([0, 0, 0]) # (m/s), NED
+    wind_stddev = np.array([1, 1, 0]) # 
 
 #######################################################################################
 
@@ -912,7 +954,7 @@ if __name__ == "__main__":
 
 
     # aircraft initialization (includes trimming)
-    this_AC_int, X1, U1, this_latlonh_int = initialize(VA_t=v_trim, gamma_t=gamma_trim, latlon=init_latlon, altitude=init_alt)
+    this_AC_int, X1, U1, this_latlonh_int = initialize(VA_t=v_trim, gamma_t=gamma_trim, latlon=init_latlon, altitude=init_alt, psi_t=init_psi)
     U_man = U1.copy()
 
 
@@ -944,7 +986,7 @@ if __name__ == "__main__":
         # get clock
         start = time.perf_counter()
 
-        if run_sim_loop or send_frame_trigger:
+        if run_sim_loop:
                 
 
             _ = pygame.event.get()
@@ -962,13 +1004,14 @@ if __name__ == "__main__":
 
             # integrate navigation equations
             current_NED = NED(this_AC_int.y[:3], this_AC_int.y[6:])
-            this_latlonh_int.set_f_params(current_NED, current_latlon[0], current_alt)
+            this_wind = add_wind(wind_speed, wind_stddev)
+            this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon[0], current_alt)
             this_latlonh_int.integrate(this_latlonh_int.t + dt) #in radians
             
             # store current state and time vector
             current_latlon = this_latlonh_int.y[0:2]
             current_alt = this_latlonh_int.y[2]
-            collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED, U_man)))
+            collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man)))
             t_vector_collector.append(this_AC_int.t)
             
             # check for FG frame trigger
@@ -992,6 +1035,7 @@ if __name__ == "__main__":
                         body_accels)
                 my_pack = my_fgFDM.pack()
                 sock.sendto(my_pack, (UDP_IP, UDP_PORT))
+                sock2.sendto(my_pack, (UDP_IP2, UDP_PORT2))
                 send_frame_trigger = False
 
             
@@ -1002,7 +1046,7 @@ if __name__ == "__main__":
                 #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
                 #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon[0]:0.6f}, lon:{current_latlon[1]:0.6f}')
                 #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
-                print(f'time: {this_AC_int.t:0.1f}s, Vcas:{my_fgFDM.get("vcas", units="knots"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, T1/T2={U1[3]:0.3f},{U1[4]:0.3f}')
+                print(f'time: {this_AC_int.t:0.1f}s, Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, T1/T2={U1[3]:0.3f},{U1[4]:0.3f}')
                 
             
 
