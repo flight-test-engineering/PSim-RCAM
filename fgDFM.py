@@ -1,13 +1,11 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # parse and construct FlightGear NET FDM packets
 # Andrew Tridgell, November 2011
 # released under GNU GPL version 2 or later
 # https://github.com/ArduPilot/pymavlink/blob/master/fgFDM.py
 
-#from builtins import range
-#from builtins import object
-import math
-import struct
+
+import struct, math
 
 class fgFDMError(Exception):
     '''fgFDM error class'''
@@ -214,3 +212,4 @@ class fgFDM(object):
             if math.isnan(self.values[i]):
                 self.values[i] = 0
         return struct.pack(self.pack_string, *self.values)
+
