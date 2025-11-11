@@ -79,6 +79,74 @@ from ISA_library import *
 import pygame
 
 
+# ############################################################################
+# Consolidated Constants
+# ############################################################################
+
+# --- Physical and Mathematical Constants ---
+G = 9.81  # Gravity, m/s^2
+DEG2RAD = np.pi / 180.0
+RAD2DEG = 180.0 / np.pi
+
+# --- RCAM Aircraft Model Constants ---
+# Moved out of the RCAM_model function to avoid re-definition on every call.
+
+# .. Nominal vehicle constants
+M = 120000.0  # kg - total mass
+CBAR = 6.6  # m - mean aerodynamic chord
+LT = 24.8  # m - tail aerodynamic center distance to CG
+S = 260.0  # m^2 - wing area
+ST = 64.0  # m^2 - tail area
+
+# .. centre of gravity position
+XCG = 0.23 * CBAR  # m - x pos of CG
+YCG = 0.0  # m - y pos of CG
+ZCG = 0.10 * CBAR  # m - z pos of CG
+
+# .. aerodynamic centre position
+XAC = 0.12 * CBAR  # m - x pos of AC
+YAC = 0.0  # m - y pos of AC
+ZAC = 0.0  # m - z pos of AC
+
+# .. engines point of thrust application
+XAPT1 = 0.0  # m - x pos of engine 1
+YAPT1 = -7.94  # m - y pos of engine 1
+ZAPT1 = -1.9  # m - z pos of engine 1
+XAPT2 = 0.0  # m - x pos of engine 2
+YAPT2 = 7.94  # m - y pos of engine 2
+ZAPT2 = -1.9  # m - z pos of engine 2
+
+# .. aerodynamic properties
+DEPSDA = 0.25  # rad/rad - change in downwash wrt alpha
+ALPHA_L0 = -11.5 * DEG2RAD  # rad - zero lift AOA
+N = 5.5  # adm - slope of linear region of lift slope
+A3 = -768.5  # adm - coeff of alpha^3
+A2 = 609.2  # adm - coeff of alpha^2
+A1 = -155.2  # adm - coeff of alpha^1
+A0 = 15.212  # adm - coeff of alpha^0
+ALPHA_SWITCH = 14.5 * DEG2RAD  # rad - kink point of lift slope
+
+# .. inertia tensor
+INERTIA_TENSOR_b = M * np.array([
+    [40.07, 0.0, -2.0923],
+    [0.0, 64.0, 0.0],
+    [-2.0923, 0.0, 99.92]
+], dtype=np.float64)
+INV_INERTIA_TENSOR_b = np.linalg.inv(INERTIA_TENSOR_b)
+
+# .. Control Surface Limits
+U_LIMITS_RAD = {
+    'aileron': (-25 * DEG2RAD, 25 * DEG2RAD),
+    'elevator': (-25 * DEG2RAD, 10 * DEG2RAD),
+    'rudder': (-30 * DEG2RAD, 30 * DEG2RAD),
+    'throttle1': (0.5 * DEG2RAD, 10 * DEG2RAD),
+    'throttle2': (0.5 * DEG2RAD, 10 * DEG2RAD)
+}
+U_LIMITS_MIN = np.array([lim[0] for lim in U_LIMITS_RAD.values()])
+U_LIMITS_MAX = np.array([lim[1] for lim in U_LIMITS_RAD.values()])
+
+
+
 # # helper functions
 def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
                 header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2'], skip=0):
@@ -404,20 +472,20 @@ def control_sat(U:np.ndarray) -> np.ndarray:
     
     
     #----------------- control limits / saturation ---------------------
-    u0min = -25 * deg2rad
-    u0max = 25 * deg2rad
+    u0min = -25 * DEG2RAD
+    u0max = 25 * DEG2RAD
     
-    u1min = -25 * deg2rad
-    u1max = 10 * deg2rad
+    u1min = -25 * DEG2RAD
+    u1max = 10 * DEG2RAD
     
-    u2min = -30 * deg2rad
-    u2max = 30 * deg2rad
+    u2min = -30 * DEG2RAD
+    u2max = 30 * DEG2RAD
     
-    u3min = 0.5 * deg2rad # need to implement engine shutoff - with drag instead of thrust
-    u3max = 10 * deg2rad
+    u3min = 0.5 * DEG2RAD # need to implement engine shutoff - with drag instead of thrust
+    u3max = 10 * DEG2RAD
     
-    u4min = 0.5 * deg2rad
-    u4max = 10 * deg2rad
+    u4min = 0.5 * DEG2RAD
+    u4max = 10 * DEG2RAD
 
     
     #value_if_true if condition else value_if_false
@@ -470,44 +538,44 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     #------------------------ constants -------------------------------
 
     # Nominal vehicle constants
-    m = 120000; # kg - total mass
+    #m = 120000; # kg - total mass
     
-    cbar = 6.6 # m - mean aerodynamic chord
-    lt = 24.8 # m - tail AC distance to CG
-    S = 260 # m2 - wing area
-    St = 64 # m2 - tail area
+    #cbar = 6.6 # m - mean aerodynamic chord
+    #lt = 24.8 # m - tail AC distance to CG
+    #S = 260 # m2 - wing area
+    #St = 64 # m2 - tail area
     
     # centre of gravity position
-    Xcg = 0.23 * cbar # m - x pos of CG in Fm
-    Ycg = 0.0 # m - y pos of CG in Fm
-    Zcg = 0.10 * cbar # m - z pos of CG in Fm ERRATA - table 2.4 has 0.0 and table 2.5 has 0.10 cbar
+    #Xcg = 0.23 * CBAR # m - x pos of CG in Fm
+    #Ycg = 0.0 # m - y pos of CG in Fm
+    #Zcg = 0.10 * CBAR # m - z pos of CG in Fm ERRATA - table 2.4 has 0.0 and table 2.5 has 0.10 CBAR
     
     # aerodynamic center position
-    Xac = 0.12 * cbar # m - x pos of aerodynamic center in Fm
-    Yac = 0.0 # m - y pos of aerodynamic center in Fm
-    Zac = 0.0 # m - z pos of aerodynamic center in Fm
+    #Xac = 0.12 * CBAR # m - x pos of aerodynamic center in Fm
+    #Yac = 0.0 # m - y pos of aerodynamic center in Fm
+    #Zac = 0.0 # m - z pos of aerodynamic center in Fm
     
     # engine point of thrust aplication
-    Xapt1 = 0 # m - x position of engine 1 in Fm
-    Yapt1 = -7.94 # m - y position of engine 1 in Fm
-    Zapt1 = -1.9 # m - z position of engine 1 in Fm
+    #XAPT1 = 0 # m - x position of engine 1 in Fm
+    #YAPT1 = -7.94 # m - y position of engine 1 in Fm
+    #ZAPT1 = -1.9 # m - z position of engine 1 in Fm
     
-    Xapt2 = 0 # m - x position of engine 2 in Fm
-    Yapt2 = 7.94 # m - y position of engine 2 in Fm
-    Zapt2 = -1.9 # m - z position of engine 2 in Fm
+    #XAPT2 = 0 # m - x position of engine 2 in Fm
+    #YAPT2 = 7.94 # m - y position of engine 2 in Fm
+    #ZAPT2 = -1.9 # m - z position of engine 2 in Fm
     
     # other constants
     #rho = 1.225 # kg/m3 - air density
-    g = 9.81 # m/s2 - gravity
-    depsda = 0.25 # rad/rad - change in downwash wrt alpha
-    deg2rad = np.pi / 180 # from degrees to radians
-    alpha_L0 = -11.5 * deg2rad # rad - zero lift AOA
-    n = 5.5 # adm - slope of linear ragion of lift slope
-    a3 = -768.5 # adm - coeff of alpha^3
-    a2 = 609.2 # adm -  - coeff of alpha^2
-    a1 = -155.2 # adm -  - coeff of alpha^1
-    a0 = 15.212 # adm -  - coeff of alpha^0 ERRATA RCAM has 15.2
-    alpha_switch = 14.5 * deg2rad # rad - kink point of lift slope
+    #g = 9.81 # m/s2 - gravity
+    #DEPSDA = 0.25 # rad/rad - change in downwash wrt alpha
+
+    #ALPHA_L0 = -11.5 * DEG2RAD # rad - zero lift AOA
+    #n = 5.5 # adm - slope of linear ragion of lift slope
+    #a3 = -768.5 # adm - coeff of alpha^3
+    #a2 = 609.2 # adm -  - coeff of alpha^2
+    #a1 = -155.2 # adm -  - coeff of alpha^1
+    #a0 = 15.212 # adm -  - coeff of alpha^0 ERRATA RCAM has 15.2
+    #ALPHA_SWITCH = 14.5 * DEG2RAD # rad - kink point of lift slope
     
     
     #----------------- intermediate variables ---------------------------
@@ -528,18 +596,18 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     
     #----------------- aerodynamic force coefficients ---------------------
     # CL - wing + body
-    CL_wb = n * (alpha - alpha_L0) if alpha <= alpha_switch else a3 * alpha**3 + a2 * alpha**2 + a1 * alpha + a0
+    CL_wb = N * (alpha - ALPHA_L0) if alpha <= ALPHA_SWITCH else A3 * alpha**3 + A2 * alpha**2 + A1 * alpha + A0
     
     # CL thrust
-    epsilon = depsda * (alpha - alpha_L0)
-    alpha_t = alpha - epsilon + U[1] + 1.3 * X[4] * lt / Va
-    CL_t = 3.1 * (St / S) * alpha_t
+    epsilon = DEPSDA * (alpha - ALPHA_L0)
+    alpha_t = alpha - epsilon + U[1] + 1.3 * X[4] * LT / Va
+    CL_t = 3.1 * (ST / S) * alpha_t
     
     # Total CL
     CL = CL_wb + CL_t
     
     # Total CD
-    CD = 0.13 + 0.07 * (n * alpha + 0.654)**2
+    CD = 0.13 + 0.07 * (N * alpha + 0.654)**2
     
     # Total CY
     CY = -1.6 * beta + 0.24 * U[2]
@@ -560,16 +628,16 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     #------------------ aerodynamic moment coefficients about AC -----------
     # moments in F_b
     eta11 = -1.4 * beta
-    eta21 = -0.59 - (3.1 * (St * lt) / (S * cbar)) * (alpha - epsilon)
+    eta21 = -0.59 - (3.1 * (ST * LT) / (S * CBAR)) * (alpha - epsilon)
     eta31 = (1 - alpha * (180 / (15 * np.pi))) * beta
     
     eta = np.array([eta11, eta21, eta31])
     
-    dCMdx = (cbar / Va) * np.array([[-11.0, 0.0, 5.0], 
-                                    [ 0.0, (-4.03 * (St * lt**2) / (S * cbar**2)), 0.0], 
+    dCMdx = (CBAR / Va) * np.array([[-11.0, 0.0, 5.0], 
+                                    [ 0.0, (-4.03 * (ST * LT**2) / (S * CBAR**2)), 0.0], 
                                     [1.7, 0.0, -11.5]], dtype=np.dtype('f8'))
     dCMdu = np.array([[-0.6, 0.0, 0.22],
-                      [0.0, (-3.1 * (St * lt) / (S * cbar)), 0.0],
+                      [0.0, (-3.1 * (ST * LT) / (S * CBAR)), 0.0],
                       [0.0, 0.0, -0.63]], dtype=np.dtype('f8'))
     
     
@@ -578,18 +646,18 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     
     #------------------- aerodynamic moment about AC -------------------------
     # normalize to aerodynamic moment
-    MAac_b = CMac_b * Q * S * cbar
+    MAac_b = CMac_b * Q * S * CBAR
     
     #-------------------- aerodynamic moment about CG ------------------------
-    rcg_b = np.array([Xcg, Ycg, Zcg])
-    rac_b = np.array([Xac, Yac, Zac])
+    rcg_b = np.array([XCG, YCG, ZCG])
+    rac_b = np.array([XAC, YAC, ZAC])
     
     MAcg_b = MAac_b + np.cross(FA_b, rcg_b - rac_b)
     
     #---------------------- engine force and moment --------------------------
     # thrust
-    F1 = U[3] * m * g
-    F2 = U[4] * m * g
+    F1 = U[3] * M * G
+    F2 = U[4] * M * G
     
     #thrust vectors (assuming aligned with x axis)
     FE1_b = np.array([F1, 0, 0])
@@ -598,8 +666,8 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     FE_b = FE1_b + FE2_b
     
     # engine moments
-    mew1 = np.array([Xcg - Xapt1, Yapt1 - Ycg, Zcg - Zapt1])
-    mew2 = np.array([Xcg - Xapt2, Yapt2 - Ycg, Zcg - Zapt2])
+    mew1 = np.array([XCG - XAPT1, YAPT1 - YCG, ZCG - ZAPT1])
+    mew2 = np.array([XCG - XAPT2, YAPT2 - YCG, ZCG - ZAPT2])
     
     MEcg1_b = np.cross(mew1, FE1_b)
     MEcg2_b = np.cross(mew2, FE2_b)
@@ -607,26 +675,26 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     MEcg_b = MEcg1_b + MEcg2_b
     
     #---------------------- gravity effects ----------------------------------
-    g_b = np.array([-g * np.sin(X[7]), g * np.cos(X[7]) * np.sin(X[6]), g * np.cos(X[7]) * np.cos(X[6])])
+    g_b = np.array([-G * np.sin(X[7]), G * np.cos(X[7]) * np.sin(X[6]), G * np.cos(X[7]) * np.cos(X[6])])
     
-    Fg_b = m * g_b
+    Fg_b = M * g_b
     
     #---------------------- state derivatives --------------------------------
     # inertia tensor
-    Ib = m * np.array([[40.07, 0.0, -2.0923],
-                       [0.0, 64.0, 0.0],  
-                       [-2.0923, 0.0, 99.92]], dtype=np.dtype('f8')) # ERRATA on Ixz p. 12 vs p. 91
-    invIb = np.linalg.inv(Ib)
+    #Ib = M * np.array([[40.07, 0.0, -2.0923],
+    #                   [0.0, 64.0, 0.0],  
+    #                   [-2.0923, 0.0, 99.92]], dtype=np.dtype('f8')) # ERRATA on Ixz p. 12 vs p. 91
+    #invIb = np.linalg.inv(Ib)
     
     # form F_b and calculate u, v, w dot
     F_b = Fg_b + FE_b + FA_b
     
-    x0x1x2_dot  = (1 / m) * F_b - np.cross(wbe_b, V_b)
+    x0x1x2_dot  = (1 / M) * F_b - np.cross(wbe_b, V_b)
     
     # form Mcg_b and calc p, q r dot
     Mcg_b = MAcg_b + MEcg_b
     
-    x3x4x5_dot = np.dot(invIb, (Mcg_b - np.cross(wbe_b, np.dot(Ib , wbe_b))))
+    x3x4x5_dot = np.dot(INV_INERTIA_TENSOR_b, (Mcg_b - np.cross(wbe_b, np.dot(INERTIA_TENSOR_b , wbe_b))))
     
     #phi, theta, psi dot
     H_phi = np.array([[1.0, np.sin(X[6]) * np.tan(X[7]), np.cos(X[6]) * np.tan(X[7])],
@@ -838,11 +906,11 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
     print(f'initializing model with altitude {altitude} ft, rho={get_rho(altitude)}')
     
     alt_m = altitude * ft2m
-    latlonh0 = np.array([latlon[0]*deg2rad, latlon[1]*deg2rad, alt_m])
+    latlonh0 = np.array([latlon[0]*DEG2RAD, latlon[1]*DEG2RAD, alt_m])
 
     # trim model
     res4, res4_status = trim_model(VA_trim=VA_t, gamma_trim=gamma_t, v_trim=t0, 
-                                   phi_trim=0.0, psi_trim=psi_t*deg2rad, rho_trim=get_rho(altitude))
+                                   phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=get_rho(altitude))
     print(res4_status)
     X0 = res4[:9]
     U0 = res4[9:]
@@ -862,7 +930,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
 
 if __name__ == "__main__":
 
-    deg2rad = np.pi / 180 # from degrees to radians
+    DEG2RAD = np.pi / 180 # from degrees to radians
 
     # Network socket to communicate with FlightGear
     UDP_IP = "127.0.0.1"
@@ -897,7 +965,7 @@ if __name__ == "__main__":
     v_trim = 140 * kt2ms
 
     # Gamma
-    gamma_trim = 0.0 * deg2rad
+    gamma_trim = 0.0 * DEG2RAD
     
     # Lat/Lon
     #init_latlon = np.array([37.6213, -122.3790]) #in degrees - the func initialize transforms to radians internally
@@ -921,11 +989,11 @@ if __name__ == "__main__":
     my_fgFDM.set('cur_time', int(time.perf_counter()), units='seconds')
 
     #----------------- control limits / saturation ---------------------
-    U_limits = [(-25 * deg2rad, 25 * deg2rad), 
-                (-25 * deg2rad, 10 * deg2rad),
-                (-30 * deg2rad, 30 * deg2rad),
-                (0.5 * deg2rad, 10 * deg2rad),
-                (0.5 * deg2rad, 10 * deg2rad)]
+    U_limits = [(-25 * DEG2RAD, 25 * DEG2RAD), 
+                (-25 * DEG2RAD, 10 * DEG2RAD),
+                (-30 * DEG2RAD, 30 * DEG2RAD),
+                (0.5 * DEG2RAD, 10 * DEG2RAD),
+                (0.5 * DEG2RAD, 10 * DEG2RAD)]
 
 
 #######################################################################################
@@ -1075,5 +1143,5 @@ if __name__ == "__main__":
 
     # save data to disk
     save2disk('test_data.csv', x_data=np.array(t_vector_collector), y_data=np.array(collector), header=signals_header, skip=0)
-    #fig1 = make_plots(x_data=np.array(t_vector_collector), y_data=np.array(collector), header=signals_header, skip=1)
-    #plt.show()
+    fig1 = make_plots(x_data=np.array(t_vector_collector), y_data=np.array(collector), header=signals_header, skip=0)
+    plt.show()
