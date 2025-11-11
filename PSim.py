@@ -508,22 +508,29 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
         X_dot: derivatives of states (same order)
     '''
    
+    # ------------------------- states ----------------------------------
+    u, v, w = X[0], X[1], X[2]
+    p, q, r = X[3], X[4], X[5]
+    phi, theta, psi = X[6], X[7], X[8]
+
+    # ----------------------- controls ----------------------------------
+    da, de, dr, dt1, dt2 = U[0], U[1], U[2], U[3], U[4]
     
     #----------------- intermediate variables ---------------------------
     # airspeed
-    Va = np.sqrt(X[0]**2 + X[1]**2 + X[2]**2) # m/s
+    Va = np.sqrt(u**2 + v**2 + w**2) # m/s
     
     # alpha and beta
     #np.arctan2 --> y, x
-    alpha = np.arctan2(X[2], X[0])
-    beta = np.arcsin(X[1]/Va)
+    alpha = np.arctan2(w, u)
+    beta = np.arcsin(v / Va)
     
     # dynamic pressure
     Q = 0.5 * rho * Va**2
     
     # define vectors wbe_b and V_b
-    wbe_b = np.array([X[3], X[4], X[5]])
-    V_b = np.array([X[0], X[1], X[2]])
+    wbe_b = np.array([p, q, r])
+    V_b = np.array([u, v, w])
     
     #----------------- aerodynamic force coefficients ---------------------
     # CL - wing + body
@@ -531,7 +538,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     
     # CL thrust
     epsilon = DEPSDA * (alpha - ALPHA_L0)
-    alpha_t = alpha - epsilon + U[1] + 1.3 * X[4] * LT / Va
+    alpha_t = alpha - epsilon + de + 1.3 * q * LT / Va
     CL_t = 3.1 * (ST / S) * alpha_t
     
     # Total CL
@@ -541,7 +548,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     CD = 0.13 + 0.07 * (N * alpha + 0.654)**2
     
     # Total CY
-    CY = -1.6 * beta + 0.24 * U[2]
+    CY = -1.6 * beta + 0.24 * dr
     
     
     #------------------- dimensional aerodynamic forces --------------------
@@ -573,7 +580,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     
     
     # CM about AC in Fb
-    CMac_b = eta + np.dot(dCMdx, wbe_b) + np.dot(dCMdu, np.array([U[0], U[1], U[2]]))
+    CMac_b = eta + np.dot(dCMdx, wbe_b) + np.dot(dCMdu, np.array([da, de, dr]))
     
     #------------------- aerodynamic moment about AC -------------------------
     # normalize to aerodynamic moment
@@ -587,8 +594,8 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     
     #---------------------- engine force and moment --------------------------
     # thrust
-    F1 = U[3] * M * G
-    F2 = U[4] * M * G
+    F1 = dt1 * M * G
+    F2 = dt2 * M * G
     
     #thrust vectors (assuming aligned with x axis)
     FE1_b = np.array([F1, 0, 0])
@@ -606,7 +613,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     MEcg_b = MEcg1_b + MEcg2_b
     
     #---------------------- gravity effects ----------------------------------
-    g_b = np.array([-G * np.sin(X[7]), G * np.cos(X[7]) * np.sin(X[6]), G * np.cos(X[7]) * np.cos(X[6])])
+    g_b = np.array([-G * np.sin(theta), G * np.cos(theta) * np.sin(phi), G * np.cos(theta) * np.cos(phi)])
     
     Fg_b = M * g_b
     
@@ -615,22 +622,22 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     # form F_b and calculate u, v, w dot
     F_b = Fg_b + FE_b + FA_b
     
-    x0x1x2_dot  = (1 / M) * F_b - np.cross(wbe_b, V_b)
+    u_v_w_dot  = (1 / M) * F_b - np.cross(wbe_b, V_b)
     
     # form Mcg_b and calc p, q r dot
     Mcg_b = MAcg_b + MEcg_b
     
-    x3x4x5_dot = np.dot(INV_INERTIA_TENSOR_b, (Mcg_b - np.cross(wbe_b, np.dot(INERTIA_TENSOR_b , wbe_b))))
+    p_q_r_dot = np.dot(INV_INERTIA_TENSOR_b, (Mcg_b - np.cross(wbe_b, np.dot(INERTIA_TENSOR_b , wbe_b))))
     
     #phi, theta, psi dot
-    H_phi = np.array([[1.0, np.sin(X[6]) * np.tan(X[7]), np.cos(X[6]) * np.tan(X[7])],
-                      [0.0, np.cos(X[6]), -np.sin(X[6])],
-                      [0.0, np.sin(X[6]) / np.cos(X[7]), np.cos(X[6]) / np.cos(X[7])]], dtype=np.dtype('f8'))
+    H_phi = np.array([[1.0, np.sin(phi) * np.tan(theta), np.cos(phi) * np.tan(theta)],
+                      [0.0, np.cos(phi), -np.sin(phi)],
+                      [0.0, np.sin(phi) / np.cos(theta), np.cos(phi) / np.cos(theta)]], dtype=np.dtype('f8'))
     
-    x6x7x8_dot = np.dot(H_phi, wbe_b)
+    phi_theta_psi_dot = np.dot(H_phi, wbe_b)
     
     #--------------------- place in first order form --------------------------
-    X_dot = np.concatenate((x0x1x2_dot, x3x4x5_dot, x6x7x8_dot))
+    X_dot = np.concatenate((u_v_w_dot, p_q_r_dot, phi_theta_psi_dot))
     
     return X_dot
 
