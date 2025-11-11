@@ -469,34 +469,7 @@ def control_sat(U:np.ndarray) -> np.ndarray:
     '''
     saturates the control inputs to maximum allowable in RCAM model
     '''
-    
-    
-    #----------------- control limits / saturation ---------------------
-    u0min = -25 * DEG2RAD
-    u0max = 25 * DEG2RAD
-    
-    u1min = -25 * DEG2RAD
-    u1max = 10 * DEG2RAD
-    
-    u2min = -30 * DEG2RAD
-    u2max = 30 * DEG2RAD
-    
-    u3min = 0.5 * DEG2RAD # need to implement engine shutoff - with drag instead of thrust
-    u3max = 10 * DEG2RAD
-    
-    u4min = 0.5 * DEG2RAD
-    u4max = 10 * DEG2RAD
-
-    
-    #value_if_true if condition else value_if_false
-    i = 0
-    u0 = U[i] if (U[i]>=u0min and U[i]<=u0max) else u0min if U[i]<u0min else u0max; i += 1
-    u1 = U[i] if (U[i]>=u1min and U[i]<=u1max) else u1min if U[i]<u1min else u1max; i += 1
-    u2 = U[i] if (U[i]>=u2min and U[i]<=u2max) else u2min if U[i]<u2min else u2max; i += 1
-    u3 = U[i] if (U[i]>=u3min and U[i]<=u3max) else u3min if U[i]<u3min else u3max; i += 1
-    u4 = U[i] if (U[i]>=u4min and U[i]<=u4max) else u4min if U[i]<u4min else u4max
-    
-    return np.array([u0, u1, u2, u3, u4])
+    return np.clip(U, U_LIMITS_MIN, U_LIMITS_MAX)
 
 
 # flight dynamics model
@@ -638,11 +611,6 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     Fg_b = M * g_b
     
     #---------------------- state derivatives --------------------------------
-    # inertia tensor
-    #Ib = M * np.array([[40.07, 0.0, -2.0923],
-    #                   [0.0, 64.0, 0.0],  
-    #                   [-2.0923, 0.0, 99.92]], dtype=np.dtype('f8')) # ERRATA on Ixz p. 12 vs p. 91
-    #invIb = np.linalg.inv(Ib)
     
     # form F_b and calculate u, v, w dot
     F_b = Fg_b + FE_b + FA_b
