@@ -113,7 +113,7 @@ XAPT2 = 0.0  # m - x pos of engine 2
 YAPT2 = 7.94  # m - y pos of engine 2
 ZAPT2 = -1.9  # m - z pos of engine 2
 
-# .. aerodynamic properties
+# .. aerodynamic properties - lift
 DEPSDA = 0.25  # rad/rad - change in downwash wrt alpha
 ALPHA_L0 = -11.5 * DEG2RAD  # rad - zero lift AOA
 N = 5.5  # adm - slope of linear region of lift slope
@@ -122,6 +122,46 @@ A2 = 609.2  # adm - coeff of alpha^2
 A1 = -155.2  # adm - coeff of alpha^1
 A0 = 15.212  # adm - coeff of alpha^0
 ALPHA_SWITCH = 14.5 * DEG2RAD  # rad - kink point of lift slope
+# ... tail
+NT = 3.1 # adm - slope of linear region of TAIL lift slope
+EPSILON_DOT = 1.3 # adm multiplier for tail dynamic downwash response wrt pitch rate
+
+
+# .. aerodynamic properties - drag
+CDMIN = 0.13 # adm - CD min - bottom of CDxALpha curve
+D1 = 0.07 # adm - coeff of alpha^2
+D0 = 0.654 # adm - coeff of alpha^0
+
+# .. aerodynamic properties - side force
+CY_BETA = -1.6 # adm - side force coeff with sideslip
+CY_DR = 0.24 # adm - side force coeff with rudder deflection
+
+# .. aerodynamic properties - moment coefficients
+C_l_BETA = -1.4 # adm - roll moment due to beta
+C_m_ALPHA = -0.59 # adm - pitch moment due to alpha
+C_n_BETA = 180 / (15 * np.pi)
+# ... roll, pitch, yaw moments with rates
+C_l_P = -11.0
+C_l_Q = 0.0
+C_l_R = 5.0
+C_m_P = 0.0
+C_m_Q = 0.0
+C_m_Q = -4.03
+C_m_R = 0.0
+C_n_P = 1.7
+C_n_Q = 0.0
+C_n_R = -11.5
+# ... roll, pitch, yaw moments with controls
+C_l_DA = -0.6
+C_l_DE = 0.0
+C_l_DR = 0.22
+C_m_DA = 0.0
+C_m_DE = NT
+C_m_DR = 0.0
+C_n_DA = 0.0
+C_n_DE = 0.0
+C_n_DR = -0.63
+
 
 # .. inertia tensor
 INERTIA_TENSOR_b = M * np.array([
@@ -535,26 +575,23 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     
     # CL thrust
     epsilon = DEPSDA * (alpha - ALPHA_L0)
-    alpha_t = alpha - epsilon + de + 1.3 * q * LT / Va # the constant 1.3 is the multiplier for
-    # the dynamic response on alpha tail lift due to pitch rate
-    CL_t = 3.1 * (ST / S) * alpha_t # the 3.1 constant is basically the lift curve slope of the tail
+    alpha_t = alpha - epsilon + de + EPSILON_DOT * q * LT / Va
+    CL_t = NT * (ST / S) * alpha_t
     
     # Total CL
     CL = CL_wb + CL_t
     
     # Total CD (in stability frame)
-    CD = 0.13 + 0.07 * (N * alpha + 0.654)**2
-    # the constant 0.13 is minimum drag
-    # constants 0.07 and 0.654 are the parabola parameters
+    CD = CDMIN + D1 * (N * alpha + D0)**2
     
     # Total side force CY (stability frame)
-    CY = -1.6 * beta + 0.24 * dr
-    # constants -1.6 and 0.24 are relationship between beta and rudder to side force
+    CY = CY_BETA * beta + CY_DR * dr
+
     
     
     #------------------- dimensional aerodynamic forces --------------------
     # forces in F_s
-    FA_s = np.array([-CD * Q* S, CY * Q * S, -CL * Q * S])
+    FA_s = np.array([-CD * Q * S, CY * Q * S, -CL * Q * S])
     
     # rotate forces to body axis (F_b)
     C_bs = np.array([[np.cos(alpha), 0.0, -np.sin(alpha)],
@@ -566,18 +603,18 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     
     #------------------ aerodynamic moment coefficients about AC -----------
     # moments in F_b
-    eta11 = -1.4 * beta
-    eta21 = -0.59 - (3.1 * (ST * LT) / (S * CBAR)) * (alpha - epsilon)
-    eta31 = (1 - alpha * (180 / (15 * np.pi))) * beta
+    eta11 = C_l_BETA * beta
+    eta21 = C_m_ALPHA - (NT * (ST * LT) / (S * CBAR)) * (alpha - epsilon)
+    eta31 = (1 - alpha * C_n_BETA) * beta
     
     eta = np.array([eta11, eta21, eta31])
     
-    dCMdx = (CBAR / Va) * np.array([[-11.0, 0.0, 5.0], 
-                                    [ 0.0, (-4.03 * (ST * LT**2) / (S * CBAR**2)), 0.0], 
-                                    [1.7, 0.0, -11.5]], dtype=np.dtype('f8'))
-    dCMdu = np.array([[-0.6, 0.0, 0.22],
-                      [0.0, (-3.1 * (ST * LT) / (S * CBAR)), 0.0],
-                      [0.0, 0.0, -0.63]], dtype=np.dtype('f8'))
+    dCMdx = (CBAR / Va) * np.array([[C_l_P, C_l_Q, C_l_R], 
+                                    [C_m_P, (C_m_Q * (ST * LT**2) / (S * CBAR**2)), C_m_R], 
+                                    [C_n_P, C_n_Q, C_n_R]], dtype=np.dtype('f8'))
+    dCMdu = np.array([[C_l_DA , C_l_DE, C_l_DR],
+                      [C_m_DA, (C_m_DE * (ST * LT) / (S * CBAR)), C_m_DR],
+                      [C_n_DA, C_n_DE, C_n_DR]], dtype=np.dtype('f8'))
     
     
     # CM about AC in Fb
