@@ -534,49 +534,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     outputs:
         X_dot: derivatives of states (same order)
     '''
-
-    #------------------------ constants -------------------------------
-
-    # Nominal vehicle constants
-    #m = 120000; # kg - total mass
-    
-    #cbar = 6.6 # m - mean aerodynamic chord
-    #lt = 24.8 # m - tail AC distance to CG
-    #S = 260 # m2 - wing area
-    #St = 64 # m2 - tail area
-    
-    # centre of gravity position
-    #Xcg = 0.23 * CBAR # m - x pos of CG in Fm
-    #Ycg = 0.0 # m - y pos of CG in Fm
-    #Zcg = 0.10 * CBAR # m - z pos of CG in Fm ERRATA - table 2.4 has 0.0 and table 2.5 has 0.10 CBAR
-    
-    # aerodynamic center position
-    #Xac = 0.12 * CBAR # m - x pos of aerodynamic center in Fm
-    #Yac = 0.0 # m - y pos of aerodynamic center in Fm
-    #Zac = 0.0 # m - z pos of aerodynamic center in Fm
-    
-    # engine point of thrust aplication
-    #XAPT1 = 0 # m - x position of engine 1 in Fm
-    #YAPT1 = -7.94 # m - y position of engine 1 in Fm
-    #ZAPT1 = -1.9 # m - z position of engine 1 in Fm
-    
-    #XAPT2 = 0 # m - x position of engine 2 in Fm
-    #YAPT2 = 7.94 # m - y position of engine 2 in Fm
-    #ZAPT2 = -1.9 # m - z position of engine 2 in Fm
-    
-    # other constants
-    #rho = 1.225 # kg/m3 - air density
-    #g = 9.81 # m/s2 - gravity
-    #DEPSDA = 0.25 # rad/rad - change in downwash wrt alpha
-
-    #ALPHA_L0 = -11.5 * DEG2RAD # rad - zero lift AOA
-    #n = 5.5 # adm - slope of linear ragion of lift slope
-    #a3 = -768.5 # adm - coeff of alpha^3
-    #a2 = 609.2 # adm -  - coeff of alpha^2
-    #a1 = -155.2 # adm -  - coeff of alpha^1
-    #a0 = 15.212 # adm -  - coeff of alpha^0 ERRATA RCAM has 15.2
-    #ALPHA_SWITCH = 14.5 * DEG2RAD # rad - kink point of lift slope
-    
+   
     
     #----------------- intermediate variables ---------------------------
     # airspeed
@@ -930,7 +888,6 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
 
 if __name__ == "__main__":
 
-    DEG2RAD = np.pi / 180 # from degrees to radians
 
     # Network socket to communicate with FlightGear
     UDP_IP = "127.0.0.1"
