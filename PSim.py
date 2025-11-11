@@ -127,20 +127,20 @@ NT = 3.1 # adm - slope of linear region of TAIL lift slope
 EPSILON_DOT = 1.3 # adm multiplier for tail dynamic downwash response wrt pitch rate
 
 
-# .. aerodynamic properties - drag
+# .. aerodynamic properties - drag - RCAM (2.31)
 CDMIN = 0.13 # adm - CD min - bottom of CDxALpha curve
 D1 = 0.07 # adm - coeff of alpha^2
 D0 = 0.654 # adm - coeff of alpha^0
 
-# .. aerodynamic properties - side force
+# .. aerodynamic properties - side force - RCAM (2.32)
 CY_BETA = -1.6 # adm - side force coeff with sideslip
 CY_DR = 0.24 # adm - side force coeff with rudder deflection
 
-# .. aerodynamic properties - moment coefficients
+# .. aerodynamic properties - moment coefficients - RCAM (2.33)
 C_l_BETA = -1.4 # adm - roll moment due to beta
 C_m_ALPHA = -0.59 # adm - pitch moment due to alpha
 C_n_BETA = 180 / (15 * np.pi)
-# ... roll, pitch, yaw moments with rates
+# ... roll, pitch, yaw moments with rates - RCAM (2.33)
 C_l_P = -11.0
 C_l_Q = 0.0
 C_l_R = 5.0
@@ -151,7 +151,7 @@ C_m_R = 0.0
 C_n_P = 1.7
 C_n_Q = 0.0
 C_n_R = -11.5
-# ... roll, pitch, yaw moments with controls
+# ... roll, pitch, yaw moments with controls - RCAM (2.33)
 C_l_DA = -0.6
 C_l_DE = 0.0
 C_l_DR = 0.22
@@ -635,7 +635,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     F1 = dt1 * M * G
     F2 = dt2 * M * G
     
-    #thrust vectors (assuming aligned with x axis)
+    # thrust vectors (assuming aligned with x axis)
     FE1_b = np.array([F1, 0, 0])
     FE2_b = np.array([F2, 0, 0])
     
@@ -667,7 +667,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     
     p_q_r_dot = np.dot(INV_INERTIA_TENSOR_b, (Mcg_b - np.cross(wbe_b, np.dot(INERTIA_TENSOR_b , wbe_b))))
     
-    #phi, theta, psi dot
+    # phi, theta, psi dot
     H_phi = np.array([[1.0, np.sin(phi) * np.tan(theta), np.cos(phi) * np.tan(theta)],
                       [0.0, np.cos(phi), -np.sin(phi)],
                       [0.0, np.sin(phi) / np.cos(theta), np.cos(phi) / np.cos(theta)]], dtype=np.dtype('f8'))
