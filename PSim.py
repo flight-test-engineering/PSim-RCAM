@@ -52,7 +52,6 @@ TODO:
 '''
 # imports
 import numpy as np
-import pandas as pd
 from scipy import integrate
 # for trimming routine
 from scipy.optimize import minimize
@@ -60,9 +59,7 @@ from scipy.optimize import minimize
 import time
 
 from numba import jit
-#import numba
 
-import math
 import csv
 import sys
 
