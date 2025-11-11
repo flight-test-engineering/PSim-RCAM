@@ -538,17 +538,21 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     
     # CL thrust
     epsilon = DEPSDA * (alpha - ALPHA_L0)
-    alpha_t = alpha - epsilon + de + 1.3 * q * LT / Va
-    CL_t = 3.1 * (ST / S) * alpha_t
+    alpha_t = alpha - epsilon + de + 1.3 * q * LT / Va # the constant 1.3 is the multiplier for
+    # the dynamic response on alpha tail lift due to pitch rate
+    CL_t = 3.1 * (ST / S) * alpha_t # the 3.1 constant is basically the lift curve slope of the tail
     
     # Total CL
     CL = CL_wb + CL_t
     
-    # Total CD
+    # Total CD (in stability frame)
     CD = 0.13 + 0.07 * (N * alpha + 0.654)**2
+    # the constant 0.13 is minimum drag
+    # constants 0.07 and 0.654 are the parabola parameters
     
-    # Total CY
+    # Total side force CY (stability frame)
     CY = -1.6 * beta + 0.24 * dr
+    # constants -1.6 and 0.24 are relationship between beta and rudder to side force
     
     
     #------------------- dimensional aerodynamic forces --------------------
