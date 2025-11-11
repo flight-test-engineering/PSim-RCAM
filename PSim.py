@@ -193,7 +193,7 @@ def save2disk(filename, x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
             row_list.insert(0, x_data[idx].astype('float'))
             writer.writerow(row_list)
 
-@jit
+@jit(nopython=True)
 def VA(uvw:np.ndarray) -> float:
     '''
     Calculate true airspeed
@@ -211,7 +211,7 @@ def get_rho(altitude:float)->float:
     '''
     return rho0 * sigma(altitude * m2ft)
 
-@jit
+@jit(nopython=True)
 def fpa(V_NED)->float:
     '''
     returns flight path angle
@@ -226,7 +226,7 @@ def course(V_NED)->float:
     '''
     return np.pi/2 - np.arctan2(V_NED[0], V_NED[1])
 
-@jit
+@jit(nopython=True)
 def add_wind(NED:np.ndarray, std_dev:np.ndarray)->np.ndarray:
     '''
     returns wind at altitude Hp.
@@ -417,7 +417,7 @@ def get_joy_inputs(joystick, U_trim, fr):
 
 # geodsy
 # https://www.youtube.com/watch?v=4BJ-GpYbZlU
-@jit
+@jit(nopython=True)
 def WGS84_MN(lat:float):
     '''
     Meridian Radius of Curvature
@@ -432,7 +432,7 @@ def WGS84_MN(lat:float):
     N = a / ((1 - e_sqrd * np.sin(lat)**2)**(0.5))
     return M, N
 
-@jit
+@jit(nopython=True)
 def latlonh_dot(V_NED, lat, h):
     '''
     V_north: m/s
@@ -464,7 +464,7 @@ def control_norm(U:np.array) -> np.array:
             U_norm[i] = U[i] / u_max if u_max != 0 else 0
     return U_norm[:3] # Only return first 3 for FG FDM (ail, elev, rud)
 
-@jit
+@jit(nopython=True)
 def control_sat(U:np.ndarray) -> np.ndarray:
     '''
     saturates the control inputs to maximum allowable in RCAM model
@@ -473,7 +473,7 @@ def control_sat(U:np.ndarray) -> np.ndarray:
 
 
 # flight dynamics model
-@jit
+@jit(nopython=True)
 def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     '''
     RCAM model implementation
@@ -641,7 +641,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
 # https://www.youtube.com/watch?v=XQZV-YZ7asE
 
 
-@jit
+@jit(nopython=True)
 def NED(uvw, phithetapsi):
     '''
     compute the NED velocities from:
@@ -680,7 +680,7 @@ def NED(uvw, phithetapsi):
 # # # # # Model integration # # # # #
 
 # # # wrappers
-    # Scipy's "integrate.ode" does not accept a numba/@jit compiled function
+    # Scipy's "integrate.ode" does not accept a numba/@jit(nopython=True) compiled function
     # therefore, we need to create dummy wrappers
 
 def RCAM_model_wrapper(t, X, U, rho):
