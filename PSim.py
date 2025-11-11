@@ -446,23 +446,23 @@ def latlonh_dot(V_NED, lat, h):
 
 
 # controls
-def control_norm(U:np.array, U_lim:np.array) -> np.array:
+def control_norm(U:np.array) -> np.array:
     '''
     normalizes controls to be sent to FG
     inputs:
         U controls: positions (in radians)
-        U_lim: control limits (in radians)
+        [U_lim: control limits (in radians) moved to global variable for speed]
     returns:
         vector with control positions normalized between 1 and -1
     '''
-    U_norm = []
-    for i in range(U.shape[0]):
-        if U[i] <= 0:
-           U_norm.append(-U[i] / U_lim[i][0])
+    U_norm = np.zeros_like(U)
+    for i in range(len(U)):
+        u_min, u_max = U_LIMITS_MIN[i], U_LIMITS_MAX[i]
+        if U[i] < 0:
+            U_norm[i] = U[i] / abs(u_min) if u_min != 0 else 0
         else:
-            U_norm.append(U[i] / U_lim[i][1])
-
-    return np.array(U_norm)
+            U_norm[i] = U[i] / u_max if u_max != 0 else 0
+    return U_norm[:3] # Only return first 3 for FG FDM (ail, elev, rud)
 
 @jit
 def control_sat(U:np.ndarray) -> np.ndarray:
@@ -1022,7 +1022,7 @@ if __name__ == "__main__":
                 body_accels[2] = -body_accels[2]
 
                 set_FDM(my_fgFDM, this_AC_int.y, 
-                        control_norm(U_man, U_limits), 
+                        control_norm(U_man), 
                         current_latlon, 
                         current_alt,
                         body_accels)
