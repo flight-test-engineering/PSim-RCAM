@@ -926,33 +926,29 @@ if __name__ == "__main__":
     signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2']
 
 ############################################################################
-    # INITIAL CONDITIONS
+    # INITIAL CONDITIONS (for trim)
 
-    # Altitude
-    init_alt = 2100 #ft
-    
-    # IAS
-    v_trim = 140 * kt2ms
 
-    # Gamma
-    gamma_trim = 0.0 * DEG2RAD
+    INIT_ALT_FT = 2100 #ft
+    V_TRIM_KCAS = 140 * kt2ms
+    GAMMA_TRIM_RAD = 0.0 * DEG2RAD
+    INIT_HDG_DEG = 82.0
     
     # Lat/Lon
-    #init_latlon = np.array([37.6213, -122.3790]) #in degrees - the func initialize transforms to radians internally
-    #init_latlon = np.array([-21.7632, -48.4051]) #in degrees - SBGP
-    init_latlon = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
+    #INIT_LATLON_DEG = np.array([37.6213, -122.3790]) #in degrees - the func initialize transforms to radians internally
+    #INIT_LATLON_DEG = np.array([-21.7632, -48.4051]) #in degrees - SBGP
+    INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
 
-    # Heading
-    init_psi = 82.0
+
     
 ############################################################################
 
     # instantiate FG comms object and initialize it
     my_fgFDM = fgFDM()
-    my_fgFDM.set('latitude', init_latlon[0], units='degrees')
-    my_fgFDM.set('longitude', init_latlon[1], units='degrees')
-    my_fgFDM.set('altitude', init_alt, units='meters')
-    my_fgFDM.set('agl', init_alt, units='meters')
+    my_fgFDM.set('latitude', INIT_LATLON_DEG[0], units='degrees')
+    my_fgFDM.set('longitude', INIT_LATLON_DEG[1], units='degrees')
+    my_fgFDM.set('altitude', INIT_ALT_FT, units='feet')
+    #my_fgFDM.set('agl', INIT_ALT_FT, units='meters')
     my_fgFDM.set('num_engines', 2)
     my_fgFDM.set('num_tanks', 1)
     my_fgFDM.set('num_wheels', 3)
@@ -992,13 +988,13 @@ if __name__ == "__main__":
 
 
     # aircraft initialization (includes trimming)
-    this_AC_int, X1, U1, this_latlonh_int = initialize(VA_t=v_trim, gamma_t=gamma_trim, latlon=init_latlon, altitude=init_alt, psi_t=init_psi)
+    this_AC_int, X1, U1, this_latlonh_int = initialize(VA_t=V_TRIM_KCAS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG)
     U_man = U1.copy()
 
 
     # frame variables
-    current_alt = init_alt
-    current_latlon = init_latlon
+    current_alt = INIT_ALT_FT
+    current_latlon = INIT_LATLON_DEG
     frame_count = 0
     
     send_frame_trigger = False
