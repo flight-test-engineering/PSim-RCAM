@@ -225,7 +225,7 @@ def save2disk(filename, x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
         data_header.insert(0, 'PSim_Time')
         writer = csv.writer(f)
         writer.writerow(data_header)
-        for idx, row in enumerate(collector):
+        for idx, row in enumerate(y_data):
             row_list = row.tolist()
             row_list.insert(0, x_data[idx].astype('float'))
             writer.writerow(row_list)
@@ -971,7 +971,7 @@ if __name__ == "__main__":
 
     # initializations
     # data collectors
-    collector = []
+    data_collector = []
     t_vector_collector = []
     prev_uvw = np.array([0,0,0])
     current_uvw = np.array([0,0,0])
@@ -1035,7 +1035,7 @@ if __name__ == "__main__":
             # store current state and time vector
             current_latlon = this_latlonh_int.y[0:2]
             current_alt = this_latlonh_int.y[2]
-            collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man)))
+            data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man)))
             t_vector_collector.append(this_AC_int.t)
             
             # check for FG frame trigger
@@ -1098,6 +1098,6 @@ if __name__ == "__main__":
 
 
     # save data to disk
-    save2disk('test_data.csv', x_data=np.array(t_vector_collector), y_data=np.array(collector), header=signals_header, skip=0)
-    fig1 = make_plots(x_data=np.array(t_vector_collector), y_data=np.array(collector), header=signals_header, skip=0)
+    save2disk('test_data.csv', x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=signals_header, skip=0)
+    fig1 = make_plots(x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=signals_header, skip=0)
     plt.show();
