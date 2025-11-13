@@ -844,7 +844,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     Z0 = np.concatenate((X0, U0))
  
     result = minimize(trim_functional2, Z0, args=(VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim),
-               method='L-BFGS-B', options={'disp':False, 'maxiter':5000,\
+               method='L-BFGS-B', options={'maxiter':5000,\
                                             'gtol':1e-25, 'ftol':1e-25, \
                                             'maxls':4000})
 
@@ -1007,7 +1007,6 @@ if __name__ == "__main__":
         start = time.perf_counter()
 
         if run_sim_loop:
-                
 
             _ = pygame.event.get()
             
