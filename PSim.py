@@ -970,9 +970,8 @@ if __name__ == "__main__":
 #######################################################################################
 
     # initializations
-    # data collectors
-    data_collector = []
-    t_vector_collector = []
+    data_collector, t_vector_collector = [], [] # data collectors
+    
     prev_uvw = np.array([0,0,0])
     current_uvw = np.array([0,0,0])
 
@@ -988,18 +987,15 @@ if __name__ == "__main__":
     frame_count = 0
     
     send_frame_trigger = False
-    fg_time_adder = 0 # counts the time between integration steps to trigger sending out a frame to FlightGear
-
-    fgdt = 1 / (FG_OUTPUT_LOOP_HZ + 1) # (s) fg frame period
-    
     run_sim_loop = False
 
+    fgdt = 1.0 / FG_OUTPUT_LOOP_HZ # (s) fg frame period
     simdt = 1 / SIM_LOOP_HZ # (s) desired simulation time step
-    sim_time_adder = 0 # counts the time between integration steps to trigger next simulation frame
+    
+    sim_time_adder, fg_time_adder = 0, 0 # counts the time between integration steps to trigger next simulation frame and FG dispatch
+    
     dt = 0 # actual integration time step
     prev_dt = dt
-
-    grav_accel = 9.81 # m/s
 
     exit_signal = 0 # if joystick button #1 is pressed, ends simulation
     
@@ -1046,9 +1042,9 @@ if __name__ == "__main__":
                 else:
                     body_accels = (current_uvw - prev_uvw) / dt
                 # add gravity
-                g_b = np.array([-grav_accel * np.sin(this_AC_int.y[7]),
-                                 grav_accel * np.cos(this_AC_int.y[7]) * np.sin(this_AC_int.y[6]),
-                                 grav_accel * np.cos(this_AC_int.y[7]) * np.cos(this_AC_int.y[6])])
+                g_b = np.array([-G * np.sin(this_AC_int.y[7]),
+                                 G * np.cos(this_AC_int.y[7]) * np.sin(this_AC_int.y[6]),
+                                 G * np.cos(this_AC_int.y[7]) * np.cos(this_AC_int.y[6])])
                 body_accels = body_accels + g_b
                 body_accels[2] = -body_accels[2]
 
