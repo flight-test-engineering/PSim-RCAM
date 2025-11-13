@@ -390,7 +390,7 @@ def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels):
 
 
 
-def get_joy_inputs(joystick, U_trim, fr):
+def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     '''
     function that will read joystick positions and adjust controls:
     1. joy will change controls on top of trim point
@@ -403,10 +403,10 @@ def get_joy_inputs(joystick, U_trim, fr):
     # # # TRIM
 
     # multipliers to adjust how much trim is added per integration step.
-    pitch_trim_step = 0.006 / fr
-    aileron_trim_step = 0.003 / fr
-    #rudder_trim_step = 0.005 # not implemented yet
-    throttle_trim_step = 0.001 / fr
+    # --- TRIM ---
+    pitch_trim_step = trim_params['pitch'] / fr
+    aileron_trim_step = trim_params['aileron'] / fr
+    throttle_trim_step = trim_params['throttle'] / fr
 
     # read joystick button states for trimming
     zero_ail_rud_thr = joystick.get_button(0)
@@ -436,16 +436,12 @@ def get_joy_inputs(joystick, U_trim, fr):
     # # # JOYSTICK COMMAND
 
     # joystick constants/multipliers to adjust correct movement and amplitude
-    ail_factor = -0.7
-    elev_factor = -0.5
-    rud_factor = -0.52
-    thr_factor = -0.2
-
-    U[0] = U_trim[0] + joystick.get_axis(0) * ail_factor
-    U[1] = U_trim[1] + joystick.get_axis(1) * elev_factor
-    U[2] = U_trim[2] + joystick.get_axis(2) * rud_factor
-    U[3] = U_trim[3] + joystick.get_axis(3) * thr_factor
-    U[4] = U_trim[4] + joystick.get_axis(3) * thr_factor
+    U[0] = U_trim[0] + joystick.get_axis(0) * joy_factors['aileron']
+    U[1] = U_trim[1] + joystick.get_axis(1) * joy_factors['elevator']
+    U[2] = U_trim[2] + joystick.get_axis(2) * joy_factors['rudder']
+    throttle_cmd = joystick.get_axis(3) * joy_factors['throttle']
+    U[3] = U_trim[3] + throttle_cmd
+    U[4] = U_trim[4] + throttle_cmd
 
 
     return U, U_trim, exit_signal
@@ -797,7 +793,7 @@ def latlonh_int(t_ini:float, latlonh0:np.ndarray, V_NED):
 
 
 # # Trimmer
-def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, v_trim, phi_trim, psi_trim, rho_trim) -> np.dtype('f8'):
+def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim) -> np.dtype('f8'):
     '''
     functional to calculate a cost for minimizer (used to find trim point)
     no constraints yet
@@ -806,7 +802,7 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, v_trim, phi_trim, psi_tr
         trim targets:
         VA_trim: airspeed [m/s]
         gamma_trim: climb gradient [rad]
-        v-trim: side speed [m/s]
+        side_speed_trim: lateral (v) speed [m/s]
         phi_trim: roll angle [rad]
         psi_trim: course angle [rad]
 
@@ -829,13 +825,13 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, v_trim, phi_trim, psi_tr
     
     gamma_current = X[7] - np.arctan2(X[2], X[0]) # only valid for wings level case
      
-    Q = np.concatenate((X_dot, [VA_current - VA_trim], [gamma_current - gamma_trim], [X[1] - v_trim], [X[6] - phi_trim], [X[8] - psi_trim]))
+    Q = np.concatenate((X_dot, [VA_current - VA_trim], [gamma_current - gamma_trim], [X[1] - side_speed_trim], [X[6] - phi_trim], [X[8] - psi_trim]))
     diag_ones = np.ones(Q.shape[0])
     H = np.diag(diag_ones)
     
     return np.dot(np.dot(Q.T, H), Q)
 
-def trim_model(VA_trim=85.0, gamma_trim=0.0, v_trim=0.0, phi_trim=0.0, psi_trim=0.0, rho_trim=1.225, 
+def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, psi_trim=0.0, rho_trim=1.225, 
                X0=np.array([85, 0, 0, 0, 0, 0, 0, 0.1, 0]), 
                U0=np.array([0, -0.1, 0, 0.08, 0.08])) -> np.ndarray:
     '''
@@ -847,7 +843,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, v_trim=0.0, phi_trim=0.0, psi_trim=
     X0[0] = VA_trim
     Z0 = np.concatenate((X0, U0))
  
-    result = minimize(trim_functional2, Z0, args=(VA_trim, gamma_trim, v_trim, phi_trim, psi_trim, rho_trim),
+    result = minimize(trim_functional2, Z0, args=(VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim),
                method='L-BFGS-B', options={'disp':False, 'maxiter':5000,\
                                             'gtol':1e-25, 'ftol':1e-25, \
                                             'maxls':4000})
@@ -880,7 +876,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
     latlonh0 = np.array([latlon[0]*DEG2RAD, latlon[1]*DEG2RAD, alt_m])
 
     # trim model
-    res4, res4_status = trim_model(VA_trim=VA_t, gamma_trim=gamma_t, v_trim=t0, 
+    res4, res4_status = trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
                                    phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=get_rho(altitude))
     print(res4_status)
     X0 = res4[:9]
@@ -927,17 +923,31 @@ if __name__ == "__main__":
 
 ############################################################################
     # INITIAL CONDITIONS (for trim)
-
-
     INIT_ALT_FT = 2100 #ft
     V_TRIM_KCAS = 140 * kt2ms
     GAMMA_TRIM_RAD = 0.0 * DEG2RAD
     INIT_HDG_DEG = 82.0
-    
     # Lat/Lon
     #INIT_LATLON_DEG = np.array([37.6213, -122.3790]) #in degrees - the func initialize transforms to radians internally
     #INIT_LATLON_DEG = np.array([-21.7632, -48.4051]) #in degrees - SBGP
     INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
+    # wind
+    WIND_NED_MPS = np.array([0, 0, 0]) # (m/s), NED
+    WIND_STDDEV_MPS = np.array([1, 1, 0]) # wind standard deviation, NED
+
+###########################################################################
+    # SIMULATION OPTIONS
+    SIM_TOTAL_TIME_S = 10 * 60 # (s) total simulation time
+    SIM_LOOP_HZ = 400 # (Hz) simulation loop frame rate throttling
+    FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FG
+
+
+###########################################################################
+    # JOYSTICK SCALING FACTORS
+
+    TRIM_PARAMS = { 'pitch': 0.006, 'aileron': 0.003, 'throttle': 0.01 } # Trim adjustment per second
+    JOY_FACTORS = { 'aileron': -0.7, 'elevator': -0.5, 'rudder': -0.52, 'throttle': -0.2 }
+    
 
 
     
@@ -954,28 +964,8 @@ if __name__ == "__main__":
     my_fgFDM.set('num_wheels', 3)
     my_fgFDM.set('cur_time', int(time.perf_counter()), units='seconds')
 
-    #----------------- control limits / saturation ---------------------
-    U_limits = [(-25 * DEG2RAD, 25 * DEG2RAD), 
-                (-25 * DEG2RAD, 10 * DEG2RAD),
-                (-30 * DEG2RAD, 30 * DEG2RAD),
-                (0.5 * DEG2RAD, 10 * DEG2RAD),
-                (0.5 * DEG2RAD, 10 * DEG2RAD)]
 
 
-#######################################################################################
-#   SIMULATION OPTIONS
-
-    # start time
-    t0 = 0
-    # total simulation time
-    tf = 10 * 60 #minutes
-    # simulation loop frame rate throttling
-    simFR = 400 # (Hz) 
-    # frames per second to be sent out to FG
-    fgFR = 60 # (Hz) 
-
-    wind_speed = np.array([0, 0, 0]) # (m/s), NED
-    wind_stddev = np.array([1, 1, 0]) # 
 
 #######################################################################################
 
@@ -1000,11 +990,11 @@ if __name__ == "__main__":
     send_frame_trigger = False
     fg_time_adder = 0 # counts the time between integration steps to trigger sending out a frame to FlightGear
 
-    fgdt = 1 / (fgFR + 1) # (s) fg frame period
+    fgdt = 1 / (FG_OUTPUT_LOOP_HZ + 1) # (s) fg frame period
     
     run_sim_loop = False
 
-    simdt = 1 / simFR # (s) desired simulation time step
+    simdt = 1 / SIM_LOOP_HZ # (s) desired simulation time step
     sim_time_adder = 0 # counts the time between integration steps to trigger next simulation frame
     dt = 0 # actual integration time step
     prev_dt = dt
@@ -1016,7 +1006,7 @@ if __name__ == "__main__":
 
     # main loop
 
-    while this_AC_int.t <= tf and exit_signal == 0:
+    while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
         # get clock
         start = time.perf_counter()
 
@@ -1027,7 +1017,7 @@ if __name__ == "__main__":
             
             # get density, inputs
             current_rho = get_rho(current_alt * m2ft)
-            U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, simFR)   
+            U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
             U_man = control_sat(U_man)
 
             # set current integration step commands, density and integrate aircraft states
@@ -1038,7 +1028,7 @@ if __name__ == "__main__":
 
             # integrate navigation equations
             current_NED = NED(this_AC_int.y[:3], this_AC_int.y[6:])
-            this_wind = add_wind(wind_speed, wind_stddev)
+            this_wind = add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
             this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon[0], current_alt)
             this_latlonh_int.integrate(this_latlonh_int.t + dt) #in radians
             
@@ -1110,4 +1100,4 @@ if __name__ == "__main__":
     # save data to disk
     save2disk('test_data.csv', x_data=np.array(t_vector_collector), y_data=np.array(collector), header=signals_header, skip=0)
     fig1 = make_plots(x_data=np.array(t_vector_collector), y_data=np.array(collector), header=signals_header, skip=0)
-    plt.show()
+    plt.show();
