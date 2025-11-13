@@ -924,9 +924,9 @@ if __name__ == "__main__":
 ############################################################################
     # INITIAL CONDITIONS (for trim)
     INIT_ALT_FT = 2100 #ft
-    V_TRIM_KCAS = 140 * kt2ms
-    GAMMA_TRIM_RAD = 0.0 * DEG2RAD
-    INIT_HDG_DEG = 82.0
+    V_TRIM_MPS = 140 * kt2ms # m/s
+    GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
+    INIT_HDG_DEG = 82.0 # DEG
     # Lat/Lon
     #INIT_LATLON_DEG = np.array([37.6213, -122.3790]) #in degrees - the func initialize transforms to radians internally
     #INIT_LATLON_DEG = np.array([-21.7632, -48.4051]) #in degrees - SBGP
@@ -978,7 +978,7 @@ if __name__ == "__main__":
 
 
     # aircraft initialization (includes trimming)
-    this_AC_int, X1, U1, this_latlonh_int = initialize(VA_t=V_TRIM_KCAS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG)
+    this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG)
     U_man = U1.copy()
 
 
