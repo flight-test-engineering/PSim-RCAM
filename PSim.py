@@ -126,7 +126,6 @@ ALPHA_SWITCH = 14.5 * DEG2RAD  # rad - kink point of lift slope
 NT = 3.1 # adm - slope of linear region of TAIL lift slope
 EPSILON_DOT = 1.3 # adm multiplier for tail dynamic downwash response wrt pitch rate
 
-
 # .. aerodynamic properties - drag - RCAM (2.31)
 CDMIN = 0.13 # adm - CD min - bottom of CDxALpha curve
 D1 = 0.07 # adm - coeff of alpha^2
@@ -283,7 +282,7 @@ def get_doublet(t_vector, t=0, duration=1, amplitude=0.1):
         t_vector: time vector
         t: value at which the doublet should start
         duration: duration of the high/low input states
-        amplituyde: multiplication factor to set amplitude
+        amplitude: multiplication factor to set amplitude
     returns:
         doublet vector
     '''
@@ -302,7 +301,7 @@ def get_step(t_vector, t=0, amplitude=0.1):
     inputs:
         t_vector: time vector
         t: value at which the doublet should start
-        amplituyde: multiplication factor to set amplitude
+        amplitude: multiplication factor to set amplitude
     returns:
         step vector
     '''
@@ -321,7 +320,7 @@ def create_cmd(t_vector=np.zeros(5), input_channel='ail', cmd_type='doublet', at
         cmd_type: selector for doublet or step
         at_time: value at which the inpute should start
         duration: duration of the high/low input states
-        amplituyde: multiplication factor to set amplitude
+        amplitude: multiplication factor to set amplitude
     returns:
         input_ch_number: integer with the index of command to be added to integration loop
         cmd: vector with command
@@ -468,9 +467,9 @@ def WGS84_MN(lat:float):
 @jit(nopython=True)
 def latlonh_dot(V_NED, lat, h):
     '''
-    V_north: m/s
-    M: m
-    h: m
+    V_NED: m/s
+    lat: latitude in degrees (decimal)
+    h: altitude in meters
     '''
     M, N = WGS84_MN(lat)
     return np.array([(V_NED[0]) / (M + h), 
@@ -754,7 +753,7 @@ def time_span_int(t_ini:float, t_fin:float, dt:float, X0:np.ndarray, U:np.ndarra
     
     inputs:
         t_ini: initial time in seconds
-        t-fin: final time in seconds
+        t_fin: final time in seconds
         dt: delta time between steps, in seconds
         X0: initial states
         U: controls positions
@@ -869,15 +868,17 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
     '''
     ft2m = 0.3048
     t0 = 0.0 #intial time for integrators
-
-    print(f'initializing model with altitude {altitude} ft, rho={get_rho(altitude)}')
-    
     alt_m = altitude * ft2m
+    rho_trim = get_rho(altitude)
+
+    print(f'initializing model with altitude {altitude} ft, rho={rho_trim}')
+    
+
     latlonh0 = np.array([latlon[0]*DEG2RAD, latlon[1]*DEG2RAD, alt_m])
 
     # trim model
     res4, res4_status = trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
-                                   phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=get_rho(altitude))
+                                   phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim)
     print(res4_status)
     X0 = res4[:9]
     U0 = res4[9:]
@@ -885,7 +886,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
     print(f'initial inputs: {U0}')
 
     # initialize integrators
-    AC_integrator = ss_integrator(t0, X0, U0, get_rho(altitude))
+    AC_integrator = ss_integrator(t0, X0, U0, rho_trim)
     
     NED0 = NED(X0[:3], X0[6:]) #uvw and phithetapsi
     
@@ -946,7 +947,7 @@ if __name__ == "__main__":
     # JOYSTICK SCALING FACTORS
 
     TRIM_PARAMS = { 'pitch': 0.006, 'aileron': 0.003, 'throttle': 0.01 } # Trim adjustment per second
-    JOY_FACTORS = { 'aileron': -0.7, 'elevator': -0.5, 'rudder': -0.52, 'throttle': -0.2 }
+    JOY_FACTORS = { 'aileron': -0.7, 'elevator': -0.5, 'rudder': -0.52, 'throttle': -0.6 } # -0.2
     
 
 
@@ -982,8 +983,8 @@ if __name__ == "__main__":
 
 
     # frame variables
-    current_alt = INIT_ALT_FT
-    current_latlon = INIT_LATLON_DEG
+    current_alt_m = INIT_ALT_FT * ft2m # m
+    current_latlon_rad = INIT_LATLON_DEG
     frame_count = 0
     
     send_frame_trigger = False
@@ -1011,8 +1012,12 @@ if __name__ == "__main__":
             _ = pygame.event.get()
             
             # get density, inputs
-            current_rho = get_rho(current_alt * m2ft)
+            current_rho = get_rho(current_alt_m * m2ft)
             U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
+            ###########
+            # TODO
+            # THROTTLE IS NOT CORRECT
+            ###########
             U_man = control_sat(U_man)
 
             # set current integration step commands, density and integrate aircraft states
@@ -1024,12 +1029,12 @@ if __name__ == "__main__":
             # integrate navigation equations
             current_NED = NED(this_AC_int.y[:3], this_AC_int.y[6:])
             this_wind = add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
-            this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon[0], current_alt)
-            this_latlonh_int.integrate(this_latlonh_int.t + dt) #in radians
+            this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon_rad[0], current_alt_m)
+            this_latlonh_int.integrate(this_latlonh_int.t + dt) #in radians and alt in meters
             
             # store current state and time vector
-            current_latlon = this_latlonh_int.y[0:2]
-            current_alt = this_latlonh_int.y[2]
+            current_latlon_rad = this_latlonh_int.y[0:2] # store lat and long (RAD)
+            current_alt_m = this_latlonh_int.y[2] # store altitude (m)
             data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man)))
             t_vector_collector.append(this_AC_int.t)
             
@@ -1045,12 +1050,12 @@ if __name__ == "__main__":
                                  G * np.cos(this_AC_int.y[7]) * np.sin(this_AC_int.y[6]),
                                  G * np.cos(this_AC_int.y[7]) * np.cos(this_AC_int.y[6])])
                 body_accels = body_accels + g_b
-                body_accels[2] = -body_accels[2]
+                body_accels[2] = -body_accels[2] # FG expects Z-up
 
                 set_FDM(my_fgFDM, this_AC_int.y, 
                         control_norm(U_man), 
-                        current_latlon, 
-                        current_alt,
+                        current_latlon_rad, 
+                        current_alt_m,
                         body_accels)
                 my_pack = my_fgFDM.pack()
                 sock.sendto(my_pack, (UDP_IP, UDP_PORT))
@@ -1063,7 +1068,7 @@ if __name__ == "__main__":
             # print out stuff every so often
             if (frame_count % 100) == 0:
                 #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
-                #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon[0]:0.6f}, lon:{current_latlon[1]:0.6f}')
+                #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                 #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
                 print(f'time: {this_AC_int.t:0.1f}s, Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, T1/T2={U1[3]:0.3f},{U1[4]:0.3f}')
                 
