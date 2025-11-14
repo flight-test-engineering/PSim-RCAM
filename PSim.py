@@ -175,8 +175,8 @@ U_LIMITS_RAD = {
     'aileron': (-25 * DEG2RAD, 25 * DEG2RAD),
     'elevator': (-25 * DEG2RAD, 10 * DEG2RAD),
     'rudder': (-30 * DEG2RAD, 30 * DEG2RAD),
-    'throttle1': (0.5 * DEG2RAD, 10 * DEG2RAD),
-    'throttle2': (0.5 * DEG2RAD, 10 * DEG2RAD)
+    'throttle1': (0.0, 1.0),
+    'throttle2': (0.0, 1.0)
 }
 U_LIMITS_MIN = np.array([lim[0] for lim in U_LIMITS_RAD.values()])
 U_LIMITS_MAX = np.array([lim[1] for lim in U_LIMITS_RAD.values()])
@@ -438,7 +438,7 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     U[0] = U_trim[0] + joystick.get_axis(0) * joy_factors['aileron']
     U[1] = U_trim[1] + joystick.get_axis(1) * joy_factors['elevator']
     U[2] = U_trim[2] + joystick.get_axis(2) * joy_factors['rudder']
-    throttle_cmd = joystick.get_axis(3) * joy_factors['throttle']
+    throttle_cmd = (joystick.get_axis(3) * joy_factors['throttle'] + 1) / 2 # shift from -1/1 to 0/1
     U[3] = U_trim[3] + throttle_cmd
     U[4] = U_trim[4] + throttle_cmd
 
@@ -945,9 +945,8 @@ if __name__ == "__main__":
 
 ###########################################################################
     # JOYSTICK SCALING FACTORS
-
-    TRIM_PARAMS = { 'pitch': 0.006, 'aileron': 0.003, 'throttle': 0.01 } # Trim adjustment per second
-    JOY_FACTORS = { 'aileron': -0.7, 'elevator': -0.5, 'rudder': -0.52, 'throttle': -0.6 } # -0.2
+    TRIM_PARAMS = { 'pitch': 0.01, 'aileron': 0.003, 'throttle': 0.01 } # Trim adjustment per second
+    JOY_FACTORS = { 'aileron': -0.7, 'elevator': -0.5, 'rudder': -0.52, 'throttle': -1.0 } # -0.2
     
 
 
@@ -1012,12 +1011,20 @@ if __name__ == "__main__":
             _ = pygame.event.get()
             
             # get density, inputs
+            current_throttle = [U_man[3], U_man[4]] # keep track of throttle to zero-out the trim bias
             current_rho = get_rho(current_alt_m * m2ft)
             U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
-            ###########
-            # TODO
-            # THROTTLE IS NOT CORRECT
-            ###########
+            # trim bias is always positive, so we washout if throttles move down
+            delta_throttle_1 = current_throttle[0] - U_man[3]
+            if delta_throttle_1 < 0: 
+                if delta_throttle_1 > U1[3]:
+                    U1[3] = 0
+                    U1[4] = 0
+                else:
+                    U1[3] = U1[3] - delta_throttle_1
+                    # we have only one throttle quadrant (3), so need to link engine 2 throttle to it
+                    U1[4] = U1[4] - (U_man[3] - current_throttle[1]) 
+
             U_man = control_sat(U_man)
 
             # set current integration step commands, density and integrate aircraft states
@@ -1070,7 +1077,7 @@ if __name__ == "__main__":
                 #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
                 #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                 #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
-                print(f'time: {this_AC_int.t:0.1f}s, Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, T1/T2={U1[3]:0.3f},{U1[4]:0.3f}')
+                print(f'time: {this_AC_int.t:0.1f}s, Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}')
                 
             
 
