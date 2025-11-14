@@ -84,6 +84,7 @@ import pygame
 G = 9.81  # Gravity, m/s^2
 DEG2RAD = np.pi / 180.0
 RAD2DEG = 180.0 / np.pi
+FT2M = 0.3048
 
 # --- RCAM Aircraft Model Constants ---
 # Moved out of the RCAM_model function to avoid re-definition on every call.
@@ -866,9 +867,8 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
         U0: initial commands found at trim point
         latlonh_integrator: navigation equation scipy object integrator
     '''
-    ft2m = 0.3048
     t0 = 0.0 #intial time for integrators
-    alt_m = altitude * ft2m
+    alt_m = altitude * FT2M
     rho_trim = get_rho(altitude)
 
     print(f'initializing model with altitude {altitude} ft, rho={rho_trim}')
@@ -946,13 +946,10 @@ if __name__ == "__main__":
 ###########################################################################
     # JOYSTICK SCALING FACTORS
     TRIM_PARAMS = { 'pitch': 0.01, 'aileron': 0.003, 'throttle': 0.01 } # Trim adjustment per second
-    JOY_FACTORS = { 'aileron': -0.7, 'elevator': -0.5, 'rudder': -0.52, 'throttle': -1.0 } # -0.2
+    JOY_FACTORS = { 'aileron': -0.7, 'elevator': -0.5, 'rudder': -0.52, 'throttle': -1.0 } # specific for this joystick model
     
-
-
     
 ############################################################################
-
     # instantiate FG comms object and initialize it
     my_fgFDM = fgFDM()
     my_fgFDM.set('latitude', INIT_LATLON_DEG[0], units='degrees')
@@ -966,9 +963,7 @@ if __name__ == "__main__":
 
 
 
-
 #######################################################################################
-
     # initializations
     data_collector, t_vector_collector = [], [] # data collectors
     
@@ -982,7 +977,7 @@ if __name__ == "__main__":
 
 
     # frame variables
-    current_alt_m = INIT_ALT_FT * ft2m # m
+    current_alt_m = INIT_ALT_FT * FT2M # m
     current_latlon_rad = INIT_LATLON_DEG
     frame_count = 0
     
