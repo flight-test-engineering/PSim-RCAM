@@ -916,27 +916,11 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
 
 
 # ############################################################################
-# Main Loop
+# MAIN
 # ############################################################################
 
 if __name__ == "__main__":
 
-
-############################################################################
-    # JOYSTICK
-    pygame.init() # automatically initializes joystick also
-
-    # check if joystick is connected
-    joystick_count = pygame.joystick.get_count()
-    if joystick_count == 0:
-        print('connect joystick first')
-        exit()
-
-    print(f'found {joystick_count} joysticks connected.')
-    this_joy = pygame.joystick.Joystick(0)
-    print(f'{this_joy.get_name()}, axes={this_joy.get_numaxes()}')
-
-    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2']
 
 ############################################################################
     # INITIAL CONDITIONS (for trim)
@@ -963,7 +947,24 @@ if __name__ == "__main__":
     # JOYSTICK SCALING FACTORS
     TRIM_PARAMS = { 'pitch': 0.01, 'aileron': 0.003, 'throttle': 0.01 } # Trim adjustment per second
     JOY_FACTORS = { 'aileron': -0.7, 'elevator': -0.5, 'rudder': -0.52, 'throttle': -1.0 } # specific for this joystick model
-    
+
+
+############################################################################
+    # JOYSTICK
+    pygame.init() # automatically initializes joystick also
+
+    # check if joystick is connected
+    joystick_count = pygame.joystick.get_count()
+    if joystick_count == 0:
+        print('connect joystick first')
+        exit()
+
+    print(f'found {joystick_count} joysticks connected.')
+    this_joy = pygame.joystick.Joystick(0)
+    print(f'{this_joy.get_name()}, axes={this_joy.get_numaxes()}')
+
+    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2']
+
     
 ############################################################################
     # FLIGHTGEAR SOCKS
@@ -1022,7 +1023,7 @@ if __name__ == "__main__":
     exit_signal = 0 # if joystick button #1 is pressed, ends simulation
     
 
-    # main loop
+    ##### SIMULATION LOOP #####
 
     while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
         # get clock
@@ -1035,7 +1036,9 @@ if __name__ == "__main__":
             # get density, inputs
             current_throttle = [U_man[3], U_man[4]] # keep track of throttle to zero-out the trim bias
             current_rho = get_rho(current_alt_m)
+        
             U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
+            
             # trim bias is always positive, so we washout if throttles move down
             delta_throttle_1 = U_man[3] - current_throttle[0]
             if delta_throttle_1 < 0 and U1[3] > 0: 
@@ -1082,6 +1085,7 @@ if __name__ == "__main__":
                 body_accels = body_accels + g_b
                 body_accels[2] = -body_accels[2] # FG expects Z-up
 
+                # set values and send frames
                 set_FDM(my_fgFDM, this_AC_int.y, 
                         control_norm(U_man), 
                         current_latlon_rad, 
@@ -1120,7 +1124,7 @@ if __name__ == "__main__":
             sim_time_adder = 0
             run_sim_loop = True
 
-
+        # end-of-frame
         end = time.perf_counter()
         this_frame_dt = end - start
         fg_time_adder += this_frame_dt
