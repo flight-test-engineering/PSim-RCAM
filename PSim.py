@@ -53,27 +53,22 @@ TODO:
 # imports
 import numpy as np
 from scipy import integrate
-# for trimming routine
-from scipy.optimize import minimize
-
-import time
-
+from scipy.optimize import minimize # for trimming routine
 from numba import jit
 
+from ISA_library import * # International Standard Atmosphere library
+#import ISA_library as ISA
+
+import time
 import csv
 import sys
 
 sys.path.insert(1, '../')
 
-# FlightGear comm class
-from fgDFM import *
+from fgDFM import * # FlightGear comm class
 import socket
 
-# International Standard Atmosphere library
-from ISA_library import *
-
-#joystick interface
-import pygame
+import pygame #joystick interface
 
 
 # ############################################################################
@@ -244,7 +239,7 @@ def VA(uvw:np.ndarray) -> float:
 
 def get_rho(altitude:float)->float:
     '''
-    calculate the air density given an altitude in feet
+    calculate the air density given an altitude in meters
     '''
     return rho0 * sigma(altitude * m2ft)
 
@@ -869,7 +864,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
     '''
     t0 = 0.0 #intial time for integrators
     alt_m = altitude * FT2M
-    rho_trim = get_rho(altitude)
+    rho_trim = get_rho(alt_m)
 
     print(f'initializing model with altitude {altitude} ft, rho={rho_trim}')
     
@@ -1007,7 +1002,7 @@ if __name__ == "__main__":
             
             # get density, inputs
             current_throttle = [U_man[3], U_man[4]] # keep track of throttle to zero-out the trim bias
-            current_rho = get_rho(current_alt_m * m2ft)
+            current_rho = get_rho(current_alt_m)
             U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
             # trim bias is always positive, so we washout if throttles move down
             delta_throttle_1 = U_man[3] - current_throttle[0]
