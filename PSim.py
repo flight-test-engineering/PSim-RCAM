@@ -56,6 +56,8 @@ from scipy import integrate
 from scipy.optimize import minimize # for trimming routine
 from numba import jit
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('TkAgg')
 
 import ISA_library as ISA # International Standard Atmosphere library
 
