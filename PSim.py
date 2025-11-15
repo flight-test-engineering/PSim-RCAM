@@ -75,7 +75,7 @@ import pygame #joystick interface
 # Consolidated Constants
 # ############################################################################
 
-# --- Physical and Mathematical Constants ---
+# .. Physical and Mathematical Constants ..
 G = 9.81  # Gravity, m/s^2
 DEG2RAD = np.pi / 180.0
 RAD2DEG = 180.0 / np.pi
@@ -84,27 +84,27 @@ M2FT = 1 / FT2M
 KT2MS = 0.51444444 #knots to meters per second
 MS2KT = 1 / KT2MS
 
-# --- RCAM Aircraft Model Constants ---
+# .. RCAM Aircraft Model Constants ..
 # Moved out of the RCAM_model function to avoid re-definition on every call.
 
-# .. Nominal vehicle constants
+# .. Nominal vehicle constants ..
 M = 120000.0  # kg - total mass
 CBAR = 6.6  # m - mean aerodynamic chord
 LT = 24.8  # m - tail aerodynamic center distance to CG
 S = 260.0  # m^2 - wing area
 ST = 64.0  # m^2 - tail area
 
-# .. centre of gravity position
+# .. centre of gravity position ..
 XCG = 0.23 * CBAR  # m - x pos of CG
 YCG = 0.0  # m - y pos of CG
 ZCG = 0.10 * CBAR  # m - z pos of CG
 
-# .. aerodynamic centre position
+# .. aerodynamic centre position ..
 XAC = 0.12 * CBAR  # m - x pos of AC
 YAC = 0.0  # m - y pos of AC
 ZAC = 0.0  # m - z pos of AC
 
-# .. engines point of thrust application
+# .. engines point of thrust application ..
 XAPT1 = 0.0  # m - x pos of engine 1
 YAPT1 = -7.94  # m - y pos of engine 1
 ZAPT1 = -1.9  # m - z pos of engine 1
@@ -112,7 +112,7 @@ XAPT2 = 0.0  # m - x pos of engine 2
 YAPT2 = 7.94  # m - y pos of engine 2
 ZAPT2 = -1.9  # m - z pos of engine 2
 
-# .. aerodynamic properties - lift
+# .. aerodynamic properties - lift ..
 DEPSDA = 0.25  # rad/rad - change in downwash wrt alpha
 ALPHA_L0 = -11.5 * DEG2RAD  # rad - zero lift AOA
 N = 5.5  # adm - slope of linear region of lift slope
@@ -121,24 +121,24 @@ A2 = 609.2  # adm - coeff of alpha^2
 A1 = -155.2  # adm - coeff of alpha^1
 A0 = 15.212  # adm - coeff of alpha^0
 ALPHA_SWITCH = 14.5 * DEG2RAD  # rad - kink point of lift slope
-# ... tail
+# ... tail ..,
 NT = 3.1 # adm - slope of linear region of TAIL lift slope
 EPSILON_DOT = 1.3 # adm multiplier for tail dynamic downwash response wrt pitch rate
 
-# .. aerodynamic properties - drag - RCAM (2.31)
+# .. aerodynamic properties - drag - RCAM (2.31) ..
 CDMIN = 0.13 # adm - CD min - bottom of CDxALpha curve
 D1 = 0.07 # adm - coeff of alpha^2
 D0 = 0.654 # adm - coeff of alpha^0
 
-# .. aerodynamic properties - side force - RCAM (2.32)
+# .. aerodynamic properties - side force - RCAM (2.32) ..
 CY_BETA = -1.6 # adm - side force coeff with sideslip
 CY_DR = 0.24 # adm - side force coeff with rudder deflection
 
-# .. aerodynamic properties - moment coefficients - RCAM (2.33)
+# .. aerodynamic properties - moment coefficients - RCAM (2.33) ..
 C_l_BETA = -1.4 # adm - roll moment due to beta
 C_m_ALPHA = -0.59 # adm - pitch moment due to alpha
 C_n_BETA = 180 / (15 * np.pi)
-# ... roll, pitch, yaw moments with rates - RCAM (2.33)
+# ... roll, pitch, yaw moments with rates - RCAM (2.33) ..,
 C_l_P = -11.0
 C_l_Q = 0.0
 C_l_R = 5.0
@@ -149,7 +149,7 @@ C_m_R = 0.0
 C_n_P = 1.7
 C_n_Q = 0.0
 C_n_R = -11.5
-# ... roll, pitch, yaw moments with controls - RCAM (2.33)
+# ... roll, pitch, yaw moments with controls - RCAM (2.33) ...
 C_l_DA = -0.6
 C_l_DE = 0.0
 C_l_DR = 0.22
@@ -161,7 +161,7 @@ C_n_DE = 0.0
 C_n_DR = -0.63
 
 
-# .. inertia tensor
+# .. inertia tensor ..
 INERTIA_TENSOR_b = M * np.array([
     [40.07, 0.0, -2.0923],
     [0.0, 64.0, 0.0],
@@ -169,7 +169,7 @@ INERTIA_TENSOR_b = M * np.array([
 ], dtype=np.float64)
 INV_INERTIA_TENSOR_b = np.linalg.inv(INERTIA_TENSOR_b)
 
-# .. Control Surface Limits
+# .. Control Surface and Throttle Limits ..
 U_LIMITS_RAD = {
     'aileron': (-25 * DEG2RAD, 25 * DEG2RAD),
     'elevator': (-25 * DEG2RAD, 10 * DEG2RAD),
@@ -182,7 +182,10 @@ U_LIMITS_MAX = np.array([lim[1] for lim in U_LIMITS_RAD.values()])
 
 
 
-# # helper functions
+# ############################################################################
+# Helper Functions
+# ############################################################################
+
 def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
                 header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2'], skip=0):
 
@@ -244,7 +247,7 @@ def get_rho(altitude:float)->float:
     '''
     calculate the air density given an altitude in meters
     '''
-    return ISA.rho0 * ISA.sigma(altitude * M2FT)
+    return ISA.rho0 * ISA.sigma(altitude * M2FT) # ISA expects alt in ft
 
 @jit(nopython=True)
 def fpa(V_NED)->float:
@@ -503,7 +506,11 @@ def control_sat(U:np.ndarray) -> np.ndarray:
     return np.clip(U, U_LIMITS_MIN, U_LIMITS_MAX)
 
 
-# flight dynamics model
+
+# ############################################################################
+# RCAM flight dynamics model
+# ############################################################################
+
 @jit(nopython=True)
 def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     '''
@@ -532,17 +539,17 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
             0: aileron (rad)
             1: stabilator (rad)
             2: rudder (rad)
-            3: throttle 1  (rad)
-            4: throttle 2 (rad)
-        rho: density for current altitude
+            3: throttle 1 (%)
+            4: throttle 2 (%)
+        rho: density for current altitude (kg/m3)
     outputs:
         X_dot: derivatives of states (same order)
     '''
    
     # ------------------------- states ----------------------------------
-    u, v, w = X[0], X[1], X[2]
-    p, q, r = X[3], X[4], X[5]
-    phi, theta, psi = X[6], X[7], X[8]
+    u, v, w = X[0], X[1], X[2] # m/s
+    p, q, r = X[3], X[4], X[5] # rad/s
+    phi, theta, psi = X[6], X[7], X[8] # rad
 
     # ----------------------- controls ----------------------------------
     da, de, dr, dt1, dt2 = U[0], U[1], U[2], U[3], U[4]
@@ -674,7 +681,10 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     return X_dot
 
 
+# ############################################################################
 # Navigation Equations
+# ############################################################################
+
 # source:
 # Christopher Lum - "The Naviation Equations: Computing Position North, East and Down"
 # https://www.youtube.com/watch?v=XQZV-YZ7asE
@@ -716,7 +726,9 @@ def NED(uvw, phithetapsi):
     return np.dot(cbv.T, uvw)
     
 
-# # # # # Model integration # # # # #
+# ############################################################################
+# Model Integration
+# ############################################################################
 
 # # # wrappers
     # Scipy's "integrate.ode" does not accept a numba/@jit(nopython=True) compiled function
@@ -790,7 +802,11 @@ def latlonh_int(t_ini:float, latlonh0:np.ndarray, V_NED):
     return RK_integrator
 
 
-# # Trimmer
+
+# ############################################################################
+# Model Trimming Function
+# ############################################################################
+
 def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim) -> np.dtype('f8'):
     '''
     functional to calculate a cost for minimizer (used to find trim point)
@@ -849,7 +865,11 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     return result.x, result.message
 
 
-# # Init
+
+# ############################################################################
+# Model Initialization
+# ############################################################################
+
 def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t=0.0):
     '''
     this initializes the integrators at a straight and level flight condition
@@ -894,21 +914,19 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
     
 
 
+
+# ############################################################################
+# Main Loop
+# ############################################################################
+
 if __name__ == "__main__":
 
 
-    # Network socket to communicate with FlightGear
-    UDP_IP = "127.0.0.1"
-    UDP_PORT = 5500
-    UDP_IP2 = "192.168.0.163"
-    UDP_PORT2 = 5501
-    sock = socket.socket(socket.AF_INET, # Internet
-                        socket.SOCK_DGRAM) # UDP
-    sock2 = socket.socket(socket.AF_INET, # Internet
-                        socket.SOCK_DGRAM) # UDP
-
+############################################################################
+    # JOYSTICK
     pygame.init() # automatically initializes joystick also
 
+    # check if joystick is connected
     joystick_count = pygame.joystick.get_count()
     if joystick_count == 0:
         print('connect joystick first')
@@ -948,6 +966,17 @@ if __name__ == "__main__":
     
     
 ############################################################################
+    # FLIGHTGEAR SOCKS
+    # Start network socket to communicate with FlightGear
+    UDP_IP = "127.0.0.1" # set to localhost
+    UDP_PORT = 5500
+    UDP_IP2 = "192.168.0.163" # set to a remote computer on the same network
+    UDP_PORT2 = 5501
+    sock = socket.socket(socket.AF_INET, # Internet
+                        socket.SOCK_DGRAM) # UDP
+    sock2 = socket.socket(socket.AF_INET, # Internet
+                        socket.SOCK_DGRAM) # UDP
+
     # instantiate FG comms object and initialize it
     my_fgFDM = fgFDM()
     my_fgFDM.set('latitude', INIT_LATLON_DEG[0], units='degrees')
