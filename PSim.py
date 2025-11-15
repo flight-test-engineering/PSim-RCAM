@@ -55,9 +55,9 @@ import numpy as np
 from scipy import integrate
 from scipy.optimize import minimize # for trimming routine
 from numba import jit
+import matplotlib.pyplot as plt
 
-from ISA_library import * # International Standard Atmosphere library
-#import ISA_library as ISA
+import ISA_library as ISA # International Standard Atmosphere library
 
 import time
 import csv
@@ -80,6 +80,9 @@ G = 9.81  # Gravity, m/s^2
 DEG2RAD = np.pi / 180.0
 RAD2DEG = 180.0 / np.pi
 FT2M = 0.3048
+M2FT = 1 / FT2M
+KT2MS = 0.51444444 #knots to meters per second
+MS2KT = 1 / KT2MS
 
 # --- RCAM Aircraft Model Constants ---
 # Moved out of the RCAM_model function to avoid re-definition on every call.
@@ -241,7 +244,7 @@ def get_rho(altitude:float)->float:
     '''
     calculate the air density given an altitude in meters
     '''
-    return rho0 * sigma(altitude * m2ft)
+    return ISA.rho0 * ISA.sigma(altitude * M2FT)
 
 @jit(nopython=True)
 def fpa(V_NED)->float:
@@ -368,7 +371,7 @@ def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels):
     
     # this sets units to kts because the HUD does not apply any conversions to the speed
     # if we send speed in fps as the API requires, the HUD displays wrong value
-    this_fgFDM.set('vcas', Vt2Vc(VA(X[:3]), alt*m2ft) * ms2kt) 
+    this_fgFDM.set('vcas', ISA.Vt2Vc(VA(X[:3]), alt*M2FT) * MS2KT) 
     this_fgFDM.set('cur_time', int(time.perf_counter() ), units='seconds')
     this_fgFDM.set('latitude', latlon[0], units='radians')
     this_fgFDM.set('longitude', latlon[1], units='radians')
@@ -920,7 +923,7 @@ if __name__ == "__main__":
 ############################################################################
     # INITIAL CONDITIONS (for trim)
     INIT_ALT_FT = 2100 #ft
-    V_TRIM_MPS = 140 * kt2ms # m/s
+    V_TRIM_MPS = 140 * KT2MS # m/s
     GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
     INIT_HDG_DEG = 82.0 # DEG
     # Lat/Lon
