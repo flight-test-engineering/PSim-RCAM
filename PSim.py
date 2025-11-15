@@ -1010,15 +1010,16 @@ if __name__ == "__main__":
             current_rho = get_rho(current_alt_m * m2ft)
             U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
             # trim bias is always positive, so we washout if throttles move down
-            delta_throttle_1 = current_throttle[0] - U_man[3]
-            if delta_throttle_1 < 0: 
+            delta_throttle_1 = U_man[3] - current_throttle[0]
+            if delta_throttle_1 < 0 and U1[3] > 0: 
                 if delta_throttle_1 > U1[3]:
                     U1[3] = 0
                     U1[4] = 0
                 else:
-                    U1[3] = U1[3] - delta_throttle_1
-                    # we have only one throttle quadrant (3), so need to link engine 2 throttle to it
-                    U1[4] = U1[4] - (U_man[3] - current_throttle[1]) 
+                    U1[3] = U1[3] + delta_throttle_1
+                    U1[4] = U1[4] + delta_throttle_1
+                    if U1[3] < 0 : U1[3] = 0
+                    if U1[4] < 0 : U1[4] = 0
 
             U_man = control_sat(U_man)
 
