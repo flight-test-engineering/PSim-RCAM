@@ -11,6 +11,8 @@
 # "v" muda o visual
 # https://wiki.flightgear.org/Command_line_options
 
+# this branch will move the constants to a JSON file
+
 '''
 Partial Python implementation of the non-linear flight dynamics model proposed by:
 Group for Aeronautical Research and Technology Europe (GARTEUR) - Research Civil Aircraft Model (RCAM)
