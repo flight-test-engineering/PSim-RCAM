@@ -1,0 +1,98 @@
+{
+  "aircraft_name": "RCAM - Research Civil Aircraft Model",
+  "mass_and_geometry": {
+    "mass": 120000.0,
+    "wing_mean_aerod_chord": 6.6,
+    "wing_area": 260.0,
+    "tail_area": 64.0,
+    "tail_arm": 24.8
+  },
+  "cg_and_ac_positions": {
+    "xcg": 0.23,
+    "ycg": 0.0,
+    "zcg": 0.10,
+    "xac": 0.12,
+    "yac": 0.0,
+    "zac": 0.0
+  },
+  "engine_positions": [
+    {
+      "name": "engine_1",
+      "x": 0.0,
+      "y": -7.94,
+      "z": -1.9
+    },
+    {
+      "name": "engine_2",
+      "x": 0.0,
+      "y": 7.94,
+      "z": -1.9
+    }
+  ],
+  "aerodynamic_coeffs": {
+    "depsda": 0.25,
+    "alpha_l0_deg": -11.5,
+    "alpha_switch_deg": 14.5,
+    "lift_slope_n": 5.5,
+    "lift_poly_coeffs": {
+      "a3": -768.5,
+      "a2": 609.2,
+      "a1": -155.2,
+      "a0": 15.212
+    },
+    "htail_coeffs": {
+      "nt": 3.1,
+      "epsilon_dot": 1.3
+    }
+  },
+    "drag_coeffs": {
+    "cdmin": 0.13,
+    "d1": 0.07,
+    "d0": 0.654
+  },
+    "side_force_coeffs": {
+    "cy_beta": -1.6,
+    "cy_dr": 0.24
+  },
+    "moment_coeffs": {
+    "c_l_beta": -1.4,
+    "c_m_alpha": -0.59,
+    "c_n_beta": 0.06666
+  },
+  "pqr_moment_coeffs": {
+    "c_l_p": -11.0,
+    "c_l_q": 0.0,
+    "c_l_r": 5.0,
+    "c_m_p": 0.0,
+    "c_m_q": -4.03,
+    "c_m_r": 0.0,
+    "c_n_p": 1.7,
+    "c_n_q": 0.0,
+    "c_n_r": -11.5 
+  },
+  "controls_moment_coeffs": {
+    "c_l_da": -0.6,
+    "c_l_de": 0.0,
+    "c_l_dr": 0.22,
+    "c_m_da": 0.0,
+    "c_m_de": -3.1,
+    "c_m_dr": 0.0,
+    "c_n_da": 0.0,
+    "c_n_de": 0.0,
+    "c_n_dr": -0.63 
+  },
+  "inertia": {
+    "tensor_per_unit_mass": [
+      [40.07, 0.0, -2.0923],
+      [0.0, 64.0, 0.0],
+      [-2.0923, 0.0, 99.92]
+    ]
+  },
+  "control_limits_deg": {
+    "aileron": [-25.0, 25.0],
+    "elevator": [-25.0, 10.0],
+    "rudder": [-30.0, 30.0],
+    "throttle1": [0.0, 1.0],
+    "throttle2": [0.0, 1.0]
+  }
+}

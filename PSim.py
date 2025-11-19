@@ -66,6 +66,7 @@ import ISA_library as ISA # International Standard Atmosphere library
 import time
 import csv
 import sys
+import json
 
 sys.path.insert(1, '../')
 
@@ -74,11 +75,9 @@ import socket
 
 import pygame #joystick interface
 
-
 # ############################################################################
 # Consolidated Constants
 # ############################################################################
-
 # .. Physical and Mathematical Constants ..
 G = 9.81  # Gravity, m/s^2
 DEG2RAD = np.pi / 180.0
@@ -88,103 +87,144 @@ M2FT = 1 / FT2M
 KT2MS = 0.51444444 #knots to meters per second
 MS2KT = 1 / KT2MS
 
-# .. RCAM Aircraft Model Constants ..
-# Moved out of the RCAM_model function to avoid re-definition on every call.
 
-# .. Nominal vehicle constants ..
-M = 120000.0  # kg - total mass
-CBAR = 6.6  # m - mean aerodynamic chord
-LT = 24.8  # m - tail aerodynamic center distance to CG
-S = 260.0  # m^2 - wing area
-ST = 64.0  # m^2 - tail area
+# ############################################################################
+# Aircraft Parameter Loader
+# ############################################################################
 
-# .. centre of gravity position ..
-XCG = 0.23 * CBAR  # m - x pos of CG
-YCG = 0.0  # m - y pos of CG
-ZCG = 0.10 * CBAR  # m - z pos of CG
+def load_aircraft_parameters(filepath: str) -> dict:
+    """
+    Loads aircraft parameters from a JSON file, processes them, and returns
+    them as a dictionary of constants ready for the simulation.
+    """
+    with open(filepath, 'r') as f:
+        params = json.load(f)
 
-# .. aerodynamic centre position ..
-XAC = 0.12 * CBAR  # m - x pos of AC
-YAC = 0.0  # m - y pos of AC
-ZAC = 0.0  # m - z pos of AC
+    print(f"Loading aircraft model: {params['aircraft_name']}")
 
-# .. engines point of thrust application ..
-XAPT1 = 0.0  # m - x pos of engine 1
-YAPT1 = -7.94  # m - y pos of engine 1
-ZAPT1 = -1.9  # m - z pos of engine 1
-XAPT2 = 0.0  # m - x pos of engine 2
-YAPT2 = 7.94  # m - y pos of engine 2
-ZAPT2 = -1.9  # m - z pos of engine 2
+    consts = {}
 
-# .. aerodynamic properties - lift ..
-DEPSDA = 0.25  # rad/rad - change in downwash wrt alpha
-ALPHA_L0 = -11.5 * DEG2RAD  # rad - zero lift AOA
-N = 5.5  # adm - slope of linear region of lift slope
-A3 = -768.5  # adm - coeff of alpha^3
-A2 = 609.2  # adm - coeff of alpha^2
-A1 = -155.2  # adm - coeff of alpha^1
-A0 = 15.212  # adm - coeff of alpha^0
-ALPHA_SWITCH = 14.5 * DEG2RAD  # rad - kink point of lift slope
-# ... tail ..,
-NT = 3.1 # adm - slope of linear region of TAIL lift slope
-EPSILON_DOT = 1.3 # adm multiplier for tail dynamic downwash response wrt pitch rate
+    # .. Nominal vehicle constants ..
+    mg = params['mass_and_geometry']
+    consts['M'] = mg['mass'] # kg - total mass
+    consts['CBAR'] = mg['wing_mean_aerod_chord'] # m - mean aerodynamic chord
+    consts['S'] = mg['wing_area'] # m^2 - wing area
+    consts['ST'] = mg['tail_area'] # m^2 - tail area
+    consts['LT'] = mg['tail_arm'] # m - tail aerodynamic center distance to CG
 
-# .. aerodynamic properties - drag - RCAM (2.31) ..
-CDMIN = 0.13 # adm - CD min - bottom of CDxALpha curve
-D1 = 0.07 # adm - coeff of alpha^2
-D0 = 0.654 # adm - coeff of alpha^0
+    # Derived Geometry (CG, AC)
+    cgap = params['cg_and_ac_positions']
+    # .. centre of gravity position ..
+    consts['XCG'] = cgap['xcg'] * consts['CBAR'] # m - x pos of CG
+    consts['YCG'] = cgap['ycg'] # m - y pos of CG
+    consts['ZCG'] = cgap['zcg'] * consts['CBAR'] # m - z pos of CG
+    # .. aerodynamic centre position ..
+    consts['XAC'] = cgap['xac'] * consts['CBAR']
+    consts['YAC'] = cgap['yac']
+    consts['ZAC'] = cgap['zac']
 
-# .. aerodynamic properties - side force - RCAM (2.32) ..
-CY_BETA = -1.6 # adm - side force coeff with sideslip
-CY_DR = 0.24 # adm - side force coeff with rudder deflection
+    # .. engines point of thrust application ..
+    ep = params['engine_positions']
+    consts['XAPT1'], consts['YAPT1'], consts['ZAPT1'] = ep[0]['x'], ep[0]['y'], ep[0]['z']
+    consts['XAPT2'], consts['YAPT2'], consts['ZAPT2'] = ep[1]['x'], ep[1]['y'], ep[1]['z']
 
-# .. aerodynamic properties - moment coefficients - RCAM (2.33) ..
-C_l_BETA = -1.4 # adm - roll moment due to beta
-C_m_ALPHA = -0.59 # adm - pitch moment due to alpha
-C_n_BETA = 180 / (15 * np.pi)
-# ... roll, pitch, yaw moments with rates - RCAM (2.33) ..,
-C_l_P = -11.0
-C_l_Q = 0.0
-C_l_R = 5.0
-C_m_P = 0.0
-C_m_Q = 0.0
-C_m_Q = -4.03
-C_m_R = 0.0
-C_n_P = 1.7
-C_n_Q = 0.0
-C_n_R = -11.5
-# ... roll, pitch, yaw moments with controls - RCAM (2.33) ...
-C_l_DA = -0.6
-C_l_DE = 0.0
-C_l_DR = 0.22
-C_m_DA = 0.0
-C_m_DE = -NT
-C_m_DR = 0.0
-C_n_DA = 0.0
-C_n_DE = 0.0
-C_n_DR = -0.63
+    # .. aerodynamic properties - lift ..
+    ac = params['aerodynamic_coeffs']
+    consts['DEPSDA'] = ac['depsda'] # rad/rad - change in downwash wrt alpha
+    consts['ALPHA_L0'] = ac['alpha_l0_deg'] * DEG2RAD # rad - zero lift AOA
+    consts['ALPHA_SWITCH'] = ac['alpha_switch_deg'] * DEG2RAD # rad - kink point of lift slope
+    consts['N'] = ac['lift_slope_n'] # adm - slope of linear region of lift slope
+    consts['A3'] = ac['lift_poly_coeffs']['a3'] # adm - coeff of alpha^3
+    consts['A2'] = ac['lift_poly_coeffs']['a2'] # adm - coeff of alpha^2
+    consts['A1'] = ac['lift_poly_coeffs']['a1'] # adm - coeff of alpha^1
+    consts['A0'] = ac['lift_poly_coeffs']['a0'] # adm - coeff of alpha^0
+    # ... tail ..,
+    consts['NT'] = ac['htail_coeffs']['nt'] # adm - slope of linear region of TAIL lift slope
+    consts['EPSILON_DOT'] = ac['htail_coeffs']['epsilon_dot'] # adm multiplier for tail dynamic downwash response wrt pitch rate
+
+    # .. aerodynamic properties - drag - RCAM (2.31) ..
+    drag_coeffs = params['drag_coeffs']
+    consts['CDMIN'] = drag_coeffs['cdmin'] # adm - CD min - bottom of CDxALpha curve
+    consts['D1'] = drag_coeffs['d1'] # adm - coeff of alpha^2
+    consts['D0'] = drag_coeffs['d0'] # adm - coeff of alpha^0
+
+    # .. aerodynamic properties - side force - RCAM (2.32) ..
+    side_force_coeffs = params['side_force_coeffs']
+    consts['CY_BETA'] = side_force_coeffs['cy_beta'] # adm - side force coeff with sideslip
+    consts['CY_DR'] = side_force_coeffs['cy_dr'] # adm - side force coeff with rudder deflection
+
+    # .. aerodynamic properties - moment coefficients - RCAM (2.33) ..
+    moment_coeffs = params['moment_coeffs']
+    consts['C_l_BETA'] = moment_coeffs['c_l_beta'] # adm - roll moment due to beta
+    consts['C_m_ALPHA'] = moment_coeffs['c_m_alpha'] # adm - pitch moment due to alpha
+    consts['C_n_BETA'] = moment_coeffs['c_n_beta'] * RAD2DEG # per RCAM doc, need to mult by 180/pi
 
 
-# .. inertia tensor ..
-INERTIA_TENSOR_b = M * np.array([
-    [40.07, 0.0, -2.0923],
-    [0.0, 64.0, 0.0],
-    [-2.0923, 0.0, 99.92]
-], dtype=np.float64)
-INV_INERTIA_TENSOR_b = np.linalg.inv(INERTIA_TENSOR_b)
+    # ... roll, pitch, yaw moments with rates - RCAM (2.33) ..,
+    moment_rate_coeffs = params["pqr_moment_coeffs"]
+    consts['C_l_P'] = moment_rate_coeffs['c_l_p']
+    consts['C_l_Q'] = moment_rate_coeffs['c_l_q']
+    consts['C_l_R'] = moment_rate_coeffs['c_l_r']
+    consts['C_m_P'] = moment_rate_coeffs['c_m_p']
+    consts['C_m_Q'] = moment_rate_coeffs['c_m_q']
+    consts['C_m_R'] = moment_rate_coeffs['c_m_r']
+    consts['C_n_P'] = moment_rate_coeffs['c_n_p']
+    consts['C_n_Q'] = moment_rate_coeffs['c_n_q']
+    consts['C_n_R'] = moment_rate_coeffs['c_n_r']
 
-# .. Control Surface and Throttle Limits ..
-U_LIMITS_RAD = {
-    'aileron': (-25 * DEG2RAD, 25 * DEG2RAD),
-    'elevator': (-25 * DEG2RAD, 10 * DEG2RAD),
-    'rudder': (-30 * DEG2RAD, 30 * DEG2RAD),
-    'throttle1': (0.0, 1.0),
-    'throttle2': (0.0, 1.0)
-}
-U_LIMITS_MIN = np.array([lim[0] for lim in U_LIMITS_RAD.values()])
-U_LIMITS_MAX = np.array([lim[1] for lim in U_LIMITS_RAD.values()])
+    # ... roll, pitch, yaw moments with controls - RCAM (2.33) ...
+    moment_controls_coeffs = params["controls_moment_coeffs"]
+    consts['C_l_DA'] = moment_controls_coeffs['c_l_da']
+    consts['C_l_DE'] = moment_controls_coeffs['c_l_de']
+    consts['C_l_DR'] = moment_controls_coeffs['c_l_dr']
+    consts['C_m_DA'] = moment_controls_coeffs['c_m_da']
+    consts['C_m_DE'] = moment_controls_coeffs['c_m_de']
+    consts['C_m_DR'] = moment_controls_coeffs['c_m_dr']
+    consts['C_n_DA'] = moment_controls_coeffs['c_n_da']
+    consts['C_n_DE'] = moment_controls_coeffs['c_n_de']
+    consts['C_n_DR'] = moment_controls_coeffs['c_n_dr']
+
+    # .. inertia tensor ..
+    mass = consts['M']
+    tensor_per_unit_mass = np.array(params['inertia']['tensor_per_unit_mass'])
+    consts['INERTIA_TENSOR_b'] = mass * tensor_per_unit_mass
+    consts['INV_INERTIA_TENSOR_b'] = np.linalg.inv(consts['INERTIA_TENSOR_b'])
+
+    # .. Control Surface and Throttle Limits ..
+    cl_deg = params['control_limits_deg']
+    consts['U_LIMITS_RAD'] = {}
+    for k in cl_deg.keys():
+        if k in ["aileron","elevator","rudder"]:
+            consts['U_LIMITS_RAD'][k] = (cl_deg[k][0] * DEG2RAD, cl_deg[k][1] * DEG2RAD)
+        else:
+            consts['U_LIMITS_RAD'][k] = (cl_deg[k][0], cl_deg[k][1])
+
+    consts['U_LIMITS_MIN'] = np.array([lim[0] for lim in consts['U_LIMITS_RAD'].values()])
+    consts['U_LIMITS_MAX'] = np.array([lim[1] for lim in consts['U_LIMITS_RAD'].values()])
 
 
+
+    return consts
+
+
+# ############################################################################
+# Load Aircraft Parameters into Global Scope
+#
+# Numba's JIT compiler captures global variables when a function is first
+# compiled. By loading our parameters into the global scope, we make them
+# available to the performance-critical `RCAM_model` and `control_sat`
+# functions without needing to pass them as arguments on every call.
+# ############################################################################
+
+try:
+    # Unpack the dictionary into global variables
+    globals().update(load_aircraft_parameters('rcam_parameters.json'))
+except FileNotFoundError:
+    print("ERROR: `rcam_parameters.json` not found. Please create it.")
+    sys.exit(1)
+except (KeyError, json.JSONDecodeError) as e:
+    print(f"ERROR: Invalid format in `rcam_parameters.json`: {e}")
+    sys.exit(1)
 
 # ############################################################################
 # Helper Functions
