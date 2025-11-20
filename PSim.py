@@ -47,6 +47,8 @@ DRI_PRIME=1 fgfs --airport=LOWI  --aircraft=Embraer170 --aircraft-dir=./FlightGe
 If a joystick is detected, then inputs come from it
 Otherwise, offline simulation is run
 
+this version separates FlightGear packet sending to its own thread to improve speed and eliminate frame rate jitter
+
 
 TODO:
     1) add engine dynamics (spool up/down)
@@ -77,6 +79,10 @@ sys.path.insert(1, '../')
 
 from fgDFM import * # FlightGear comm class
 import socket
+
+# threading for FG comms
+import threading
+import queue
 
 import pygame #joystick interface
 
@@ -247,6 +253,40 @@ except (KeyError, json.JSONDecodeError) as e:
 # ############################################################################
 # Helper Functions
 # ############################################################################
+
+def network_worker(socks, packet_queue, fg_addresses):
+    """
+    This function runs in a separate thread. It waits for FDM packets to appear
+    in the queue and sends them over UDP.
+    Inputs:
+        socks: list with network open socks
+        packet_queue: a Python multithread queue that received the packets to be sent
+        fg_addresses: list of tuples with IP address and port
+    """
+    print("Starting network thread", end="")
+    while True:
+        try:
+            # Block until a packet is available in the queue.
+            # A timeout is added to allow for graceful shutdown checks if needed,
+            # though using a sentinel value is cleaner.
+            packet = packet_queue.get()
+
+            # THREADING: Check for the sentinel value (None) to signal shutdown.
+            if packet is None:
+                print("Network thread received shutdown signal.")
+                break
+
+            # Send the packet to FlightGear.
+            for idx, s in enumerate(socks):
+                s.sendto(packet, fg_addresses[idx])
+
+        except queue.Empty:
+            # This will only happen if a timeout is used in get()
+            continue
+        except Exception as e:
+            print(f"Error in network thread: {e}")
+            break
+    print("Network thread finished.")
 
 def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
                 header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2'], skip=0):
@@ -1037,15 +1077,36 @@ if __name__ == "__main__":
     
 ############################################################################
     # FLIGHTGEAR SOCKS
-    # Start network socket to communicate with FlightGear
-    UDP_IP = "127.0.0.1" # set to localhost
-    UDP_PORT = 5500
+    # Open network sockets to communicate with FlightGear
+    UDP_IP1 = "127.0.0.1" # set to localhost
+    UDP_PORT1 = 5500
+    
     UDP_IP2 = "192.168.0.163" # set to a remote computer on the same network
     UDP_PORT2 = 5501
-    sock = socket.socket(socket.AF_INET, # Internet
+
+    sock1 = socket.socket(socket.AF_INET, # Internet
                         socket.SOCK_DGRAM) # UDP
     sock2 = socket.socket(socket.AF_INET, # Internet
                         socket.SOCK_DGRAM) # UDP
+    socks = [sock1, sock2]
+    fg_addresses = [(UDP_IP1, UDP_PORT1), (UDP_IP2, UDP_PORT2)]
+
+    fdm_packet_queue = queue.Queue() # async queue that will receive the packets
+
+    # THREADING: Create and start the network worker thread.
+    # It's a daemon thread, so it will exit automatically if the main program exits.
+    network_thread = threading.Thread(
+        target=network_worker,
+        args=(socks, fdm_packet_queue, fg_addresses),
+        daemon=True
+    )
+    try:
+        network_thread.start()
+        print("... started!")
+    except Exception as e:
+        print(f"Error in network thread: {e}")
+        exit()
+
 
     # instantiate FG comms object and initialize it
     my_fgFDM = fgFDM()
@@ -1203,8 +1264,14 @@ if __name__ == "__main__":
                             current_alt_m,
                             body_accels)
                     my_pack = my_fgFDM.pack()
-                    sock.sendto(my_pack, (UDP_IP, UDP_PORT))
-                    sock2.sendto(my_pack, (UDP_IP2, UDP_PORT2))
+                    try:
+                        fdm_packet_queue.put_nowait(my_pack)
+                    except queue.Full:
+                        # This should rarely happen unless the network thread
+                        # is completely stalled. We can just drop the frame.
+                        pass
+                    #sock.sendto(my_pack, (UDP_IP, UDP_PORT))
+                    #sock2.sendto(my_pack, (UDP_IP2, UDP_PORT2))
                     send_frame_trigger = False
 
                 
@@ -1242,6 +1309,13 @@ if __name__ == "__main__":
             sim_time_adder += this_frame_dt
 
 
+    # close threads
+    print("Shutting down network thread...")
+    fdm_packet_queue.put(None)  # Send the shutdown signal
+    network_thread.join(timeout=1.0) # Wait for the thread to finish
+    for s in socks:
+        s.close()
+        
     # save data to disk
     save2disk('test_data.csv', x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=signals_header, skip=0)
     fig1 = make_plots(x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=signals_header, skip=0)
