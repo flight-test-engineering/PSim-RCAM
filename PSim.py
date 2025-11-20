@@ -11,7 +11,7 @@
 # "v" muda o visual
 # https://wiki.flightgear.org/Command_line_options
 
-# this branch will move the constants to a JSON file
+
 
 '''
 Partial Python implementation of the non-linear flight dynamics model proposed by:
@@ -44,7 +44,8 @@ fgfs --airport=KSFO --runway=28R --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs
 fgfs --airport=KSFO --runway=28R --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs/Aircraft/org.flightgear.fgaddon.stable_2020/Aircraft/757-200 --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --turbulence=0.5 --in-air  --enable-rembrandt
 DRI_PRIME=1 fgfs --airport=LOWI  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/fte.xml 2>/dev/null
 
-REQUIRES a joystick to work.
+If a joystick is detected, then inputs come from it
+Otherwise, offline simulation is run
 
 
 TODO:
@@ -1001,7 +1002,7 @@ if __name__ == "__main__":
 
 ###########################################################################
     # SIMULATION OPTIONS
-    SIM_TOTAL_TIME_S = 10 * 60 # (s) total simulation time
+    SIM_TOTAL_TIME_S = 1 * 60 # (s) total simulation time
     SIM_LOOP_HZ = 400 # (Hz) simulation loop frame rate throttling
     FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FG
 
@@ -1023,12 +1024,13 @@ if __name__ == "__main__":
     # check if joystick is connected
     joystick_count = pygame.joystick.get_count()
     if joystick_count == 0:
-        print('connect joystick first')
-        exit()
-
-    print(f'found {joystick_count} joysticks connected.')
-    this_joy = pygame.joystick.Joystick(0)
-    print(f'{this_joy.get_name()}, axes={this_joy.get_numaxes()}')
+        print('Will run OFFLINE simulation, no joystick detected')
+        OFFLINE = True
+    else:
+        print(f'found {joystick_count} joysticks connected.')
+        this_joy = pygame.joystick.Joystick(0)
+        print(f'{this_joy.get_name()}, axes={this_joy.get_numaxes()}')
+        OFFLINE = False
 
     signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2']
 
@@ -1089,41 +1091,30 @@ if __name__ == "__main__":
 
     exit_signal = 0 # if joystick button #1 is pressed, ends simulation
     
+    if OFFLINE:
+        # code for offline simulation
+        # create time vector
+        t_vector = np.arange(0, SIM_TOTAL_TIME_S, simdt)
+        print(f'Offline sim time vector: {t_vector[0]:.2f}s to {t_vector[-1]:.2f}s')
 
-    ##### SIMULATION LOOP #####
+        # create control inputs
+        sim_U = np.zeros((U_man.shape[0],t_vector.shape[0]))
+        pitch_doublet = get_doublet(t_vector,t=5, duration=2, amplitude=0.2)
+        roll_doublet = get_doublet(t_vector,t=15, duration=2, amplitude=0.2)
+        yaw_doublet = get_doublet(t_vector,t=25, duration=4, amplitude=0.2)
+        sim_U[0,:] = roll_doublet
+        sim_U[1,:] = pitch_doublet
+        sim_U[2,:] = yaw_doublet
 
-    while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
-        # get clock
-        start = time.perf_counter()
-
-        if run_sim_loop:
-
-            _ = pygame.event.get()
-            
-            # get density, inputs
-            current_throttle = [U_man[3], U_man[4]] # keep track of throttle to zero-out the trim bias
-            current_rho = get_rho(current_alt_m)
         
-            U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
-            
-            # trim bias is always positive, so we washout if throttles move down
-            delta_throttle_1 = U_man[3] - current_throttle[0]
-            if delta_throttle_1 < 0 and U1[3] > 0: 
-                if delta_throttle_1 > U1[3]:
-                    U1[3] = 0
-                    U1[4] = 0
-                else:
-                    U1[3] = U1[3] + delta_throttle_1
-                    U1[4] = U1[4] + delta_throttle_1
-                    if U1[3] < 0 : U1[3] = 0
-                    if U1[4] < 0 : U1[4] = 0
-
-            U_man = control_sat(U_man)
-
-            # set current integration step commands, density and integrate aircraft states
+        # single step integrate through each time step
+        for idx, t in enumerate(t_vector):
             prev_uvw = current_uvw
-            this_AC_int.set_f_params(U_man, current_rho)
-            this_AC_int.integrate(this_AC_int.t + dt)
+            current_rho = get_rho(current_alt_m)
+            
+            # integrate 6-DOF
+            this_AC_int.set_f_params(sim_U[:,idx], current_rho)
+            this_AC_int.integrate(this_AC_int.t + simdt)
             current_uvw = this_AC_int.y[0:3]
 
             # integrate navigation equations
@@ -1135,67 +1126,120 @@ if __name__ == "__main__":
             # store current state and time vector
             current_latlon_rad = this_latlonh_int.y[0:2] # store lat and long (RAD)
             current_alt_m = this_latlonh_int.y[2] # store altitude (m)
-            data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man)))
+            data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, sim_U[:,idx])))
             t_vector_collector.append(this_AC_int.t)
-            
-            # check for FG frame trigger
-            if send_frame_trigger:
-                # it is easier to calculate body accelerations instead of reaching into the RCAM function
-                if dt == 0:
-                    body_accels = (current_uvw - prev_uvw) / prev_dt
-                else:
-                    body_accels = (current_uvw - prev_uvw) / dt
-                # add gravity
-                g_b = np.array([-G * np.sin(this_AC_int.y[7]),
-                                 G * np.cos(this_AC_int.y[7]) * np.sin(this_AC_int.y[6]),
-                                 G * np.cos(this_AC_int.y[7]) * np.cos(this_AC_int.y[6])])
-                body_accels = body_accels + g_b
-                body_accels[2] = -body_accels[2] # FG expects Z-up
 
-                # set values and send frames
-                set_FDM(my_fgFDM, this_AC_int.y, 
-                        control_norm(U_man), 
-                        current_latlon_rad, 
-                        current_alt_m,
-                        body_accels)
-                my_pack = my_fgFDM.pack()
-                sock.sendto(my_pack, (UDP_IP, UDP_PORT))
-                sock2.sendto(my_pack, (UDP_IP2, UDP_PORT2))
-                send_frame_trigger = False
+        print(sim_U.shape)
+        
+    
+    else:
 
-            
-            frame_count += 1
-            # DEBUG ONLY - 
-            # print out stuff every so often
-            if (frame_count % 100) == 0:
-                #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
-                #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
-                #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
-                print(f'time: {this_AC_int.t:0.1f}s, Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}')
+        ##### SIMULATION LOOP #####
+
+        while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
+            # get clock
+            start = time.perf_counter()
+
+            if run_sim_loop:
+
+                _ = pygame.event.get()
                 
+                # get density, inputs
+                current_throttle = [U_man[3], U_man[4]] # keep track of throttle to zero-out the trim bias
+                current_rho = get_rho(current_alt_m)
             
+                U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
+                
+                # trim bias is always positive, so we washout if throttles move down
+                delta_throttle_1 = U_man[3] - current_throttle[0]
+                if delta_throttle_1 < 0 and U1[3] > 0: 
+                    if delta_throttle_1 > U1[3]:
+                        U1[3] = 0
+                        U1[4] = 0
+                    else:
+                        U1[3] = U1[3] + delta_throttle_1
+                        U1[4] = U1[4] + delta_throttle_1
+                        if U1[3] < 0 : U1[3] = 0
+                        if U1[4] < 0 : U1[4] = 0
 
-            # reset integrator timestep counter
-            prev_dt = dt
-            dt = 0
-            run_sim_loop = False
+                U_man = control_sat(U_man)
 
-        #check/set frame triggers
-        if fg_time_adder >= fgdt:
-            fg_time_adder = 0
-            dt = sim_time_adder
-            send_frame_trigger = True
+                # set current integration step commands, density and integrate aircraft states
+                prev_uvw = current_uvw
+                this_AC_int.set_f_params(U_man, current_rho)
+                this_AC_int.integrate(this_AC_int.t + dt)
+                current_uvw = this_AC_int.y[0:3]
 
-        if sim_time_adder >= simdt:
-            dt = sim_time_adder
-            sim_time_adder = 0
-            run_sim_loop = True
+                # integrate navigation equations
+                current_NED = NED(this_AC_int.y[:3], this_AC_int.y[6:])
+                this_wind = add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
+                this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon_rad[0], current_alt_m)
+                this_latlonh_int.integrate(this_latlonh_int.t + dt) #in radians and alt in meters
+                
+                # store current state and time vector
+                current_latlon_rad = this_latlonh_int.y[0:2] # store lat and long (RAD)
+                current_alt_m = this_latlonh_int.y[2] # store altitude (m)
+                data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man)))
+                t_vector_collector.append(this_AC_int.t)
+                
+                # check for FG frame trigger
+                if send_frame_trigger:
+                    # it is easier to calculate body accelerations instead of reaching into the RCAM function
+                    if dt == 0:
+                        body_accels = (current_uvw - prev_uvw) / prev_dt
+                    else:
+                        body_accels = (current_uvw - prev_uvw) / dt
+                    # add gravity
+                    g_b = np.array([-G * np.sin(this_AC_int.y[7]),
+                                    G * np.cos(this_AC_int.y[7]) * np.sin(this_AC_int.y[6]),
+                                    G * np.cos(this_AC_int.y[7]) * np.cos(this_AC_int.y[6])])
+                    body_accels = body_accels + g_b
+                    body_accels[2] = -body_accels[2] # FG expects Z-up
 
-        # end-of-frame
-        end = time.perf_counter()
-        this_frame_dt = end - start
-        fg_time_adder += this_frame_dt
-        sim_time_adder += this_frame_dt
+                    # set values and send frames
+                    set_FDM(my_fgFDM, this_AC_int.y, 
+                            control_norm(U_man), 
+                            current_latlon_rad, 
+                            current_alt_m,
+                            body_accels)
+                    my_pack = my_fgFDM.pack()
+                    sock.sendto(my_pack, (UDP_IP, UDP_PORT))
+                    sock2.sendto(my_pack, (UDP_IP2, UDP_PORT2))
+                    send_frame_trigger = False
+
+                
+                frame_count += 1
+                # DEBUG ONLY - 
+                # print out stuff every so often
+                if (frame_count % 100) == 0:
+                    #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
+                    #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
+                    #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
+                    print(f'time: {this_AC_int.t:0.1f}s, Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}')
+                    
+                
+
+                # reset integrator timestep counter
+                prev_dt = dt
+                dt = 0
+                run_sim_loop = False
+
+            #check/set frame triggers
+            if fg_time_adder >= fgdt:
+                fg_time_adder = 0
+                dt = sim_time_adder
+                send_frame_trigger = True
+
+            if sim_time_adder >= simdt:
+                dt = sim_time_adder
+                sim_time_adder = 0
+                run_sim_loop = True
+
+            # end-of-frame
+            end = time.perf_counter()
+            this_frame_dt = end - start
+            fg_time_adder += this_frame_dt
+            sim_time_adder += this_frame_dt
 
 
     # save data to disk
