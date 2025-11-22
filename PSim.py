@@ -47,7 +47,7 @@ DRI_PRIME=1 fgfs --airport=LOWI  --aircraft=Embraer170 --aircraft-dir=./FlightGe
 If a joystick is detected, then inputs come from it
 Otherwise, offline simulation is run
 
-this version separates FlightGear packet sending to its own thread to improve speed and eliminate frame rate jitter
+this version separates FlightGear packet sending to its own thread to improve speed and eliminate frame rate stutter
 
 
 TODO:
@@ -1140,7 +1140,7 @@ if __name__ == "__main__":
     frame_count = 0
     
     send_frame_trigger = False
-    run_sim_loop = False
+    run_sim_loop = False # this is a semaphore. it will wait for the clock to reach the next "simdt" and run the simulation
 
     fgdt = 1.0 / FG_OUTPUT_LOOP_HZ # (s) fg frame period
     simdt = 1 / SIM_LOOP_HZ # (s) desired simulation time step
@@ -1287,6 +1287,11 @@ if __name__ == "__main__":
                 
 
                 # reset integrator timestep counter
+                # performance check
+                # if you want to check for dropped frames, uncomment below
+                #if dt > simdt:
+                    #actual_fps = 1.0 / dt
+                    #print(f"[WARNING] Sim Loop Lag: Target {SIM_LOOP_HZ}Hz | Actual {actual_fps:.1f}Hz | Calc Time {calc_duration*1000:.2f}ms")
                 prev_dt = dt
                 dt = 0
                 run_sim_loop = False
@@ -1297,12 +1302,16 @@ if __name__ == "__main__":
                 dt = sim_time_adder
                 send_frame_trigger = True
 
+            # parking lot
+            # it will keep off the simulation loop above while time does not catch up
+            # with the desired "simdt".
+            # keeps adding time until that point, then releases the semaphore to run the sim
             if sim_time_adder >= simdt:
                 dt = sim_time_adder
                 sim_time_adder = 0
                 run_sim_loop = True
 
-            # end-of-frame
+            # end-of-frame 
             end = time.perf_counter()
             this_frame_dt = end - start
             fg_time_adder += this_frame_dt
