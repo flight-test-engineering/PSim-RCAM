@@ -11,7 +11,7 @@
 # "v" muda o visual
 # https://wiki.flightgear.org/Command_line_options
 
-
+# prototype for moving engine deck to a dedicated CPU core
 
 '''
 Partial Python implementation of the non-linear flight dynamics model proposed by:
