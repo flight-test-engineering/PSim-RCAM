@@ -17,6 +17,10 @@
 Partial Python implementation of the non-linear flight dynamics model proposed by:
 Group for Aeronautical Research and Technology Europe (GARTEUR) - Research Civil Aircraft Model (RCAM)
 http://garteur.org/wp-content/reports/FM/FM_AG-08_TP-088-3.pdf
+HOWEVER!!!
+    # many equations and values are only available in the newer RCAM document (rev Feb 1997)
+    # which is not availble to the public
+    # the values from this reference were obtained from the youtube videos below
 
 The excellent tutorials by Christopher Lum (for Matlab/Simulink) were used as a guide:
 1 - Equations/Modeling
@@ -105,8 +109,13 @@ def load_aircraft_parameters(filepath: str) -> dict:
     consts = {}
 
     # .. Nominal vehicle constants ..
+    # (TP-088-3, p. 9, para 2.2, table 2.4)
     mg = params['mass_and_geometry']
+
+    # (TP-088-3, p. 9, para 2.2, table 2.5)
     consts['M'] = mg['mass'] # kg - total mass
+
+    # (TP-088-3, p. 9, para 2.2, table 2.4)
     consts['CBAR'] = mg['wing_mean_aerod_chord'] # m - mean aerodynamic chord
     consts['S'] = mg['wing_area'] # m^2 - wing area
     consts['ST'] = mg['tail_area'] # m^2 - tail area
@@ -118,49 +127,59 @@ def load_aircraft_parameters(filepath: str) -> dict:
     consts['XCG'] = cgap['xcg'] * consts['CBAR'] # m - x pos of CG
     consts['YCG'] = cgap['ycg'] # m - y pos of CG
     consts['ZCG'] = cgap['zcg'] * consts['CBAR'] # m - z pos of CG
-    # .. aerodynamic centre position ..
+    # .. aerodynamic centre position .. (TP-088-3, p. 9, para 2.2, table 2.4)
     consts['XAC'] = cgap['xac'] * consts['CBAR']
     consts['YAC'] = cgap['yac']
     consts['ZAC'] = cgap['zac']
 
-    # .. engines point of thrust application ..
+    # .. engines point of thrust application .. (TP-088-3, p. 9, para 2.2, table 2.4)
     ep = params['engine_positions']
     consts['XAPT1'], consts['YAPT1'], consts['ZAPT1'] = ep[0]['x'], ep[0]['y'], ep[0]['z']
     consts['XAPT2'], consts['YAPT2'], consts['ZAPT2'] = ep[1]['x'], ep[1]['y'], ep[1]['z']
 
     # .. aerodynamic properties - lift ..
     ac = params['aerodynamic_coeffs']
-    consts['DEPSDA'] = ac['depsda'] # rad/rad - change in downwash wrt alpha
+    consts['DEPSDA'] = ac['depsda'] # rad/rad - change in downwash wrt alpha # (TP-088-3, p. 14, para 2.3.4, eq 2.30)
     consts['ALPHA_L0'] = ac['alpha_l0_deg'] * DEG2RAD # rad - zero lift AOA
     consts['ALPHA_SWITCH'] = ac['alpha_switch_deg'] * DEG2RAD # rad - kink point of lift slope
-    consts['N'] = ac['lift_slope_n'] # adm - slope of linear region of lift slope
+    # these values are from the 1997 RCAM revision
+    consts['N'] = ac['lift_slope_n'] # adm - slope of linear region of lift slope # (TP-088-3, p. 14, para 2.3.4, eq 2.25)
     consts['A3'] = ac['lift_poly_coeffs']['a3'] # adm - coeff of alpha^3
     consts['A2'] = ac['lift_poly_coeffs']['a2'] # adm - coeff of alpha^2
     consts['A1'] = ac['lift_poly_coeffs']['a1'] # adm - coeff of alpha^1
     consts['A0'] = ac['lift_poly_coeffs']['a0'] # adm - coeff of alpha^0
-    # ... tail ..,
-    consts['NT'] = ac['htail_coeffs']['nt'] # adm - slope of linear region of TAIL lift slope
-    consts['EPSILON_DOT'] = ac['htail_coeffs']['epsilon_dot'] # adm multiplier for tail dynamic downwash response wrt pitch rate
+    # ... tail ...
+    # adm - slope of linear region of TAIL lift slope
+    # (TP-088-3, p. 15, eq 2.27)
+    consts['NT'] = ac['htail_coeffs']['nt'] 
+    # adm multiplier for tail dynamic downwash response wrt pitch rate
+    # (TP-088-3, p. 15, eq 2.28)
+    consts['EPSILON_DOT'] = ac['htail_coeffs']['epsilon_dot'] 
+    
 
-    # .. aerodynamic properties - drag - RCAM (2.31) ..
+    # .. aerodynamic properties - drag ..
     drag_coeffs = params['drag_coeffs']
+    # (TP-088-3, p. 14, para 2.3.4, eq 2.31)
     consts['CDMIN'] = drag_coeffs['cdmin'] # adm - CD min - bottom of CDxALpha curve
     consts['D1'] = drag_coeffs['d1'] # adm - coeff of alpha^2
     consts['D0'] = drag_coeffs['d0'] # adm - coeff of alpha^0
 
-    # .. aerodynamic properties - side force - RCAM (2.32) ..
+    # .. aerodynamic properties - side force ..
+    # (TP-088-3, p. 14, para 2.3.4, eq 2.32)
     side_force_coeffs = params['side_force_coeffs']
     consts['CY_BETA'] = side_force_coeffs['cy_beta'] # adm - side force coeff with sideslip
     consts['CY_DR'] = side_force_coeffs['cy_dr'] # adm - side force coeff with rudder deflection
 
-    # .. aerodynamic properties - moment coefficients - RCAM (2.33) ..
+    # .. aerodynamic properties - moment coefficients ..
+    # (TP-088-3, p. 14, para 2.3.4, eq 2.33)
     moment_coeffs = params['moment_coeffs']
     consts['C_l_BETA'] = moment_coeffs['c_l_beta'] # adm - roll moment due to beta
     consts['C_m_ALPHA'] = moment_coeffs['c_m_alpha'] # adm - pitch moment due to alpha
     consts['C_n_BETA'] = moment_coeffs['c_n_beta'] * RAD2DEG # per RCAM doc, need to mult by 180/pi
 
 
-    # ... roll, pitch, yaw moments with rates - RCAM (2.33) ..,
+    # ... roll, pitch, yaw moments with rates ..,
+    # (TP-088-3, p. 14, para 2.3.4, eq 2.33)
     moment_rate_coeffs = params["pqr_moment_coeffs"]
     consts['C_l_P'] = moment_rate_coeffs['c_l_p']
     consts['C_l_Q'] = moment_rate_coeffs['c_l_q']
@@ -172,7 +191,8 @@ def load_aircraft_parameters(filepath: str) -> dict:
     consts['C_n_Q'] = moment_rate_coeffs['c_n_q']
     consts['C_n_R'] = moment_rate_coeffs['c_n_r']
 
-    # ... roll, pitch, yaw moments with controls - RCAM (2.33) ...
+    # ... roll, pitch, yaw moments with controls ...
+    # (TP-088-3, p. 14, para 2.3.4, eq 2.33)
     moment_controls_coeffs = params["controls_moment_coeffs"]
     consts['C_l_DA'] = moment_controls_coeffs['c_l_da']
     consts['C_l_DE'] = moment_controls_coeffs['c_l_de']
@@ -187,22 +207,19 @@ def load_aircraft_parameters(filepath: str) -> dict:
     # .. inertia tensor ..
     mass = consts['M']
     tensor_per_unit_mass = np.array(params['inertia']['tensor_per_unit_mass'])
-    consts['INERTIA_TENSOR_b'] = mass * tensor_per_unit_mass
+    consts['INERTIA_TENSOR_b'] = mass * tensor_per_unit_mass # each element in m2 - (TP-088-3, p. 12, para 2.3.1.2, eq 2.11)
     consts['INV_INERTIA_TENSOR_b'] = np.linalg.inv(consts['INERTIA_TENSOR_b'])
 
     # .. Control Surface and Throttle Limits ..
-    cl_deg = params['control_limits_deg']
-    consts['U_LIMITS_RAD'] = {}
-    for k in cl_deg.keys():
-        if k in ["aileron","elevator","rudder"]:
-            consts['U_LIMITS_RAD'][k] = (cl_deg[k][0] * DEG2RAD, cl_deg[k][1] * DEG2RAD)
-        else:
-            consts['U_LIMITS_RAD'][k] = (cl_deg[k][0], cl_deg[k][1])
+    # (TP-088-3, p. 19, para 2.5)
+    # however, the 1997 RCAM has [0.5 and 10] * pi/180 for the throttles
+    # this equates to a 0.35 thrust to weight ratio
+    # as per CLum's video @ 7:45
 
+    cl_deg = params['control_limits_deg']
+    consts['U_LIMITS_RAD'] = {k: (v[0] * DEG2RAD, v[1] * DEG2RAD) for k, v in cl_deg.items()}
     consts['U_LIMITS_MIN'] = np.array([lim[0] for lim in consts['U_LIMITS_RAD'].values()])
     consts['U_LIMITS_MAX'] = np.array([lim[1] for lim in consts['U_LIMITS_RAD'].values()])
-
-
 
     return consts
 
@@ -484,7 +501,7 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     U[0] = U_trim[0] + joystick.get_axis(0) * joy_factors['aileron']
     U[1] = U_trim[1] + joystick.get_axis(1) * joy_factors['elevator']
     U[2] = U_trim[2] + joystick.get_axis(2) * joy_factors['rudder']
-    throttle_cmd = (joystick.get_axis(3) * joy_factors['throttle'] + 1) / 2 # shift from -1/1 to 0/1
+    throttle_cmd = joystick.get_axis(3) * joy_factors['throttle_m'] + joy_factors['throttle_b'] # linearly map joystick inputs to RCAM
     U[3] = U_trim[3] + throttle_cmd
     U[4] = U_trim[4] + throttle_cmd
 
@@ -569,7 +586,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     https://www.youtube.com/watch?v=m5sEln5bWuM
 
     inputs:
-        X: states
+        X: states (TP-088-3, p. 6, para 2.2, table 2.2)
             0: u (m/s)
             1: v (m/s)
             2: w (m/s)
@@ -579,7 +596,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
             6: phi (rad)
             7: theta (rad)
             8: psi (rad)
-        U: controls
+        U: controls (TP-088-3, p. 6, para 2.2, table 2.1)
             0: aileron (rad)
             1: stabilator (rad)
             2: rudder (rad)
@@ -615,6 +632,8 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     V_b = np.array([u, v, w])
     
     #----------------- aerodynamic force coefficients ---------------------
+    # this is only available in the newer RCAM document (rev Feb 1997)
+    # which is not availble to the public
     # CL - wing + body
     CL_wb = N * (alpha - ALPHA_L0) if alpha <= ALPHA_SWITCH else A3 * alpha**3 + A2 * alpha**2 + A1 * alpha + A0
     
@@ -990,11 +1009,15 @@ if __name__ == "__main__":
 ###########################################################################
     # JOYSTICK SCALING FACTORS
     TRIM_PARAMS = { 'pitch': 0.01, 'aileron': 0.003, 'throttle': 0.01 } # Trim adjustment per second
-    JOY_FACTORS = { 'aileron': -0.7, 'elevator': -0.5, 'rudder': -0.52, 'throttle': -1.0 } # specific for this joystick model
+    # linearly map the joystick input to the RCAM limits
+    JOY_THROTTLE_LIMITS = [1, -1] # these are the limits for the throttle input for this specific joystick - full fwd = -1
+    THROTTLE_MAP_M = (U_LIMITS_MAX[3] - U_LIMITS_MIN[3]) / (JOY_THROTTLE_LIMITS[1] - JOY_THROTTLE_LIMITS[0])
+    THROTTLE_MAP_b = U_LIMITS_MAX[3] - THROTTLE_MAP_M * (JOY_THROTTLE_LIMITS[1]) # y = mx + b - equation for a line
+    JOY_FACTORS = { 'aileron': -0.7, 'elevator': -0.5, 'rudder': -0.52, 'throttle_m': THROTTLE_MAP_M, 'throttle_b': THROTTLE_MAP_b } # specific for this joystick model
 
 
 ############################################################################
-    # JOYSTICK
+    # JOYSTICK INIT AND CHECK
     pygame.init() # automatically initializes joystick also
 
     # check if joystick is connected
