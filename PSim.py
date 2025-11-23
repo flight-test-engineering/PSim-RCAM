@@ -68,7 +68,8 @@ import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('TkAgg')
 
-import ISA_library as ISA # International Standard Atmosphere library
+import ISA_module as ISA # International Standard Atmosphere library
+from engine_deck import Turbofan_Deck
 
 import time
 import csv
@@ -83,6 +84,9 @@ import socket
 # threading for FG comms
 import threading
 import queue
+
+# multiprocessing for engine deck
+import multiprocessing as mp
 
 import pygame #joystick interface
 
@@ -250,6 +254,40 @@ except (KeyError, json.JSONDecodeError) as e:
     print(f"ERROR: Invalid format in `rcam_parameters.json`: {e}")
     sys.exit(1)
 
+
+CF34 = Turbofan_Deck('CF34_deck_v4.csv')
+
+def engine_worker(jobs_queue, results_queue):
+    """
+    This is the worker function that runs in its own PROCESS.
+    """
+    print("[Engine Process] Worker started and waiting for jobs.")
+    while True:
+        try:
+            job = jobs_queue.get()
+            if job is None:
+                print("[Engine Process] Shutdown signal received.")
+                break
+            
+            # unpack the arguments
+            A, b, c, d = job
+            result = CF34.run_deck(A, b, c, d)
+            
+            # The logic for clearing old results remains the same.
+            if not results_queue.empty():
+                try:
+                    results_queue.get_nowait()
+                except mp.queues.Empty:
+                    pass
+            results_queue.put(result)
+
+        except Exception as e:
+            print(f"[Engine Process] Error: {e}")
+            break
+    print("[Engine Process] Worker has shut down.")
+
+
+
 # ############################################################################
 # Helper Functions
 # ############################################################################
@@ -349,7 +387,7 @@ def get_rho(altitude:float)->float:
     '''
     calculate the air density given an altitude in meters
     '''
-    return ISA.rho0 * ISA.sigma(altitude * M2FT) # ISA expects alt in ft
+    return ISA.rho_SL * ISA.sigma(altitude * M2FT) # ISA expects alt in ft
 
 @jit(nopython=True)
 def fpa(V_NED)->float:
@@ -1045,6 +1083,8 @@ if __name__ == "__main__":
     SIM_TOTAL_TIME_S = 1 * 60 # (s) total simulation time
     SIM_LOOP_HZ = 400 # (Hz) simulation loop frame rate throttling
     FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FG
+    ENGINE_TRIGGER_S = 0.1
+    PRINT_TRIGGER_S = 1.0 # trigger printing for awareness
 
 
 ###########################################################################
@@ -1128,6 +1168,28 @@ if __name__ == "__main__":
     prev_uvw = np.array([0,0,0])
     current_uvw = np.array([0,0,0])
 
+    # engine
+    #CF34 = Turbofan_Deck('deck_file_name', initial_time=time.perf_counter())
+    # --- Multiprocessing Setup ---
+    # MULTIPROCESSING: Use Queues from the multiprocessing module.
+    # These queues handle the necessary serialization (pickling) to pass
+    # data between process memory spaces.
+    jobs_queue = mp.Queue(maxsize=1)
+    results_queue = mp.Queue(maxsize=1)
+
+    # MULTIPROCESSING: Create and start the engine as a Process, not a Thread.
+    engine_process = mp.Process(
+        target=engine_worker,
+        args=(jobs_queue, results_queue),
+        daemon=True  # Daemon processes are terminated when the parent exits
+    )
+    engine_process.start()
+
+    current_thrust = 0 # FOR DEBUG ONLY
+
+
+
+
 
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG)
@@ -1138,14 +1200,18 @@ if __name__ == "__main__":
     current_alt_m = INIT_ALT_FT * FT2M # m
     current_latlon_rad = INIT_LATLON_DEG
     frame_count = 0
+
+    last_frame_time = 0 # holds the time from last 100 frame to calc frame rate at print statement
     
     send_frame_trigger = False
     run_sim_loop = False # this is a semaphore. it will wait for the clock to reach the next "simdt" and run the simulation
+    calc_eng_trigger = True
 
     fgdt = 1.0 / FG_OUTPUT_LOOP_HZ # (s) fg frame period
     simdt = 1 / SIM_LOOP_HZ # (s) desired simulation time step
     
     sim_time_adder, fg_time_adder = 0, 0 # counts the time between integration steps to trigger next simulation frame and FG dispatch
+    eng_time_adder = 0 # loop to calculate engine
     
     dt = 0 # actual integration time step
     prev_dt = dt
@@ -1225,6 +1291,17 @@ if __name__ == "__main__":
 
                 U_man = control_sat(U_man)
 
+                # check if we have thrust etc from engine deck
+                try:
+                    # MULTIPROCESSING: The API is the same, but we import mp.queues for the exception.
+                    e1_vals = results_queue.get(block=False) # block=False is equivalent to get_nowait()
+                    latest_e1 = e1_vals
+                    current_thrust = e1_vals['Fn']
+                    #print(f"[Main Process] Updated engine results at t={t:.2f}s.")
+                    #print(f"[Main Process] Updated engine results")
+                except mp.queues.Empty:
+                    pass
+
                 # set current integration step commands, density and integrate aircraft states
                 prev_uvw = current_uvw
                 this_AC_int.set_f_params(U_man, current_rho)
@@ -1270,9 +1347,23 @@ if __name__ == "__main__":
                         # This should rarely happen unless the network thread
                         # is completely stalled. We can just drop the frame.
                         pass
-                    #sock.sendto(my_pack, (UDP_IP, UDP_PORT))
-                    #sock2.sendto(my_pack, (UDP_IP2, UDP_PORT2))
                     send_frame_trigger = False
+
+                if calc_eng_trigger:
+                    if jobs_queue.empty():
+                        #print(f"[Main Process] Triggering new engine calculation...{VA(current_uvw)*MS2KT:.2f}, {current_alt_m*M2FT:.1f}")
+                        new_job = (current_alt_m*M2FT, ISA.Vt2M(VA(current_uvw)*MS2KT, current_alt_m*M2FT), U1[3], time.perf_counter())
+                        #new_job = (1000, 0.5, U1[3], time.perf_counter())
+                        try:
+                            jobs_queue.put(new_job, block=False)
+                            eng_time_adder = 0
+                        except mp.queues.Full:
+                            #print("[Main Process] Engine is busy, skipping this trigger.")
+                            pass
+                    else:
+                        #print("[Main Process] Engine is still busy with a pending job, skipping this trigger.")
+                        print("Ebusy.",end="")
+                    calc_eng_trigger = False
 
                 
                 frame_count += 1
@@ -1282,7 +1373,10 @@ if __name__ == "__main__":
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                     #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
-                    print(f'time: {this_AC_int.t:0.1f}s, Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}')
+                    print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E1T={current_thrust}N')
+                    last_frame_time = this_AC_int.t
+                if (frame_count % 1000) == 0:
+                    print(e1_vals)
                     
                 
 
@@ -1302,6 +1396,11 @@ if __name__ == "__main__":
                 dt = sim_time_adder
                 send_frame_trigger = True
 
+            # check/set engine calc trigger
+            if eng_time_adder >= ENGINE_TRIGGER_S:
+                eng_time_adder = 0
+                calc_eng_trigger = True
+
             # parking lot
             # it will keep off the simulation loop above while time does not catch up
             # with the desired "simdt".
@@ -1316,6 +1415,7 @@ if __name__ == "__main__":
             this_frame_dt = end - start
             fg_time_adder += this_frame_dt
             sim_time_adder += this_frame_dt
+            eng_time_adder += this_frame_dt
 
 
     # close threads
@@ -1324,6 +1424,13 @@ if __name__ == "__main__":
     network_thread.join(timeout=1.0) # Wait for the thread to finish
     for s in socks:
         s.close()
+
+    jobs_queue.put(None)
+    engine_process.join(timeout=2.0) # Wait for the worker process to finish
+    # It's good practice to terminate if it doesn't join cleanly
+    if engine_process.is_alive():
+        print("[Main Process] Worker did not shut down cleanly. Terminating.")
+        engine_process.terminate()
         
     # save data to disk
     save2disk('test_data.csv', x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=signals_header, skip=0)
