@@ -270,8 +270,10 @@ def engine_worker(jobs_queue, results_queue):
                 break
             
             # unpack the arguments
-            A, b, c, d = job
-            result = CF34.run_deck(A, b, c, d)
+            job_alt, job_MN, job_E1_TLA, job_E2_TLA, job_time = job
+            E1_res = CF34.run_deck(job_alt, job_MN, job_E1_TLA, job_time)
+            E2_res = CF34.run_deck(job_alt, job_MN, job_E2_TLA, job_time)
+            results = (E1_res, E2_res)
             
             # The logic for clearing old results remains the same.
             if not results_queue.empty():
@@ -279,7 +281,7 @@ def engine_worker(jobs_queue, results_queue):
                     results_queue.get_nowait()
                 except mp.queues.Empty:
                     pass
-            results_queue.put(result)
+            results_queue.put(results)
 
         except Exception as e:
             print(f"[Engine Process] Error: {e}")
@@ -1294,9 +1296,9 @@ if __name__ == "__main__":
                 # check if we have thrust etc from engine deck
                 try:
                     # MULTIPROCESSING: The API is the same, but we import mp.queues for the exception.
-                    e1_vals = results_queue.get(block=False) # block=False is equivalent to get_nowait()
-                    latest_e1 = e1_vals
-                    current_thrust = e1_vals['Fn']
+                    eng_vals = results_queue.get(block=False) # block=False is equivalent to get_nowait()
+                    latest_e1 = eng_vals[0]
+                    current_thrust = latest_e1['Fn']
                     #print(f"[Main Process] Updated engine results at t={t:.2f}s.")
                     #print(f"[Main Process] Updated engine results")
                 except mp.queues.Empty:
@@ -1352,7 +1354,7 @@ if __name__ == "__main__":
                 if calc_eng_trigger:
                     if jobs_queue.empty():
                         #print(f"[Main Process] Triggering new engine calculation...{VA(current_uvw)*MS2KT:.2f}, {current_alt_m*M2FT:.1f}")
-                        new_job = (current_alt_m*M2FT, ISA.Vt2M(VA(current_uvw)*MS2KT, current_alt_m*M2FT), U1[3], time.perf_counter())
+                        new_job = (current_alt_m*M2FT, ISA.Vt2M(VA(current_uvw)*MS2KT, current_alt_m*M2FT), U_man[3], U_man[4], time.perf_counter())
                         #new_job = (1000, 0.5, U1[3], time.perf_counter())
                         try:
                             jobs_queue.put(new_job, block=False)
@@ -1376,7 +1378,7 @@ if __name__ == "__main__":
                     print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E1T={current_thrust}N')
                     last_frame_time = this_AC_int.t
                 if (frame_count % 1000) == 0:
-                    print(e1_vals)
+                    print(latest_e1)
                     
                 
 
