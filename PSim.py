@@ -101,6 +101,7 @@ FT2M = 0.3048
 M2FT = 1 / FT2M
 KT2MS = 0.51444444 #knots to meters per second
 MS2KT = 1 / KT2MS
+LBF2N = 4.44822 # from pound force to N
 
 
 # ############################################################################
@@ -681,8 +682,8 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
             0: aileron (rad)
             1: stabilator (rad)
             2: rudder (rad)
-            3: throttle 1 (%)
-            4: throttle 2 (%)
+            3: throttle 1 (%) ->>>E1 THRUST (N)
+            4: throttle 2 (%) ->>>E2 THRUST (N)
         rho: density for current altitude (kg/m3)
     outputs:
         X_dot: derivatives of states (same order)
@@ -777,8 +778,10 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
     
     #---------------------- engine force and moment --------------------------
     # thrust
-    F1 = dt1 * M * G
-    F2 = dt2 * M * G
+    #F1 = dt1 * M * G
+    #F2 = dt2 * M * G
+    F1 = dt1
+    F2 = dt2
     
     # thrust vectors (assuming aligned with x axis)
     FE1_b = np.array([F1, 0, 0])
@@ -898,7 +901,7 @@ def ss_integrator(t_ini:float, X0:np.ndarray, U:np.ndarray, rho:float):
     
     RK_integrator = integrate.ode(RCAM_model_wrapper)
     RK_integrator.set_integrator('dopri5')
-    RK_integrator.set_f_params(control_sat(U), rho)
+    RK_integrator.set_f_params(U, rho)
     RK_integrator.set_initial_value(X0, t_ini)
     return RK_integrator
 
@@ -1197,6 +1200,11 @@ if __name__ == "__main__":
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG)
     U_man = U1.copy()
+    # FOR DEBUGGING ONLY - TEMP FIX FOR NOW
+    #e1_thrust = U_man[3] * 13000 * LBF2N# simple TLA * max thrust-ish
+    #e2_thrust = U_man[4] * 13000 * LBF2N
+    e1_thrust = 0
+    e2_thrust = 0
 
 
     # frame variables
@@ -1298,8 +1306,8 @@ if __name__ == "__main__":
                 try:
                     # MULTIPROCESSING: The API is the same, but we import mp.queues for the exception.
                     eng_vals = results_queue.get(block=False) # block=False is equivalent to get_nowait()
-                    latest_e1 = eng_vals[0]
-                    current_thrust = latest_e1['Fn']
+                    e1_thrust = eng_vals[0]['Fn'] * LBF2N
+                    e2_thrust = eng_vals[1]['Fn'] * LBF2N
                     #print(f"[Main Process] Updated engine results at t={t:.2f}s.")
                     #print(f"[Main Process] Updated engine results")
                 except mp.queues.Empty:
@@ -1307,7 +1315,16 @@ if __name__ == "__main__":
 
                 # set current integration step commands, density and integrate aircraft states
                 prev_uvw = current_uvw
-                this_AC_int.set_f_params(U_man, current_rho)
+                #change U_man to instead of having TLA, pass thrust
+                U_man_plus_thrust = U_man.copy()
+
+                # DEBUG ONLY - ARTIFICIALLY INCREASING THRUST TO MATCH 757
+                # WEE NEED ABOUT 0.35 * 120000 * 9.81 Newtons
+                # that is 3.5 ish
+                U_man_plus_thrust[3] = e1_thrust * 3.5
+                U_man_plus_thrust[4] = e2_thrust * 3.5
+
+                this_AC_int.set_f_params(U_man_plus_thrust, current_rho)
                 this_AC_int.integrate(this_AC_int.t + dt)
                 current_uvw = this_AC_int.y[0:3]
 
@@ -1375,10 +1392,10 @@ if __name__ == "__main__":
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                     #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
-                    print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E1T={current_thrust}N')
+                    print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E1T={e1_thrust}N')
                     last_frame_time = this_AC_int.t
                 if (frame_count % 1000) == 0:
-                    print(latest_e1)
+                    print(eng_vals[0])
                     
                 
 
