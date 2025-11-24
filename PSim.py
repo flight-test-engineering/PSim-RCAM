@@ -1096,6 +1096,7 @@ if __name__ == "__main__":
     JOY_THROTTLE_LIMITS = [1, -1] # these are the limits for the throttle input for this specific joystick - full fwd = -1
     THROTTLE_MAP_M = (U_LIMITS_MAX[3] - U_LIMITS_MIN[3]) / (JOY_THROTTLE_LIMITS[1] - JOY_THROTTLE_LIMITS[0])
     THROTTLE_MAP_b = U_LIMITS_MAX[3] - THROTTLE_MAP_M * (JOY_THROTTLE_LIMITS[1]) # y = mx + b - equation for a line
+    print(f'Joystick mapping: M={THROTTLE_MAP_M}, b={THROTTLE_MAP_b}, from JSON:{U_LIMITS_MAX[3]=}, {U_LIMITS_MIN[3]=} ')
     JOY_FACTORS = { 'aileron': -0.7, 'elevator': -0.5, 'rudder': -0.52, 'throttle_m': THROTTLE_MAP_M, 'throttle_b': THROTTLE_MAP_b } # specific for this joystick model
 
 
@@ -1279,7 +1280,7 @@ if __name__ == "__main__":
             
                 U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
                 
-                # trim bias is always positive, so we washout if throttles move down
+                # trim bias is always positive, so we washout if throttles move back
                 delta_throttle_1 = U_man[3] - current_throttle[0]
                 if delta_throttle_1 < 0 and U1[3] > 0: 
                     if delta_throttle_1 > U1[3]:
@@ -1355,7 +1356,6 @@ if __name__ == "__main__":
                     if jobs_queue.empty():
                         #print(f"[Main Process] Triggering new engine calculation...{VA(current_uvw)*MS2KT:.2f}, {current_alt_m*M2FT:.1f}")
                         new_job = (current_alt_m*M2FT, ISA.Vt2M(VA(current_uvw)*MS2KT, current_alt_m*M2FT), U_man[3], U_man[4], time.perf_counter())
-                        #new_job = (1000, 0.5, U1[3], time.perf_counter())
                         try:
                             jobs_queue.put(new_job, block=False)
                             eng_time_adder = 0
