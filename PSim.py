@@ -59,6 +59,7 @@ TODO:
 
 
 '''
+
 # imports
 import numpy as np
 from scipy import integrate
@@ -900,40 +901,11 @@ def ss_integrator(t_ini:float, X0:np.ndarray, U:np.ndarray, rho:float):
     '''
     
     RK_integrator = integrate.ode(RCAM_model_wrapper)
-    RK_integrator.set_integrator('dopri5')
+    RK_integrator.set_integrator('dopri5') # Dormand-Prince explicit Runge-Kutta 5th order method
     RK_integrator.set_f_params(U, rho)
     RK_integrator.set_initial_value(X0, t_ini)
     return RK_integrator
 
-def time_span_int(t_ini:float, t_fin:float, dt:float, X0:np.ndarray, U:np.ndarray, rho:float) -> np.ndarray:
-    '''
-    function to integrate the model in a time span, with FIXED dt
-    
-    inputs:
-        t_ini: initial time in seconds
-        t_fin: final time in seconds
-        dt: delta time between steps, in seconds
-        X0: initial states
-        U: controls positions
-    outputs:
-        t_vector: time vector
-        result_array: states integrated for all time steps in time vector
-    '''
-    
-    t_vector = np.arange(np.datetime64('2011-06-15T00:00'), np.datetime64('2011-06-15T00:00') + np.timedelta64(t_fin, 's'),np.timedelta64(int(dt*1000),'ms'), dtype='datetime64')
-
-    RK_integrator = integrate.ode(RCAM_model_wrapper)
-    RK_integrator.set_integrator('dopri5')
-    RK_integrator.set_f_params(control_sat(U), rho)
-    RK_integrator.set_initial_value(X0, t_ini)
-    collector = []
-
-    for _ in t_vector:
-        RK_integrator.integrate(RK_integrator.t + dt)
-        aux = np.insert(RK_integrator.y, 0, RK_integrator.t)
-        collector.append(aux)
-    result_array = np.array(collector)
-    return(t_vector, result_array)
 
 def latlonh_int(t_ini:float, latlonh0:np.ndarray, V_NED):
         
@@ -1085,7 +1057,7 @@ if __name__ == "__main__":
 
 ###########################################################################
     # SIMULATION OPTIONS
-    SIM_TOTAL_TIME_S = 1 * 60 # (s) total simulation time
+    SIM_TOTAL_TIME_S = 10 * 60 # (s) total simulation time
     SIM_LOOP_HZ = 400 # (Hz) simulation loop frame rate throttling
     FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FG
     ENGINE_TRIGGER_S = 0.1
@@ -1121,79 +1093,81 @@ if __name__ == "__main__":
     signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2']
 
     
-############################################################################
-    # FLIGHTGEAR SOCKS
-    # Open network sockets to communicate with FlightGear
-    UDP_IP1 = "127.0.0.1" # set to localhost
-    UDP_PORT1 = 5500
+    # we only start the network and multiprocessing if doing online sim, at least for now
+    if OFFLINE == False:
+    ############################################################################
+        # FLIGHTGEAR SOCKS
+        # Open network sockets to communicate with FlightGear
+        UDP_IP1 = "127.0.0.1" # set to localhost
+        UDP_PORT1 = 5500
+        
+        UDP_IP2 = "192.168.0.163" # set to a remote computer on the same network
+        UDP_PORT2 = 5501
+
+        sock1 = socket.socket(socket.AF_INET, # Internet
+                            socket.SOCK_DGRAM) # UDP
+        sock2 = socket.socket(socket.AF_INET, # Internet
+                            socket.SOCK_DGRAM) # UDP
+        socks = [sock1, sock2]
+        fg_addresses = [(UDP_IP1, UDP_PORT1), (UDP_IP2, UDP_PORT2)]
+
+        fdm_packet_queue = queue.Queue() # async queue that will receive the packets
+
+        # THREADING: Create and start the network worker thread.
+        # It's a daemon thread, so it will exit automatically if the main program exits.
+        network_thread = threading.Thread(
+            target=network_worker,
+            args=(socks, fdm_packet_queue, fg_addresses),
+            daemon=True
+        )
+        try:
+            network_thread.start()
+            print("... started!")
+        except Exception as e:
+            print(f"Error in network thread: {e}")
+            exit()
+
+
+        # instantiate FG comms object and initialize it
+        my_fgFDM = fgFDM()
+        my_fgFDM.set('latitude', INIT_LATLON_DEG[0], units='degrees')
+        my_fgFDM.set('longitude', INIT_LATLON_DEG[1], units='degrees')
+        my_fgFDM.set('altitude', INIT_ALT_FT, units='feet')
+        #my_fgFDM.set('agl', INIT_ALT_FT, units='meters')
+        my_fgFDM.set('num_engines', 2)
+        my_fgFDM.set('num_tanks', 1)
+        my_fgFDM.set('num_wheels', 3)
+        my_fgFDM.set('cur_time', int(time.perf_counter()), units='seconds')
+
+
+
+    #######################################################################################
+        # engine
+        #CF34 = Turbofan_Deck('deck_file_name', initial_time=time.perf_counter())
+        # --- Multiprocessing Setup ---
+        # MULTIPROCESSING: Use Queues from the multiprocessing module.
+        # These queues handle the necessary serialization (pickling) to pass
+        # data between process memory spaces.
+        jobs_queue = mp.Queue(maxsize=1)
+        results_queue = mp.Queue(maxsize=1)
+
+        # MULTIPROCESSING: Create and start the engine as a Process, not a Thread.
+        engine_process = mp.Process(
+            target=engine_worker,
+            args=(jobs_queue, results_queue),
+            daemon=True  # Daemon processes are terminated when the parent exits
+        )
+        engine_process.start()
+
+        current_thrust = 0 # FOR DEBUG ONLY
+
+
     
-    UDP_IP2 = "192.168.0.163" # set to a remote computer on the same network
-    UDP_PORT2 = 5501
-
-    sock1 = socket.socket(socket.AF_INET, # Internet
-                        socket.SOCK_DGRAM) # UDP
-    sock2 = socket.socket(socket.AF_INET, # Internet
-                        socket.SOCK_DGRAM) # UDP
-    socks = [sock1, sock2]
-    fg_addresses = [(UDP_IP1, UDP_PORT1), (UDP_IP2, UDP_PORT2)]
-
-    fdm_packet_queue = queue.Queue() # async queue that will receive the packets
-
-    # THREADING: Create and start the network worker thread.
-    # It's a daemon thread, so it will exit automatically if the main program exits.
-    network_thread = threading.Thread(
-        target=network_worker,
-        args=(socks, fdm_packet_queue, fg_addresses),
-        daemon=True
-    )
-    try:
-        network_thread.start()
-        print("... started!")
-    except Exception as e:
-        print(f"Error in network thread: {e}")
-        exit()
-
-
-    # instantiate FG comms object and initialize it
-    my_fgFDM = fgFDM()
-    my_fgFDM.set('latitude', INIT_LATLON_DEG[0], units='degrees')
-    my_fgFDM.set('longitude', INIT_LATLON_DEG[1], units='degrees')
-    my_fgFDM.set('altitude', INIT_ALT_FT, units='feet')
-    #my_fgFDM.set('agl', INIT_ALT_FT, units='meters')
-    my_fgFDM.set('num_engines', 2)
-    my_fgFDM.set('num_tanks', 1)
-    my_fgFDM.set('num_wheels', 3)
-    my_fgFDM.set('cur_time', int(time.perf_counter()), units='seconds')
-
-
-
-#######################################################################################
     # initializations
     data_collector, t_vector_collector = [], [] # data collectors
     
     prev_uvw = np.array([0,0,0])
     current_uvw = np.array([0,0,0])
-
-    # engine
-    #CF34 = Turbofan_Deck('deck_file_name', initial_time=time.perf_counter())
-    # --- Multiprocessing Setup ---
-    # MULTIPROCESSING: Use Queues from the multiprocessing module.
-    # These queues handle the necessary serialization (pickling) to pass
-    # data between process memory spaces.
-    jobs_queue = mp.Queue(maxsize=1)
-    results_queue = mp.Queue(maxsize=1)
-
-    # MULTIPROCESSING: Create and start the engine as a Process, not a Thread.
-    engine_process = mp.Process(
-        target=engine_worker,
-        args=(jobs_queue, results_queue),
-        daemon=True  # Daemon processes are terminated when the parent exits
-    )
-    engine_process.start()
-
-    current_thrust = 0 # FOR DEBUG ONLY
-
-
 
 
 
@@ -1247,19 +1221,17 @@ if __name__ == "__main__":
         
         # single step integrate through each time step
         for idx, t in enumerate(t_vector):
-            prev_uvw = current_uvw
             current_rho = get_rho(current_alt_m)
             
             # integrate 6-DOF
             this_AC_int.set_f_params(sim_U[:,idx], current_rho)
             this_AC_int.integrate(this_AC_int.t + simdt)
-            current_uvw = this_AC_int.y[0:3]
 
             # integrate navigation equations
             current_NED = NED(this_AC_int.y[:3], this_AC_int.y[6:])
             this_wind = add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
             this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon_rad[0], current_alt_m)
-            this_latlonh_int.integrate(this_latlonh_int.t + dt) #in radians and alt in meters
+            this_latlonh_int.integrate(this_latlonh_int.t + simdt) #in radians and alt in meters
             
             # store current state and time vector
             current_latlon_rad = this_latlonh_int.y[0:2] # store lat and long (RAD)
@@ -1267,7 +1239,7 @@ if __name__ == "__main__":
             data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, sim_U[:,idx])))
             t_vector_collector.append(this_AC_int.t)
 
-        print(sim_U.shape)
+        print(f'Enf of simulation; {len(t_vector_collector)} time steps!')
         
     
     else:
@@ -1437,19 +1409,20 @@ if __name__ == "__main__":
             eng_time_adder += this_frame_dt
 
 
-    # close threads
-    print("Shutting down network thread...")
-    fdm_packet_queue.put(None)  # Send the shutdown signal
-    network_thread.join(timeout=1.0) # Wait for the thread to finish
-    for s in socks:
-        s.close()
+    if OFFLINE == False:
+        # close threads
+        print("Shutting down network thread...")
+        fdm_packet_queue.put(None)  # Send the shutdown signal
+        network_thread.join(timeout=1.0) # Wait for the thread to finish
+        for s in socks:
+            s.close()
 
-    jobs_queue.put(None)
-    engine_process.join(timeout=2.0) # Wait for the worker process to finish
-    # It's good practice to terminate if it doesn't join cleanly
-    if engine_process.is_alive():
-        print("[Main Process] Worker did not shut down cleanly. Terminating.")
-        engine_process.terminate()
+        jobs_queue.put(None)
+        engine_process.join(timeout=2.0) # Wait for the worker process to finish
+        # It's good practice to terminate if it doesn't join cleanly
+        if engine_process.is_alive():
+            print("[Main Process] Worker did not shut down cleanly. Terminating.")
+            engine_process.terminate()
         
     # save data to disk
     save2disk('test_data.csv', x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=signals_header, skip=0)
