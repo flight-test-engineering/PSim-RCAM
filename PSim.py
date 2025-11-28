@@ -257,7 +257,7 @@ except (KeyError, json.JSONDecodeError) as e:
     sys.exit(1)
 
 
-CF34 = Turbofan_Deck('CF34_deck_v4.csv')
+PW2000 = Turbofan_Deck('PW2000_similar_deck.csv')
 
 def engine_worker(jobs_queue, results_queue):
     """
@@ -273,8 +273,8 @@ def engine_worker(jobs_queue, results_queue):
             
             # unpack the arguments
             job_alt, job_MN, job_E1_TLA, job_E2_TLA, job_time = job
-            E1_res = CF34.run_deck(job_alt, job_MN, job_E1_TLA, job_time)
-            E2_res = CF34.run_deck(job_alt, job_MN, job_E2_TLA, job_time)
+            E1_res = PW2000.run_deck(job_alt, job_MN, job_E1_TLA, job_time)
+            E2_res = PW2000.run_deck(job_alt, job_MN, job_E2_TLA, job_time)
             results = (E1_res, E2_res)
             
             # The logic for clearing old results remains the same.
@@ -343,8 +343,8 @@ def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
     '''
     plotlist = []
 
-    plt.ioff()
-    plt.clf()
+    #plt.ioff()
+    #plt.clf()
     counter = 1
     myfig = plt.figure(figsize = (16,(y_data.shape[1]*4)))
     myfig.patch.set_edgecolor('w')
@@ -943,6 +943,7 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
     method
     Q.T*H*Q
     with H = diagonal matrix of "1"s (equal weights for all states)
+    this returns the squares of the elements in Q
     
     returns:
         cost [float]
@@ -950,13 +951,18 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
 
     X = Z[:9]
     U = Z[9:]
+    #trim_alt = ISA.inv_sigma(rho_trim)
+    #trim_MN = ISA.Vc2M(VA_trim*MS2KT, trim_alt)
+    #deck_res = CF34.run_deck(trim_alt, trim_MN, U[3], 0)
+    #U[3] = deck_res['Fn']*LBF2N
+    #U[4] = U[3]
     
-    X_dot = RCAM_model(X, control_sat(U), rho_trim)
-    V_NED_current = NED(X_dot[:3], X_dot[3:6])
+    X_dot = RCAM_model(X, U, rho_trim)
+    #V_NED_current = NED(X_dot[:3], X_dot[3:6])
     
     VA_current = VA(X[:3])
     
-    gamma_current = X[7] - np.arctan2(X[2], X[0]) # only valid for wings level case
+    gamma_current = X[7] - np.arctan2(X[2], X[0]) # only valid for wings level case ( theta - alpha)
      
     Q = np.concatenate((X_dot, [VA_current - VA_trim], [gamma_current - gamma_trim], [X[1] - side_speed_trim], [X[6] - phi_trim], [X[8] - psi_trim]))
     diag_ones = np.ones(Q.shape[0])
@@ -965,21 +971,60 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
     return np.dot(np.dot(Q.T, H), Q)
 
 def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, psi_trim=0.0, rho_trim=1.225, 
-               X0=np.array([85, 0, 0, 0, 0, 0, 0, 0.1, 0]), 
-               U0=np.array([0, -0.1, 0, 0.08, 0.08])) -> np.ndarray:
+               X0=np.array([85, 0, 0, 0, 0, 0, 0, 0.0, 0]), 
+               U0=np.array([1, 1, 1, 0.08, 0.08])) -> np.ndarray:
     '''
     uses scipy minimize on functional to find trim point
     '''
 
-    print(f'trimming with X0 = {X0}')
-    print(f'trimming with U0 = {U0}')
     X0[0] = VA_trim
+    X0[6] = phi_trim
+    X0[8] = psi_trim
+
+    MAX_ITER = 10 # maximum number of iterations
+    iter_counter = 0
+    epsilon = 1E-9
+    converge = False
+
+        
+    print(f'trimming with X0 = {X0}, {VA_trim=}')
+    print(f'trimming with U0 = {U0}')
+
     Z0 = np.concatenate((X0, U0))
- 
-    result = minimize(trim_functional2, Z0, args=(VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim),
-               method='L-BFGS-B', options={'maxiter':5000,\
-                                            'gtol':1e-25, 'ftol':1e-25, \
-                                            'maxls':4000})
+    print(f'initial cost: {trim_functional2(Z0,VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim)}')
+
+    while iter_counter <= MAX_ITER and not converge:
+
+    
+        result = minimize(trim_functional2, Z0, args=(VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim),
+                method='Nelder-Mead', options={'maxiter':50000,\
+                                               'maxfev':40000})
+        
+        Z = result.x.copy()
+        current_cost = trim_functional2(Z, VA(result.x[:3]), result.x[7] - np.arctan2(result.x[2], result.x[0]), result.x[1], result.x[6], result.x[8], rho_trim)
+        print(f'iter: {iter_counter}, functional cost: {current_cost}')
+        if current_cost < epsilon:
+            converge = True
+        else:
+            iter_counter += 1
+            Z0 = Z.copy()
+
+
+    if converge:
+        print(f'trimmed. speed = {VA(Z0[:3])}, {VA_trim=}')
+        X_dot = RCAM_model(result.x[:9], result.x[9:], rho_trim)
+        print(f'check x_dot {X_dot}')
+        print(f'check Va {VA(result.x[:3])}')
+        print(f'check gamma {result.x[7] - np.arctan2(result.x[2], result.x[0])}')
+        print(f'check side vel {result.x[1]}')
+        print(f'check phi {result.x[6]}')
+        print(f'check psi {result.x[8]}')
+    else:
+        print('FAILED TO CONVERGE')
+
+    print()
+    print(f'final U_trim: {Z[9:]}')
+    print(f'final theta: {Z[7]*RAD2DEG}')
 
     return result.x, result.message
 
@@ -1044,7 +1089,7 @@ if __name__ == "__main__":
 ############################################################################
     # INITIAL CONDITIONS (for trim)
     INIT_ALT_FT = 2100 #ft
-    V_TRIM_MPS = 140 * KT2MS # m/s
+    V_TRIM_MPS = 170 * KT2MS # m/s
     GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
     INIT_HDG_DEG = 82.0 # DEG
     # Lat/Lon
@@ -1057,7 +1102,7 @@ if __name__ == "__main__":
 
 ###########################################################################
     # SIMULATION OPTIONS
-    SIM_TOTAL_TIME_S = 10 * 60 # (s) total simulation time
+    SIM_TOTAL_TIME_S = 1 * 60 # (s) total simulation time
     SIM_LOOP_HZ = 400 # (Hz) simulation loop frame rate throttling
     FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FG
     ENGINE_TRIGGER_S = 0.1
@@ -1210,14 +1255,17 @@ if __name__ == "__main__":
         print(f'Offline sim time vector: {t_vector[0]:.2f}s to {t_vector[-1]:.2f}s')
 
         # create control inputs
-        sim_U = np.zeros((U_man.shape[0],t_vector.shape[0]))
+        sim_U = np.ones((U_man.shape[0],t_vector.shape[0]))
+        for i in range(sim_U.shape[0]):
+            sim_U[i,:] = sim_U[i,:] * U_man[i]
+        '''
         pitch_doublet = get_doublet(t_vector,t=5, duration=2, amplitude=0.2)
         roll_doublet = get_doublet(t_vector,t=15, duration=2, amplitude=0.2)
         yaw_doublet = get_doublet(t_vector,t=25, duration=4, amplitude=0.2)
         sim_U[0,:] = roll_doublet
         sim_U[1,:] = pitch_doublet
         sim_U[2,:] = yaw_doublet
-
+        '''
         
         # single step integrate through each time step
         for idx, t in enumerate(t_vector):
@@ -1245,6 +1293,12 @@ if __name__ == "__main__":
     else:
 
         ##### SIMULATION LOOP #####
+
+        # adjust engine thrust
+        # what comes out of the trimming function is thrust directly
+        # for online sim, we can't use it
+        U1[3] = 0.1
+        U1[4] = 0.1
 
         while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
             # get clock
@@ -1290,11 +1344,9 @@ if __name__ == "__main__":
                 #change U_man to instead of having TLA, pass thrust
                 U_man_plus_thrust = U_man.copy()
 
-                # DEBUG ONLY - ARTIFICIALLY INCREASING THRUST TO MATCH 757
-                # WEE NEED ABOUT 0.35 * 120000 * 9.81 Newtons
-                # that is 3.5 ish
-                U_man_plus_thrust[3] = e1_thrust * 3.5
-                U_man_plus_thrust[4] = e2_thrust * 3.5
+
+                U_man_plus_thrust[3] = e1_thrust
+                U_man_plus_thrust[4] = e2_thrust
 
                 this_AC_int.set_f_params(U_man_plus_thrust, current_rho)
                 this_AC_int.integrate(this_AC_int.t + dt)
@@ -1364,10 +1416,10 @@ if __name__ == "__main__":
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                     #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
-                    print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E1T={e1_thrust}N')
+                    print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N')
                     last_frame_time = this_AC_int.t
-                if (frame_count % 1000) == 0:
-                    print(eng_vals[0])
+                #if (frame_count % 1000) == 0:
+                #    print(eng_vals[0])
                     
                 
 

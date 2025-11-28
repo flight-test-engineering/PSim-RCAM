@@ -167,12 +167,12 @@ class Turbofan_Deck():
         given an altitude, returns idle value
         """
         # simple table
-        if altitude < 3000:    return 0.55
-        elif altitude < 5000:  return 0.58
-        elif altitude < 8000:  return 0.60
-        elif altitude < 25000: return 0.65
-        elif altitude < 32000: return 0.67
-        else:                  return 0.7
+        if altitude < 3000:    return 0.15
+        elif altitude < 5000:  return 0.18
+        elif altitude < 8000:  return 0.20
+        elif altitude < 25000: return 0.25
+        elif altitude < 32000: return 0.27
+        else:                  return 0.3
             
 
     def _get_bracket(self, target:float, val_list:list)->float:
