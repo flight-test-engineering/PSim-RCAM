@@ -103,6 +103,7 @@ M2FT = 1 / FT2M
 KT2MS = 0.51444444 #knots to meters per second
 MS2KT = 1 / KT2MS
 LBF2N = 4.44822 # from pound force to N
+N2LBF = 1 / LBF2N
 
 
 # ############################################################################
@@ -258,6 +259,7 @@ except (KeyError, json.JSONDecodeError) as e:
 
 
 PW2000 = Turbofan_Deck('PW2000_similar_deck.csv')
+PW2000.interp_altMNFN(1010, 0.1, 48000)
 
 def engine_worker(jobs_queue, results_queue):
     """
@@ -1218,12 +1220,11 @@ if __name__ == "__main__":
 
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG)
+    print(f'running inverse deck with: {INIT_ALT_FT=}, {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT)=}, {U1[3]*N2LBF=}')
+    print(f'this is the inverse deck response: {PW2000.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), U1[3]*N2LBF)}')
     U_man = U1.copy()
-    # FOR DEBUGGING ONLY - TEMP FIX FOR NOW
-    #e1_thrust = U_man[3] * 13000 * LBF2N# simple TLA * max thrust-ish
-    #e2_thrust = U_man[4] * 13000 * LBF2N
-    e1_thrust = 0
-    e2_thrust = 0
+    e1_thrust = U1[3]
+    e2_thrust = U1[4]
 
 
     # frame variables
@@ -1297,8 +1298,12 @@ if __name__ == "__main__":
         # adjust engine thrust
         # what comes out of the trimming function is thrust directly
         # for online sim, we can't use it
-        U1[3] = 0.1
-        U1[4] = 0.1
+        # let's run the reverse deck:
+        U1[3] = PW2000.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC']
+        U1[4] = PW2000.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
+        U_man[3] = U1[3]
+        U_man[4] = U1[4]
+        print(f'{U1[3]=}')
 
         while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
             # get clock

@@ -344,6 +344,116 @@ class Turbofan_Deck():
             
         return res
 
+
+    def interp_altMNFN(self, Hp:float, MN:float, Fn:float)->dict:
+        '''
+        This function will return a tri-linearly interpolated
+        dictionary for each "key" in the self.deck_df class dataframe set in __init__.
+        This is the "reverse deck", where we find power setting from a given thrust point.
+        
+        inputs
+            Hp: altitude (in ft)
+            MN: Mach number
+            FN: Thrust (in lbf)
+        retunrs
+            res: dictionary with interpolated values for each key in the dataframe
+        '''
+        
+        ###############################
+        #   DEFINE THE BRACKETS        #
+        ###############################
+        # the idea here is to find the data to interpolate from
+        # it is all in the database, we just need to filter it.
+        # we will find the altitude bracket
+        # then the Mach bracket
+        # and finally the Fn (thrust) bracket
+    
+        # this dictionary will hold the altitude and Mach barckets
+        pt_bracket = {'low': {'alt':0, 'M_low':0, 'M_high':0}, 'high': {'alt':0, 'M_low':0, 'M_high':0}}  # initialize to zero
+        
+        pt_bracket['low']['alt'], pt_bracket['high']['alt'] = self._get_bracket(Hp, self.alt_MN.keys()) # populate altitudes
+        if pt_bracket['low']['alt'] == pt_bracket['high']['alt']: # check if we are out-of-range
+            # adjust the low and high values to the 2 nearest points
+            pt_bracket['low']['alt'], pt_bracket['high']['alt'] = self._adjust_limits(Hp, sorted(list(self.alt_MN.keys())))
+    
+        # now, Mach
+        # we will have 'low altitude' x 'M_low'
+        #              'low altitude' x 'M_high'
+        #              'high altitude' x 'M_low'
+        #              'high altitude' x 'M_high'
+        for lh in ['low', 'high']:
+            pt_bracket[lh]['M_low'], pt_bracket[lh]['M_high'] = self._get_bracket(MN, self.alt_MN[pt_bracket[lh]['alt']]) # populate MNs for each alt
+    
+            if pt_bracket[lh]['M_low'] == pt_bracket[lh]['M_high']: # check if we are out-of-range
+            # dump keys into list
+                MN_list = [M for M in self.alt_MN[pt_bracket[lh]['alt']]]
+                pt_bracket[lh]['M_low'], pt_bracket[lh]['M_high'] = self._adjust_limits(MN, sorted(MN_list))
+    
+
+        ###############################
+        #   INTERPOLATE               #
+        ###############################
+        
+        interp_pts = [] # temporary placeholder for interpolation points converted to numpy from dataframe
+
+        # now we dump our data to numpy arrays to facilitate the interpolation math
+        if pt_bracket['low']['alt'] != pt_bracket['high']['alt']:
+            interp_pts.append(self.deck_df.query(f"alt == {pt_bracket['high']['alt']} and (MN == {pt_bracket['high']['M_high']})").to_numpy())
+            interp_pts.append(self.deck_df.query(f"alt == {pt_bracket['high']['alt']} and (MN == {pt_bracket['high']['M_low']})").to_numpy())
+            interp_pts.append(self.deck_df.query(f"alt == {pt_bracket['low']['alt']} and (MN == {pt_bracket['low']['M_high']})").to_numpy())
+            interp_pts.append(self.deck_df.query(f"alt == {pt_bracket['low']['alt']} and (MN == {pt_bracket['low']['M_low']})").to_numpy())
+        else:
+            print('error finding brackets!')
+        
+        #interpolation - tri linear
+        # we first need to reduce the number of hits from 10 to one per bracket.
+        # let's interpolate thrust first.
+        temp_pts = [] # temporary placeholder for intermmedeate interpolation points
+        FNs_lists = []
+        for pt in interp_pts:
+            #find thrust bracket
+            # bracket check
+            th_list = pt[:, self.col_names.index('Fn')]
+            FNs_lists.append(th_list)
+        # for each of the FNs_lists, there are 10 values of Fn
+        # we want to interpolate them to get down to one Fn
+
+            Fn_low, Fn_high = self._get_bracket(Fn, th_list)
+            if Fn_low == Fn_high: # check if we are out-of-range
+                Fn_low, Fn_high = self._adjust_limits(Fn, sorted(th_list))
+            x3 = Fn_high
+            x1 = Fn_low
+            y2 = pt[np.where(pt[:,self.col_names.index('Fn')] == x3)]
+            y1 = pt[np.where(pt[:,self.col_names.index('Fn')] == x1)]
+            temp_pts.append(self._linear_interp(Fn, x3, x1, y2, y1))
+
+   
+   
+        # second, interpolate Mach number
+        temp_pts2 = [] #temp placeholder
+    
+        for idx, i in enumerate(['high', 'low']):
+            x3 = pt_bracket[i]['M_high']
+            x1= pt_bracket[i]['M_low']
+            y2 = temp_pts[(2*idx)] #0, 2
+            y1 = temp_pts[(2*idx)+1] #1, 3
+            temp_pts2.append(self._linear_interp(MN, x3, x1, y2, y1))
+    
+        # third, interpolate altitudes (hence, tri-linear interp)
+        x3 = pt_bracket['high']['alt']
+        x1= pt_bracket['low']['alt']
+        y2 = temp_pts2[0]
+        y1 = temp_pts2[1]
+        interp_data = self._linear_interp(Hp, x3, x1, y2, y1)
+    
+        # now, we package our output in a dictionary:
+        res = {}
+        for idx, col in enumerate(self.col_names):
+            res[col] = interp_data[0][idx]
+            
+        return res
+
+
     def run_deck(self, alt:float, MN:float, TLA:float, current_time:float)->dict:
         """
         mainclass API to run deck
