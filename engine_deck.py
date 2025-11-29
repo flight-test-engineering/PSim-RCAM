@@ -39,7 +39,7 @@ class Turbofan_Deck():
         """
 
         # define logistic function parameters
-        print(f'I got this input file: {input_file}')
+        print(f'I got this input file for the engine: {input_file}')
         self.window_start_TLA = 0.0 # initial TLA value when change is triggered
         self.window_target_TLA = 1.0 
         self.window_start_time = 0.0 # time when TLA change was triggered

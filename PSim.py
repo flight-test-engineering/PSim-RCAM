@@ -259,7 +259,7 @@ except (KeyError, json.JSONDecodeError) as e:
 
 
 PW2000 = Turbofan_Deck('PW2000_similar_deck.csv')
-PW2000.interp_altMNFN(1010, 0.1, 48000)
+
 
 def engine_worker(jobs_queue, results_queue):
     """
@@ -270,6 +270,7 @@ def engine_worker(jobs_queue, results_queue):
         try:
             job = jobs_queue.get()
             if job is None:
+                print()
                 print("[Engine Process] Shutdown signal received.")
                 break
             
@@ -953,11 +954,6 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
 
     X = Z[:9]
     U = Z[9:]
-    #trim_alt = ISA.inv_sigma(rho_trim)
-    #trim_MN = ISA.Vc2M(VA_trim*MS2KT, trim_alt)
-    #deck_res = CF34.run_deck(trim_alt, trim_MN, U[3], 0)
-    #U[3] = deck_res['Fn']*LBF2N
-    #U[4] = U[3]
     
     X_dot = RCAM_model(X, U, rho_trim)
     #V_NED_current = NED(X_dot[:3], X_dot[3:6])
@@ -983,17 +979,14 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     X0[6] = phi_trim
     X0[8] = psi_trim
 
-    MAX_ITER = 10 # maximum number of iterations
+    MAX_ITER = 10 # maximum number of overall iterations
     iter_counter = 0
     epsilon = 1E-9
     converge = False
 
-        
-    print(f'trimming with X0 = {X0}, {VA_trim=}')
-    print(f'trimming with U0 = {U0}')
 
     Z0 = np.concatenate((X0, U0))
-    print(f'initial cost: {trim_functional2(Z0,VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim)}')
+    print(f'initial cost: {trim_functional2(Z0,VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim):.3e}')
 
     while iter_counter <= MAX_ITER and not converge:
 
@@ -1002,31 +995,30 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
                 method='Nelder-Mead', options={'maxiter':50000,\
                                                'maxfev':40000})
         
-        Z = result.x.copy()
-        current_cost = trim_functional2(Z, VA(result.x[:3]), result.x[7] - np.arctan2(result.x[2], result.x[0]), result.x[1], result.x[6], result.x[8], rho_trim)
-        print(f'iter: {iter_counter}, functional cost: {current_cost}')
+
+        current_cost = trim_functional2(result.x, VA(result.x[:3]), result.x[7] - np.arctan2(result.x[2], result.x[0]), result.x[1], result.x[6], result.x[8], rho_trim)
+        print(f'iter: {iter_counter}, functional cost: {current_cost:.3e}')
+
         if current_cost < epsilon:
             converge = True
         else:
             iter_counter += 1
-            Z0 = Z.copy()
+            Z0 = result.x.copy()
 
 
     if converge:
-        print(f'trimmed. speed = {VA(Z0[:3])}, {VA_trim=}')
+        print()
+        print('Trim converged!')
+        print(f'trimmed speed = {VA(Z0[:3]):.3f}')
         X_dot = RCAM_model(result.x[:9], result.x[9:], rho_trim)
-        print(f'check x_dot {X_dot}')
-        print(f'check Va {VA(result.x[:3])}')
-        print(f'check gamma {result.x[7] - np.arctan2(result.x[2], result.x[0])}')
-        print(f'check side vel {result.x[1]}')
-        print(f'check phi {result.x[6]}')
-        print(f'check psi {result.x[8]}')
+
+        print(f'check gamma {result.x[7] - np.arctan2(result.x[2], result.x[0])} RAD')
+        print(f'check side vel {result.x[1]} m/s')
+        print(f'check phi {result.x[6]} RAD')
+        print(f'check psi {result.x[8]} RAD')
     else:
         print('FAILED TO CONVERGE')
 
-    print()
-    print(f'final U_trim: {Z[9:]}')
-    print(f'final theta: {Z[7]*RAD2DEG}')
 
     return result.x, result.message
 
@@ -1055,7 +1047,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
     alt_m = altitude * FT2M
     rho_trim = get_rho(alt_m)
 
-    print(f'initializing model with altitude {altitude} ft, rho={rho_trim}')
+    print(f'initializing model with altitude {altitude} ft, rho={rho_trim:.4f} kg/m3')
     
 
     latlonh0 = np.array([latlon[0]*DEG2RAD, latlon[1]*DEG2RAD, alt_m])
@@ -1063,11 +1055,14 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
     # trim model
     res4, res4_status = trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
                                    phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim)
-    print(res4_status)
+    print()
+    print('Trimming',res4_status)
+    print()
     X0 = res4[:9]
     U0 = res4[9:]
     print(f'initial states: {X0}')
     print(f'initial inputs: {U0}')
+    print()
 
     # initialize integrators
     AC_integrator = ss_integrator(t0, X0, U0, rho_trim)
@@ -1132,9 +1127,8 @@ if __name__ == "__main__":
         print('Will run OFFLINE simulation, no joystick detected')
         OFFLINE = True
     else:
-        print(f'found {joystick_count} joysticks connected.')
         this_joy = pygame.joystick.Joystick(0)
-        print(f'{this_joy.get_name()}, axes={this_joy.get_numaxes()}')
+        print(f'found {joystick_count} joysticks connected: {this_joy.get_name()}, axes={this_joy.get_numaxes()}')
         OFFLINE = False
 
     signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2']
@@ -1220,12 +1214,9 @@ if __name__ == "__main__":
 
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG)
-    print(f'running inverse deck with: {INIT_ALT_FT=}, {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT)=}, {U1[3]*N2LBF=}')
-    print(f'this is the inverse deck response: {PW2000.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), U1[3]*N2LBF)}')
     U_man = U1.copy()
     e1_thrust = U1[3]
     e2_thrust = U1[4]
-
 
     # frame variables
     current_alt_m = INIT_ALT_FT * FT2M # m
@@ -1299,11 +1290,15 @@ if __name__ == "__main__":
         # what comes out of the trimming function is thrust directly
         # for online sim, we can't use it
         # let's run the reverse deck:
+        print(f'running inverse deck with - alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]*N2LBF:.0f} lbf')
+
         U1[3] = PW2000.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC']
         U1[4] = PW2000.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
         U_man[3] = U1[3]
         U_man[4] = U1[4]
-        print(f'{U1[3]=}')
+
+        print(f'this is the inverse deck response: {U1[3]:.4f} % power')
+        print()
 
         while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
             # get clock
@@ -1468,6 +1463,7 @@ if __name__ == "__main__":
 
     if OFFLINE == False:
         # close threads
+        print()
         print("Shutting down network thread...")
         fdm_packet_queue.put(None)  # Send the shutdown signal
         network_thread.join(timeout=1.0) # Wait for the thread to finish
