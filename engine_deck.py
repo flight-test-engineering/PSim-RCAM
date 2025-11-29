@@ -347,7 +347,7 @@ class Turbofan_Deck():
 
     def interp_altMNFN(self, Hp:float, MN:float, Fn:float)->dict:
         '''
-        This function will return a tri-linearly interpolated
+        This external method will return a tri-linearly interpolated
         dictionary for each "key" in the self.deck_df class dataframe set in __init__.
         This is the "reverse deck", where we find power setting from a given thrust point.
         
@@ -366,7 +366,6 @@ class Turbofan_Deck():
         # it is all in the database, we just need to filter it.
         # we will find the altitude bracket
         # then the Mach bracket
-        # and finally the Fn (thrust) bracket
     
         # this dictionary will hold the altitude and Mach barckets
         pt_bracket = {'low': {'alt':0, 'M_low':0, 'M_high':0}, 'high': {'alt':0, 'M_low':0, 'M_high':0}}  # initialize to zero
@@ -406,28 +405,26 @@ class Turbofan_Deck():
             print('error finding brackets!')
         
         #interpolation - tri linear
-        # we first need to reduce the number of hits from 10 to one per bracket.
+        # typically, there will be many lines, one for each power setting, for each of the interp_pts entries
+        # we first need to reduce this number to one per bracket.
         # let's interpolate thrust first.
         temp_pts = [] # temporary placeholder for intermmedeate interpolation points
         FNs_lists = []
         for pt in interp_pts:
             #find thrust bracket
-            # bracket check
             th_list = pt[:, self.col_names.index('Fn')]
             FNs_lists.append(th_list)
-        # for each of the FNs_lists, there are 10 values of Fn
-        # we want to interpolate them to get down to one Fn
-
             Fn_low, Fn_high = self._get_bracket(Fn, th_list)
+            #check if at end-points
             if Fn_low == Fn_high: # check if we are out-of-range
                 Fn_low, Fn_high = self._adjust_limits(Fn, sorted(th_list))
+            #interpolate
             x3 = Fn_high
             x1 = Fn_low
             y2 = pt[np.where(pt[:,self.col_names.index('Fn')] == x3)]
             y1 = pt[np.where(pt[:,self.col_names.index('Fn')] == x1)]
             temp_pts.append(self._linear_interp(Fn, x3, x1, y2, y1))
 
-   
    
         # second, interpolate Mach number
         temp_pts2 = [] #temp placeholder
