@@ -258,7 +258,7 @@ except (KeyError, json.JSONDecodeError) as e:
     sys.exit(1)
 
 
-PW2000 = Turbofan_Deck('PW2000_similar_deck.csv')
+HBTF_200kN_class = Turbofan_Deck('PW2000_similar_deck.csv')
 
 
 def engine_worker(jobs_queue, results_queue):
@@ -276,8 +276,8 @@ def engine_worker(jobs_queue, results_queue):
             
             # unpack the arguments
             job_alt, job_MN, job_E1_TLA, job_E2_TLA, job_time = job
-            E1_res = PW2000.run_deck(job_alt, job_MN, job_E1_TLA, job_time)
-            E2_res = PW2000.run_deck(job_alt, job_MN, job_E2_TLA, job_time)
+            E1_res = HBTF_200kN_class.run_deck(job_alt, job_MN, job_E1_TLA, job_time)
+            E2_res = HBTF_200kN_class.run_deck(job_alt, job_MN, job_E2_TLA, job_time)
             results = (E1_res, E2_res)
             
             # The logic for clearing old results remains the same.
@@ -1292,8 +1292,8 @@ if __name__ == "__main__":
         # let's run the reverse deck:
         print(f'running inverse deck with - alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]*N2LBF:.0f} lbf')
 
-        U1[3] = PW2000.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC']
-        U1[4] = PW2000.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
+        U1[3] = HBTF_200kN_class.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC']
+        U1[4] = HBTF_200kN_class.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
         U_man[3] = U1[3]
         U_man[4] = U1[4]
 
