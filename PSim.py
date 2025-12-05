@@ -91,6 +91,9 @@ import multiprocessing as mp
 
 import pygame #joystick interface
 
+# digital elevation model
+import srtm
+
 # ############################################################################
 # Consolidated Constants
 # ############################################################################
@@ -1136,6 +1139,22 @@ def latlonh_int(t_ini:float, latlonh0:np.ndarray, V_NED):
     RK_integrator.set_initial_value(latlonh0, t_ini)
     return RK_integrator
 
+#ground1
+def get_AGL(current_latlon_deg, current_alt_m):
+    '''
+    this function fetches the current AGL n meters from the SRTM database
+    needs lat/lon in degrees
+    '''
+    ground_alt = elevation_data.get_elevation(current_latlon_deg[0], current_latlon_deg[1])
+    if ground_alt is None:
+        ground_alt = 0.0 # Default to Sea Level over oceans
+        print('DEBUG - NO DEM DATA')
+    elif ground_alt < 0:
+        ground_alt = 0.0
+        print('Below ground!')
+
+
+    return current_alt_m - ground_alt
 
 
 # ############################################################################
@@ -1155,6 +1174,7 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
         side_speed_trim: lateral (v) speed [m/s]
         phi_trim: roll angle [rad]
         psi_trim: course angle [rad]
+        h_trim: height above the ground (m) - for ground proximity checks
 
     ****
     method
@@ -1164,7 +1184,6 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
     
     returns:
         cost [float]
-    UPDATED: Now accepts h_trim to pass to RCAM_model for ground proximity checks
     """
 
     X = Z[:9]
@@ -1190,6 +1209,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
                U0=np.array([1, 1, 1, 0.08, 0.08])) -> np.ndarray:
     """
     uses scipy minimize on functional to find trim point
+    h_trim is passed on to check ground proximity
     """
 
     X0[0] = VA_trim
@@ -1205,6 +1225,8 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     
     # Updated call with h_trim
     print(f'initial cost: {trim_functional2(Z0,VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim):.3e}')
+
+    # TODO: ONLY TRIM IF IN AIR
 
     while iter_counter <= MAX_ITER and not converge:
 
@@ -1249,7 +1271,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
 # ############################################################################
 
 #ground1
-def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t=0.0):
+def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t=0.0, height=0):
     """
     this initializes the integrators at a straight and level flight condition
     inputs:
@@ -1258,6 +1280,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
         latlon: initial lat and long (rad)
         altitude: trim altitude (ft)
         psi_t: initial heading (rad)
+        height: height above ground (m) for air/ground purposes
     outputs:
         AC_integrator: aircraft integrator object
         X0: initial states found at trim point
@@ -1274,9 +1297,9 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
     latlonh0 = np.array([latlon[0]*DEG2RAD, latlon[1]*DEG2RAD, alt_m])
 
     # trim model
-    # UPDATED: Added h_trim=alt_m
+    # UPDATED: Added h_trim=height
     res4, res4_status = trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
-                                   phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=alt_m)
+                                   phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=height)
     print()
     print('Trimming',res4_status)
     print()
@@ -1287,8 +1310,8 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000, psi_t
     print()
 
     # initialize integrators
-    # Ensure this matches the Step 3 change (passing alt_m)
-    AC_integrator = ss_integrator(t0, X0, U0, rho_trim, alt_m)
+    # Ensure this matches the Step 3 change (passing height)
+    AC_integrator = ss_integrator(t0, X0, U0, rho_trim, height)
     
     NED0 = NED(X0[:3], X0[6:]) #uvw and phithetapsi
     
@@ -1432,10 +1455,11 @@ if __name__ == "__main__":
     prev_uvw = np.array([0,0,0])
     current_uvw = np.array([0,0,0])
 
-
+    # Initialize the DEM data handler
+    elevation_data = srtm.get_data()
 
     # aircraft initialization (includes trimming)
-    this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG)
+    this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG, height=100)
     U_man = U1.copy()
     e1_thrust = U1[3]
     e2_thrust = U1[4]
@@ -1443,6 +1467,8 @@ if __name__ == "__main__":
     # frame variables
     current_alt_m = INIT_ALT_FT * FT2M # m
     current_latlon_rad = INIT_LATLON_DEG
+    current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
+    
     frame_count = 0
 
     last_frame_time = 0 # holds the time from last 100 frame to calc frame rate at print statement
@@ -1487,7 +1513,7 @@ if __name__ == "__main__":
             
             # integrate 6-DOF
             #ground1
-            this_AC_int.set_f_params(U_man_plus_thrust, current_rho, current_alt_m)
+            this_AC_int.set_f_params(U_man_plus_thrust, current_rho, current_AGL_m)
             this_AC_int.integrate(this_AC_int.t + simdt)
 
             # integrate navigation equations
@@ -1573,7 +1599,7 @@ if __name__ == "__main__":
 
 
                 #ground1
-                this_AC_int.set_f_params(U_man_plus_thrust, current_rho, current_alt_m)
+                this_AC_int.set_f_params(U_man_plus_thrust, current_rho, current_AGL_m)
                 this_AC_int.integrate(this_AC_int.t + dt)
                 current_uvw = this_AC_int.y[0:3]
 
@@ -1641,10 +1667,15 @@ if __name__ == "__main__":
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                     #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
-                    print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N')
+                    #print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m:0.0f}')
+                    print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, alt={current_alt_m:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m:0.0f}')
                     last_frame_time = this_AC_int.t
-                #if (frame_count % 1000) == 0:
-                #    print(eng_vals[0])
+
+                # update height DEBUG FOR NOW
+                if (frame_count % 500) == 0:
+                    current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
+                    print(f'{current_alt_m=}, {current_AGL_m=}, {current_latlon_rad*RAD2DEG=}')
+                    # TODO: MOVE THIS TO ITS OWN PROCESS AND CALCULATE AT MAYBE 100 HZ
                     
                 
 
