@@ -258,6 +258,38 @@ except (KeyError, json.JSONDecodeError) as e:
     sys.exit(1)
 
 
+#ground1
+# ############################################################################
+# STEP 1: Rigid Landing Gear Model Initialization
+# ############################################################################
+# Define contact points relative to the Center of Gravity (CG)
+# Frame: Body Axis (X=Forward, Y=Right, Z=Down)
+# Units: Meters
+# Assumes a typical configuration for an aircraft of RCAM size (~40t)
+
+# Nose Gear: ~10-12m forward of CG, centerline, ~2.5m below CG
+LG_NOSE_POS = np.array([11.0, 0.0, 2.5]) 
+
+# Main Gear Left: ~1-2m behind CG, ~4m left, ~2.5m below CG
+LG_MAIN_L_POS = np.array([-1.8, -4.5, 2.5])
+
+# Main Gear Right: ~1-2m behind CG, ~4m right, ~2.5m below CG
+LG_MAIN_R_POS = np.array([-1.8, 4.5, 2.5])
+
+# Inject into Global Scope for Numba
+globals()['LG_NOSE_POS'] = LG_NOSE_POS
+globals()['LG_MAIN_L_POS'] = LG_MAIN_L_POS
+globals()['LG_MAIN_R_POS'] = LG_MAIN_R_POS
+
+print(f"Landing Gear Model Loaded:")
+print(f"  Nose Rel Pos: {LG_NOSE_POS}")
+print(f"  Main Rel Pos: {LG_MAIN_L_POS}")
+
+
+
+
+
+
 HBTF_200kN_class = Turbofan_Deck('PW2000_similar_deck.csv')
 
 
@@ -652,6 +684,89 @@ def control_sat(U:np.ndarray) -> np.ndarray:
     '''
     return np.clip(U, U_LIMITS_MIN, U_LIMITS_MAX)
 
+
+#ground1
+    
+# ############################################################################
+# STEP 2: Ground Detection Logic
+# ############################################################################
+
+# Define the altitude of the runway (MSL) in meters
+# For this example, we assume 0.0, or set it to match your INIT_ALT_FT if starting on ground
+H_GROUND = 0.0 
+
+@jit(nopython=True)
+def calculate_gear_compression(X:np.ndarray, h_cg:float, ground_alt:float) -> np.ndarray:
+    """
+    Calculates the vertical compression of each landing gear strut.
+    Positive value = Gear is in contact with ground (compressed).
+    Negative value = Gear is in the air.
+    
+    Inputs:
+        X: State vector (needs phi [6] and theta [7])
+        h_cg: Current altitude of the Center of Gravity (meters)
+        ground_alt: Altitude of the ground/runway (meters)
+        
+    Returns:
+        compressions: np.array([nose_comp, main_l_comp, main_r_comp])
+    """
+    phi = X[6]
+    theta = X[7]
+    
+    # Pre-calculate trig functions for the rotation matrix (Body -> NED, Z-axis only)
+    # The 3rd row of the rotation matrix (C_b_n) represents the Z (Down) component
+    # R31 = -sin(theta)
+    # R32 = sin(phi) * cos(theta)
+    # R33 = cos(phi) * cos(theta)
+    
+    sin_theta = np.sin(theta)
+    cos_theta = np.cos(theta)
+    sin_phi = np.sin(phi)
+    cos_phi = np.cos(phi)
+    
+    # Calculate vertical distance from CG to each gear tip (Positive = DOWN)
+    # d_z = R31*x + R32*y + R33*z
+    
+    # Nose Gear
+    dz_nose = -sin_theta * LG_NOSE_POS[0] + \
+               sin_phi * cos_theta * LG_NOSE_POS[1] + \
+               cos_phi * cos_theta * LG_NOSE_POS[2]
+               
+    # Main Left
+    dz_main_l = -sin_theta * LG_MAIN_L_POS[0] + \
+                 sin_phi * cos_theta * LG_MAIN_L_POS[1] + \
+                 cos_phi * cos_theta * LG_MAIN_L_POS[2]
+
+    # Main Right
+    dz_main_r = -sin_theta * LG_MAIN_R_POS[0] + \
+                 sin_phi * cos_theta * LG_MAIN_R_POS[1] + \
+                 cos_phi * cos_theta * LG_MAIN_R_POS[2]
+
+    # Calculate absolute altitude of the gear tips
+    # Altitude = h_cg - vertical_distance_down
+    h_nose_tip = h_cg - dz_nose
+    h_main_l_tip = h_cg - dz_main_l
+    h_main_r_tip = h_cg - dz_main_r
+    
+    # Calculate compression (how far "underground" the tip is)
+    # If compression > 0, we are on the ground.
+    comp_nose = ground_alt - h_nose_tip
+    comp_main_l = ground_alt - h_main_l_tip
+    comp_main_r = ground_alt - h_main_r_tip
+    
+    return np.array([comp_nose, comp_main_l, comp_main_r])
+
+@jit(nopython=True)
+def get_air_ground_state(compressions:np.ndarray) -> int:
+    """
+    Returns 1 (Ground) if ANY gear is compressed, 0 (Air) otherwise.
+    This acts as the requested 'air_ground' variable.
+    """
+    if compressions[0] > 0 or compressions[1] > 0 or compressions[2] > 0:
+        return 1
+    return 0
+
+  
 
 
 # ############################################################################
