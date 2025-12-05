@@ -271,13 +271,13 @@ except (KeyError, json.JSONDecodeError) as e:
 # Assumes a typical configuration for an aircraft of RCAM size (~40t)
 
 # Nose Gear: ~10-12m forward of CG, centerline, ~2.5m below CG
-LG_NOSE_POS = np.array([11.0, 0.0, 2.5]) 
+LG_NOSE_POS = np.array([11.0, 0.0, 8.5]) 
 
 # Main Gear Left: ~1-2m behind CG, ~4m left, ~2.5m below CG
-LG_MAIN_L_POS = np.array([-1.8, -4.5, 2.5])
+LG_MAIN_L_POS = np.array([-1.8, -4.5, 8.5])
 
 # Main Gear Right: ~1-2m behind CG, ~4m right, ~2.5m below CG
-LG_MAIN_R_POS = np.array([-1.8, 4.5, 2.5])
+LG_MAIN_R_POS = np.array([-1.8, 4.5, 8.5])
 
 # Inject into Global Scope for Numba
 globals()['LG_NOSE_POS'] = LG_NOSE_POS
@@ -294,10 +294,10 @@ print(f"  Main Rel Pos: {LG_MAIN_L_POS}")
 # ############################################################################
 # Spring Stiffness (N/m) - How hard the gear pushes back
 # Approx weight 120,000kg * 9.81 / 3 gears / 0.3m desired compression ~= 1.3E6
-LG_SPRING_K = 6.0E6 
+LG_SPRING_K = 1.0E6 #was 6E6
 
 # Damping Coefficient (N/(m/s)) - Prevents bouncing
-LG_DAMP_D = 8.0E5 
+LG_DAMP_D = 8.0E6 #was 8E5 
 
 # Friction Coefficient (Stopping side sliding)
 LG_FRICTION_MU = 0.8
@@ -837,7 +837,7 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float) -> np.ndarray:
             # Opposes lateral/longitudinal motion
             # F_fric = -mu * F_normal * sign(V)
             # (Using a linear scaling for low speeds to avoid numerical jitter)
-            F_x = -0.0 # Brakes not implemented yet
+            F_x = F_normal * LG_FRICTION_MU # Brakes not implemented yet
             F_y = -V_gear[1] * 50000.0 # Side scrub friction (stiffness approach)
             
             F_gear_b = np.array([F_x, F_y, F_normal])
@@ -1560,6 +1560,7 @@ if __name__ == "__main__":
                 # get density, inputs
                 current_throttle = [U_man[3], U_man[4]] # keep track of throttle to zero-out the trim bias
                 current_rho = get_rho(current_alt_m)
+                current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
             
                 U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
                 
