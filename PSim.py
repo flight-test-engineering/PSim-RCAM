@@ -271,13 +271,13 @@ except (KeyError, json.JSONDecodeError) as e:
 # Assumes a typical configuration for an aircraft of RCAM size (~40t)
 
 # Nose Gear: ~10-12m forward of CG, centerline, ~2.5m below CG
-LG_NOSE_POS = np.array([11.0, 0.0, 7.5]) 
+LG_NOSE_POS = np.array([11.0, 0.0, 2.5]) 
 
 # Main Gear Left: ~1-2m behind CG, ~4m left, ~2.5m below CG
-LG_MAIN_L_POS = np.array([-2.5, -4.5, 6.5])
+LG_MAIN_L_POS = np.array([-4.5, -4.7, 3.5])
 
 # Main Gear Right: ~1-2m behind CG, ~4m right, ~2.5m below CG
-LG_MAIN_R_POS = np.array([-2.5, 4.5, 6.5])
+LG_MAIN_R_POS = np.array([-4.5, 4.7, 3.5])
 
 # Inject into Global Scope for Numba
 globals()['LG_NOSE_POS'] = LG_NOSE_POS
@@ -294,10 +294,10 @@ print(f"  Main Rel Pos: {LG_MAIN_L_POS}")
 # ############################################################################
 # Spring Stiffness (N/m) - How hard the gear pushes back
 # Approx weight 120,000kg * 9.81 / 3 gears / 0.3m desired compression ~= 1.3E6
-LG_SPRING_K = 3.0E6 #was 6E6
+LG_SPRING_K = 6.0E6 #was 6E6
 
 # Damping Coefficient (N/(m/s)) - Prevents bouncing
-LG_DAMP_D = 4.0E6 #was 8E5 
+LG_DAMP_D = 8.0E5 #was 8E5 
 
 # Friction Coefficient (Stopping side sliding)
 LG_FRICTION_MU = 0.6
@@ -383,7 +383,7 @@ def network_worker(socks, packet_queue, fg_addresses):
     print("Network thread finished.")
 
 def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
-                header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2'], skip=0):
+                header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dsp'], skip=0):
 
     '''
     Function to plot results.
@@ -888,6 +888,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
             2: rudder (rad)
             3: throttle 1 (%) ->>>E1 THRUST (N)
             4: throttle 2 (%) ->>>E2 THRUST (N)
+            5: spoilers (%)
         rho: density for current altitude (kg/m3)
         h: height above ground (m)
     outputs:
@@ -900,7 +901,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     phi, theta, psi = X[6], X[7], X[8] # rad
 
     # ----------------------- controls ----------------------------------
-    da, de, dr, dt1, dt2 = U[0], U[1], U[2], U[3], U[4]
+    da, de, dr, dt1, dt2, dsp = U[0], U[1], U[2], U[3], U[4], U[5]
     
     #----------------- intermediate variables ---------------------------
     # airspeed
@@ -926,7 +927,8 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
         # this is only available in the newer RCAM document (rev Feb 1997)
     # which is not availble to the public
     # CL - wing + body
-    CL_wb = N * (alpha - ALPHA_L0) if alpha <= ALPHA_SWITCH else A3 * alpha**3 + A2 * alpha**2 + A1 * alpha + A0
+    # adding spoiler to kill lift
+    CL_wb = N * (alpha - ALPHA_L0) * (1 - dsp) if alpha <= ALPHA_SWITCH else (A3 * alpha**3 + A2 * alpha**2 + A1 * alpha + A0) * (1 - dsp)
 
     # CL thrust
     epsilon = DEPSDA * (alpha - ALPHA_L0)
@@ -1206,7 +1208,7 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
 def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, psi_trim=0.0, rho_trim=1.225, 
                h_trim=100.0, # ADDED DEFAULT ARGUMENT
                X0=np.array([85, 0, 0, 0, 0, 0, 0, 0.0, 0]), 
-               U0=np.array([1, 1, 1, 0.08, 0.08])) -> np.ndarray:
+               U0=np.array([1, 1, 1, 0.08, 0.08, 0.0])) -> np.ndarray:
     """
     uses scipy minimize on functional to find trim point
     h_trim is passed on to check ground proximity
@@ -1215,6 +1217,9 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     X0[0] = VA_trim
     X0[6] = phi_trim
     X0[8] = psi_trim
+
+    # DEBUG
+    U0[5] = 0
 
     MAX_ITER = 10 
     iter_counter = 0
@@ -1376,7 +1381,7 @@ if __name__ == "__main__":
         print(f'found {joystick_count} joysticks connected: {this_joy.get_name()}, axes={this_joy.get_numaxes()}')
         OFFLINE = False
 
-    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2']
+    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dsp']
 
     
     # we only start the network and multiprocessing if doing online sim, at least for now
@@ -1460,6 +1465,7 @@ if __name__ == "__main__":
 
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG, height=100)
+    U1[5] = 0 #force spoilers retracted.
     U_man = U1.copy()
     e1_thrust = U1[3]
     e2_thrust = U1[4]
@@ -1582,6 +1588,13 @@ if __name__ == "__main__":
 
                 U_man = control_sat(U_man)
 
+                #ground1
+                # if on ground, don't keep going down
+                if current_AGL_m < 4 : 
+                    current_NED[2] = 0
+                    this_wind[2] = 0
+                    U_man[5] = 0.8 # 80% spoiler
+
                 # check if we have thrust etc from engine deck
                 try:
                     # MULTIPROCESSING: The API is the same, but we import mp.queues for the exception.
@@ -1603,6 +1616,7 @@ if __name__ == "__main__":
                 U_man_plus_thrust[4] = e2_thrust
 
 
+
                 #ground1
                 this_AC_int.set_f_params(U_man_plus_thrust, current_rho, current_AGL_m)
                 this_AC_int.integrate(this_AC_int.t + dt)
@@ -1612,10 +1626,7 @@ if __name__ == "__main__":
                 current_NED = NED(this_AC_int.y[:3], this_AC_int.y[6:])
                 this_wind = add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
 
-                # if on ground, don't keep going down
-                if current_AGL_m < 0.1 : 
-                    current_NED[2] = 0
-                    this_wind[2] = 0
+
 
                 this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon_rad[0], current_alt_m)
                 this_latlonh_int.integrate(this_latlonh_int.t + dt) #in radians and alt in meters
@@ -1680,7 +1691,7 @@ if __name__ == "__main__":
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                     #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
                     #print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m:0.0f}')
-                    print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, alt={current_alt_m:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m:0.0f}')
+                    print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, alt={current_alt_m:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m:0.0f}, U_man[5]={U_man[5]}')
                     last_frame_time = this_AC_int.t
 
                 # update height DEBUG FOR NOW

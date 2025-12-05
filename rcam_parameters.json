@@ -93,6 +93,7 @@
     "elevator": [-25.0, 10.0],
     "rudder": [-30.0, 30.0],
     "throttle1": [0, 57.32],
-    "throttle2": [0, 57.32]
+    "throttle2": [0, 57.32],
+    "spoilers": [0, 57.32]
   }
 }
