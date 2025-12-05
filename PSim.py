@@ -271,13 +271,13 @@ except (KeyError, json.JSONDecodeError) as e:
 # Assumes a typical configuration for an aircraft of RCAM size (~40t)
 
 # Nose Gear: ~10-12m forward of CG, centerline, ~2.5m below CG
-LG_NOSE_POS = np.array([11.0, 0.0, 8.5]) 
+LG_NOSE_POS = np.array([11.0, 0.0, 7.5]) 
 
 # Main Gear Left: ~1-2m behind CG, ~4m left, ~2.5m below CG
-LG_MAIN_L_POS = np.array([-1.8, -4.5, 8.5])
+LG_MAIN_L_POS = np.array([-2.5, -4.5, 6.5])
 
 # Main Gear Right: ~1-2m behind CG, ~4m right, ~2.5m below CG
-LG_MAIN_R_POS = np.array([-1.8, 4.5, 8.5])
+LG_MAIN_R_POS = np.array([-2.5, 4.5, 6.5])
 
 # Inject into Global Scope for Numba
 globals()['LG_NOSE_POS'] = LG_NOSE_POS
@@ -294,13 +294,13 @@ print(f"  Main Rel Pos: {LG_MAIN_L_POS}")
 # ############################################################################
 # Spring Stiffness (N/m) - How hard the gear pushes back
 # Approx weight 120,000kg * 9.81 / 3 gears / 0.3m desired compression ~= 1.3E6
-LG_SPRING_K = 1.0E6 #was 6E6
+LG_SPRING_K = 3.0E6 #was 6E6
 
 # Damping Coefficient (N/(m/s)) - Prevents bouncing
-LG_DAMP_D = 8.0E6 #was 8E5 
+LG_DAMP_D = 4.0E6 #was 8E5 
 
 # Friction Coefficient (Stopping side sliding)
-LG_FRICTION_MU = 0.8
+LG_FRICTION_MU = 0.6
 
   
 
@@ -709,10 +709,10 @@ def control_sat(U:np.ndarray) -> np.ndarray:
 
 # Define the altitude of the runway (MSL) in meters
 # For this example, we assume 0.0, or set it to match your INIT_ALT_FT if starting on ground
-H_GROUND = 0.0 
+H_GROUND = 0.0
 
 @jit(nopython=True)
-def calculate_gear_compression(X:np.ndarray, h_cg:float, ground_alt:float) -> np.ndarray:
+def calculate_gear_compression(X:np.ndarray, h_cg:float, height_AGL:float) -> np.ndarray:
     """
     Calculates the vertical compression of each landing gear strut.
     Positive value = Gear is in contact with ground (compressed).
@@ -721,7 +721,7 @@ def calculate_gear_compression(X:np.ndarray, h_cg:float, ground_alt:float) -> np
     Inputs:
         X: State vector (needs phi [6] and theta [7])
         h_cg: Current altitude of the Center of Gravity (meters)
-        ground_alt: Altitude of the ground/runway (meters)
+        height_AGL: height of the ground/runway (meters)
         
     Returns:
         compressions: np.array([nose_comp, main_l_comp, main_r_comp])
@@ -766,9 +766,9 @@ def calculate_gear_compression(X:np.ndarray, h_cg:float, ground_alt:float) -> np
     
     # Calculate compression (how far "underground" the tip is)
     # If compression > 0, we are on the ground.
-    comp_nose = ground_alt - h_nose_tip
-    comp_main_l = ground_alt - h_main_l_tip
-    comp_main_r = ground_alt - h_main_r_tip
+    comp_nose = height_AGL - h_nose_tip
+    comp_main_l = height_AGL - h_main_l_tip
+    comp_main_r = height_AGL - h_main_r_tip
     
     return np.array([comp_nose, comp_main_l, comp_main_r])
 
@@ -1154,7 +1154,7 @@ def get_AGL(current_latlon_deg, current_alt_m):
         print('Below ground!')
 
 
-    return current_alt_m - ground_alt
+    return current_alt_m - ground_alt - 8 #DEBUG adding 8 meters to correct for cabin 
 
 
 # ############################################################################
@@ -1467,7 +1467,7 @@ if __name__ == "__main__":
     # frame variables
     current_alt_m = INIT_ALT_FT * FT2M # m
     current_latlon_rad = INIT_LATLON_DEG
-    current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
+    current_AGL_m = get_AGL(INIT_LATLON_DEG, current_alt_m)
     
     frame_count = 0
 
@@ -1524,7 +1524,11 @@ if __name__ == "__main__":
             
             # store current state and time vector
             current_latlon_rad = this_latlonh_int.y[0:2] # store lat and long (RAD)
-            current_alt_m = this_latlonh_int.y[2] # store altitude (m)
+            if current_AGL_m != 0 : 
+                current_alt_m = this_latlonh_int.y[2] # store altitude (m)
+            else:
+                this_latlonh_int.y[2] = current_alt_m
+
             data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, sim_U[:,idx])))
             t_vector_collector.append(this_AC_int.t)
 
@@ -1560,7 +1564,7 @@ if __name__ == "__main__":
                 # get density, inputs
                 current_throttle = [U_man[3], U_man[4]] # keep track of throttle to zero-out the trim bias
                 current_rho = get_rho(current_alt_m)
-                current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
+            
             
                 U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
                 
@@ -1607,12 +1611,19 @@ if __name__ == "__main__":
                 # integrate navigation equations
                 current_NED = NED(this_AC_int.y[:3], this_AC_int.y[6:])
                 this_wind = add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
+
+                # if on ground, don't keep going down
+                if current_AGL_m < 0.1 : 
+                    current_NED[2] = 0
+                    this_wind[2] = 0
+
                 this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon_rad[0], current_alt_m)
                 this_latlonh_int.integrate(this_latlonh_int.t + dt) #in radians and alt in meters
                 
                 # store current state and time vector
                 current_latlon_rad = this_latlonh_int.y[0:2] # store lat and long (RAD)
                 current_alt_m = this_latlonh_int.y[2] # store altitude (m)
+                current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
                 data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man)))
                 t_vector_collector.append(this_AC_int.t)
                 
@@ -1674,7 +1685,6 @@ if __name__ == "__main__":
 
                 # update height DEBUG FOR NOW
                 if (frame_count % 500) == 0:
-                    current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
                     print(f'{current_alt_m=}, {current_AGL_m=}, {current_latlon_rad*RAD2DEG=}')
                     # TODO: MOVE THIS TO ITS OWN PROCESS AND CALCULATE AT MAYBE 100 HZ
                     
