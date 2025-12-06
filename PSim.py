@@ -238,6 +238,23 @@ def load_aircraft_parameters(filepath: str) -> dict:
     consts['U_LIMITS_MIN'] = np.array([lim[0] for lim in consts['U_LIMITS_RAD'].values()])
     consts['U_LIMITS_MAX'] = np.array([lim[1] for lim in consts['U_LIMITS_RAD'].values()])
 
+    # Landing Gear
+    # .. Geometry
+    ldg_geom = params['landing_gear_geometry']
+    consts['LG_NOSE_POS'] = np.array(ldg_geom['nose_pos']) # Nose Gear: ~10-12m forward of CG, centerline, ~2.5m below CG
+    consts['LG_MAIN_L_POS'] = np.array(ldg_geom['left_mains_pos']) # Main Gear Left: ~4-5m behind CG, ~4m left, ~3.5m below CG
+    consts['LG_MAIN_R_POS'] = np.array(ldg_geom['right_mains_pos'])
+
+    # .. Dynamics
+    ldg_dynamics = params['landing_gear_dynamics']
+    consts['LG_SPRING_K'] = ldg_dynamics['lg_spring_k']
+    consts['LG_DAMP_COMPRESSION'] = ldg_dynamics['lg_damp_compression']
+    consts['LG_DAMP_REBOUND'] = ldg_dynamics['lg_damp_rebound']
+    consts['LG_SIDE_FRICTION_MU'] = ldg_dynamics['lg_side_friction_mu']
+    consts['LG_FRICTION_MU'] = ldg_dynamics['lg_rolling_friction_mu'] * 10 # DEBUG
+    consts['LG_MU_BRAKE'] = ldg_dynamics['lg_mu_brake']
+
+
     return consts
 
 
@@ -270,39 +287,16 @@ except (KeyError, json.JSONDecodeError) as e:
 # Units: Meters
 # Assumes a typical configuration for an aircraft of RCAM size (~40t)
 
-# Nose Gear: ~10-12m forward of CG, centerline, ~2.5m below CG
-LG_NOSE_POS = np.array([11.0, 0.0, 2.5]) 
 
-# Main Gear Left: ~1-2m behind CG, ~4m left, ~2.5m below CG
-LG_MAIN_L_POS = np.array([-4.5, -4.7, 3.5])
 
-# Main Gear Right: ~1-2m behind CG, ~4m right, ~2.5m below CG
-LG_MAIN_R_POS = np.array([-4.5, 4.7, 3.5])
 
-# Inject into Global Scope for Numba
-globals()['LG_NOSE_POS'] = LG_NOSE_POS
-globals()['LG_MAIN_L_POS'] = LG_MAIN_L_POS
-globals()['LG_MAIN_R_POS'] = LG_MAIN_R_POS
 
 print(f"Landing Gear Model Loaded:")
 print(f"  Nose Rel Pos: {LG_NOSE_POS}")
 print(f"  Main Rel Pos: {LG_MAIN_L_POS}")
 
 #ground1
-# ############################################################################
-# STEP 3: Ground Interaction Constants
-# ############################################################################
-# Spring Stiffness (N/m) - How hard the gear pushes back
-# Approx weight 120,000kg * 9.81 / 3 gears / 0.3m desired compression ~= 1.3E6
-LG_SPRING_K = 4.0E6 #was 6E6
 
-# Damping Coefficient (N/(m/s))
-# We split this into Compression (absorbing impact) and Rebound (preventing bounce)
-LG_DAMP_COMPRESSION = 5.0E5  # Resists going down
-LG_DAMP_REBOUND     = 2.5E6  # STRONGLY Resists coming back up
-
-# Friction Coefficient (Stopping side sliding)
-LG_FRICTION_MU = 0.6
 
   
 
@@ -385,7 +379,7 @@ def network_worker(socks, packet_queue, fg_addresses):
     print("Network thread finished.")
 
 def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
-                header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dsp'], skip=0):
+                header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp'], skip=0):
 
     '''
     Function to plot results.
@@ -910,7 +904,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     phi, theta, psi = X[6], X[7], X[8] # rad
 
     # ----------------------- controls ----------------------------------
-    da, de, dr, dt1, dt2, dsp = U[0], U[1], U[2], U[3], U[4], U[5]
+    da, de, dr, dt1, dt2, dgsp = U[0], U[1], U[2], U[3], U[4], U[5]
     
     #----------------- intermediate variables ---------------------------
     # airspeed
@@ -937,7 +931,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     # which is not availble to the public
     # CL - wing + body
     # adding spoiler to kill lift
-    CL_wb = N * (alpha - ALPHA_L0) * (1 - dsp) if alpha <= ALPHA_SWITCH else (A3 * alpha**3 + A2 * alpha**2 + A1 * alpha + A0) * (1 - dsp)
+    CL_wb = N * (alpha - ALPHA_L0) * (1 - dgsp) if alpha <= ALPHA_SWITCH else (A3 * alpha**3 + A2 * alpha**2 + A1 * alpha + A0) * (1 - dgsp)
 
     # CL thrust
     epsilon = DEPSDA * (alpha - ALPHA_L0)
@@ -1390,7 +1384,7 @@ if __name__ == "__main__":
         print(f'found {joystick_count} joysticks connected: {this_joy.get_name()}, axes={this_joy.get_numaxes()}')
         OFFLINE = False
 
-    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dsp']
+    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp']
 
     
     # we only start the network and multiprocessing if doing online sim, at least for now
