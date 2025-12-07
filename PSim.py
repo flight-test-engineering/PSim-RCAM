@@ -1148,10 +1148,12 @@ if __name__ == "__main__":
     # check if joystick is connected
     joystick_count = pygame.joystick.get_count()
     if joystick_count == 0:
-        print('Will run OFFLINE simulation, no joystick detected')
+        print()
+        print('Will run OFFLINE simulation, no joystick detected!')
         OFFLINE = True
     else:
         this_joy = pygame.joystick.Joystick(0)
+        print()
         print(f'found {joystick_count} joysticks connected: {this_joy.get_name()}, axes={this_joy.get_numaxes()}')
         OFFLINE = False
 
@@ -1235,7 +1237,6 @@ if __name__ == "__main__":
     current_uvw = np.array([0,0,0])
 
 
-
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG)
     U_man = U1.copy()
@@ -1275,14 +1276,16 @@ if __name__ == "__main__":
         t_vector = np.arange(0, SIM_TOTAL_TIME_S, simdt)
         print(f'Offline sim time vector: {t_vector[0]:.2f}s to {t_vector[-1]:.2f}s')
 
-        # create control inputs
+        # create control inputs and set equal to trim
         sim_U = np.zeros((U_man.shape[0],t_vector.shape[0]))
         for i in range(sim_U.shape[0]):
             sim_U[i,:] = sim_U[i,:] + U_man[i]
         
+        # all doublets have zero as starting amplitude
         pitch_doublet = get_doublet(t_vector,t=5, duration=2, amplitude=0.2)
         roll_doublet = get_doublet(t_vector,t=15, duration=2, amplitude=0.2)
         yaw_doublet = get_doublet(t_vector,t=25, duration=4, amplitude=0.2)
+        # therefore we sum on top of the trim
         sim_U[0,:] += roll_doublet
         sim_U[1,:] += pitch_doublet
         sim_U[2,:] += yaw_doublet
