@@ -1126,9 +1126,7 @@ if __name__ == "__main__":
     SIM_TOTAL_TIME_S = 1 * 60 # (s) total simulation time
     SIM_LOOP_HZ = 400 # (Hz) simulation loop frame rate throttling
     FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FG
-    #ENGINE_TRIGGER_S = 0.1 # (seconds)
-    DECK_LOOP_HZ = 10
-    PRINT_HZ = 1.0 # TODO: NEEDS TO BE IMPLEMENTED
+    DECK_LOOP_HZ = 10 # (Hz) frame rate to calculate engine deck
 
 
 ###########################################################################
