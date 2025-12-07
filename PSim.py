@@ -1126,8 +1126,9 @@ if __name__ == "__main__":
     SIM_TOTAL_TIME_S = 1 * 60 # (s) total simulation time
     SIM_LOOP_HZ = 400 # (Hz) simulation loop frame rate throttling
     FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FG
-    ENGINE_TRIGGER_S = 0.1
-    PRINT_TRIGGER_S = 1.0 # trigger printing for awareness
+    #ENGINE_TRIGGER_S = 0.1 # (seconds)
+    DECK_LOOP_HZ = 10
+    PRINT_HZ = 1.0 # TODO: NEEDS TO BE IMPLEMENTED
 
 
 ###########################################################################
@@ -1261,6 +1262,8 @@ if __name__ == "__main__":
 
     fgdt = 1.0 / FG_OUTPUT_LOOP_HZ # (s) fg frame period
     simdt = 1 / SIM_LOOP_HZ # (s) desired simulation time step
+    deckdt = 1 / DECK_LOOP_HZ
+    printdt = 1 / PRINT_HZ
     
     sim_time_adder, fg_time_adder = 0, 0 # counts the time between integration steps to trigger next simulation frame and FG dispatch
     eng_time_adder = 0 # loop to calculate engine
@@ -1489,7 +1492,7 @@ if __name__ == "__main__":
                 send_frame_trigger = True
 
             # check/set engine calc trigger
-            if eng_time_adder >= ENGINE_TRIGGER_S:
+            if eng_time_adder >= deckdt:
                 eng_time_adder = 0
                 calc_eng_trigger = True
 
