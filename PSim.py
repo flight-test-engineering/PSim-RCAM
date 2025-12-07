@@ -1239,6 +1239,11 @@ if __name__ == "__main__":
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG)
     U_man = U1.copy()
+
+    # Initialize Actual Surface Positions
+    # We start with actual = commanded (assuming stable trim)
+    U_actual = U1.copy() 
+
     e1_thrust = U1[3]
     e2_thrust = U1[4]
 
@@ -1362,17 +1367,32 @@ if __name__ == "__main__":
                     #print(f"[Main Process] Updated engine results")
                 except mp.queues.Empty:
                     pass
+                
+                # -------------------------------------------------------
+                # NEW: ACTUATOR UPDATE
+                # -------------------------------------------------------
+                # We calculate the time step for this specific loop iteration
+                # If this is the first step, prev_dt might be 0, so guard against it
+                actuator_dt = dt if dt > 0 else simdt 
+                
+                # Update the physical position of the surfaces
+                U_actual = update_actuators(U_man, U_actual, actuator_dt, ACT_TAU)
 
-                # set current integration step commands, density and integrate aircraft states
+                # -------------------------------------------------------
+                # PREPARE FOR INTEGRATOR
+                # -------------------------------------------------------
+                
                 prev_uvw = current_uvw
-                #change U_man to instead of having TLA, pass thrust
-                U_man_plus_thrust = U_man.copy()
+                
+                # Instead of U_man, we now use U_actual for the physics
+                U_physics_input = U_actual.copy()
 
+                # Update thrust values (Engine deck results)
+                U_physics_input[3] = e1_thrust
+                U_physics_input[4] = e2_thrust
 
-                U_man_plus_thrust[3] = e1_thrust
-                U_man_plus_thrust[4] = e2_thrust
-
-                this_AC_int.set_f_params(U_man_plus_thrust, current_rho)
+                # Pass U_physics_input to the integrator
+                this_AC_int.set_f_params(U_physics_input, current_rho)
                 this_AC_int.integrate(this_AC_int.t + dt)
                 current_uvw = this_AC_int.y[0:3]
 
@@ -1404,7 +1424,7 @@ if __name__ == "__main__":
 
                     # set values and send frames
                     set_FDM(my_fgFDM, this_AC_int.y, 
-                            control_norm(U_man), 
+                            control_norm(U_actual), 
                             current_latlon_rad, 
                             current_alt_m,
                             body_accels)
