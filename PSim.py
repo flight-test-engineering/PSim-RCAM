@@ -235,6 +235,10 @@ def load_aircraft_parameters(filepath: str) -> dict:
     consts['U_LIMITS_MIN'] = np.array([lim[0] for lim in consts['U_LIMITS_RAD'].values()])
     consts['U_LIMITS_MAX'] = np.array([lim[1] for lim in consts['U_LIMITS_RAD'].values()])
 
+    # Actuator Dynamics
+    act_dyn = params['actuator_dynamics']
+    consts['ACT_TAU'] = np.array([act_dyn["tau_aileron"], act_dyn["tau_elevator"], act_dyn["tau_rudder"]])
+
     return consts
 
 

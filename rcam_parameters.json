@@ -94,5 +94,10 @@
     "rudder": [-30.0, 30.0],
     "throttle1": [0, 57.32],
     "throttle2": [0, 57.32]
+  },
+  "actuator_dynamics": {
+    "tau_aileron": 0.15,
+    "tau_elevator": 0.15,
+    "tau_rudder": 0.30
   }
 }
