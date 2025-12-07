@@ -656,7 +656,7 @@ def control_sat(U:np.ndarray) -> np.ndarray:
     '''
     return np.clip(U, U_LIMITS_MIN, U_LIMITS_MAX)
 
-#@jit(nopython=True)
+@jit(nopython=True)
 def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.ndarray) -> np.ndarray:
     """
     Simulates first order lag for control surfaces.
