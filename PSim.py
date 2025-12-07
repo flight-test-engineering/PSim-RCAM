@@ -1333,7 +1333,7 @@ if __name__ == "__main__":
         U_man[3] = U1[3]
         U_man[4] = U1[4]
 
-        print(f'this is the inverse deck response: {U1[3]:.4f} % power')
+        print(f'this is the inverse deck response: E1:{U1[3]:.4f}/E2:{U1[4]:.4f} % power')
         print()
 
         while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
@@ -1349,6 +1349,9 @@ if __name__ == "__main__":
                 current_rho = get_rho(current_alt_m)
             
                 U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
+
+                # saturate commands
+                U_man = control_sat(U_man)
                 
                 # trim bias is always positive, so we washout if throttles move back
                 delta_throttle_1 = U_man[3] - current_throttle[0]
@@ -1362,9 +1365,7 @@ if __name__ == "__main__":
                         if U1[3] < 0 : U1[3] = 0
                         if U1[4] < 0 : U1[4] = 0
 
-                U_man = control_sat(U_man)
-
-                # check if we have thrust etc from engine deck
+                                # check if we have thrust etc from engine deck
                 try:
                     # MULTIPROCESSING: The API is the same, but we import mp.queues for the exception.
                     eng_vals = results_queue.get(block=False) # block=False is equivalent to get_nowait()
@@ -1390,16 +1391,13 @@ if __name__ == "__main__":
                 # -------------------------------------------------------
                 
                 prev_uvw = current_uvw
-                
-                # Instead of U_man, we now use U_actual for the physics
-                U_physics_input = U_actual.copy()
 
                 # Update thrust values (Engine deck results)
-                U_physics_input[3] = e1_thrust
-                U_physics_input[4] = e2_thrust
+                U_actual[3] = e1_thrust
+                U_actual[4] = e2_thrust
 
-                # Pass U_physics_input to the integrator
-                this_AC_int.set_f_params(U_physics_input, current_rho)
+                # Pass U_actual to the integrator
+                this_AC_int.set_f_params(U_actual, current_rho)
                 this_AC_int.integrate(this_AC_int.t + dt)
                 current_uvw = this_AC_int.y[0:3]
 
