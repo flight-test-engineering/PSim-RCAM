@@ -656,7 +656,27 @@ def control_sat(U:np.ndarray) -> np.ndarray:
     '''
     return np.clip(U, U_LIMITS_MIN, U_LIMITS_MAX)
 
+@jit(nopython=True)
+def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.ndarray) -> np.ndarray:
+    """
+    Simulates first order lag for control surfaces.
+    y_dot = (u_cmd - y_current) / tau
+    y_new = y_current + y_dot * dt
+    
+    Only applies to indices 0, 1, 2 (Ail, Elev, Rud).
+    Throttles (3, 4) are passed through unchanged (handled by engine deck).
+    """
+    U_new = np.zeros_like(U_actual)
 
+    # 1. Aerodynamic Surfaces (First Order Lag)
+    rate = (U_cmd[:3] - U_actual[:3]) / tau 
+    U_new[:3] = U_actual[:3] + rate * dt
+             
+    # 2. Engines (Pass through - The engine deck handles spool up dynamics)
+    U_new[3:] = U_cmd[3:]
+
+    
+    return U_new
 
 # ############################################################################
 # RCAM flight dynamics model
