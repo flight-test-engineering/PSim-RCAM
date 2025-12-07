@@ -656,7 +656,7 @@ def control_sat(U:np.ndarray) -> np.ndarray:
     '''
     return np.clip(U, U_LIMITS_MIN, U_LIMITS_MAX)
 
-@jit(nopython=True)
+#@jit(nopython=True)
 def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.ndarray) -> np.ndarray:
     """
     Simulates first order lag for control surfaces.
@@ -1276,24 +1276,28 @@ if __name__ == "__main__":
         print(f'Offline sim time vector: {t_vector[0]:.2f}s to {t_vector[-1]:.2f}s')
 
         # create control inputs
-        sim_U = np.ones((U_man.shape[0],t_vector.shape[0]))
+        sim_U = np.zeros((U_man.shape[0],t_vector.shape[0]))
         for i in range(sim_U.shape[0]):
-            sim_U[i,:] = sim_U[i,:] * U_man[i]
-        '''
+            sim_U[i,:] = sim_U[i,:] + U_man[i]
+        
         pitch_doublet = get_doublet(t_vector,t=5, duration=2, amplitude=0.2)
         roll_doublet = get_doublet(t_vector,t=15, duration=2, amplitude=0.2)
         yaw_doublet = get_doublet(t_vector,t=25, duration=4, amplitude=0.2)
-        sim_U[0,:] = roll_doublet
-        sim_U[1,:] = pitch_doublet
-        sim_U[2,:] = yaw_doublet
-        '''
+        sim_U[0,:] += roll_doublet
+        sim_U[1,:] += pitch_doublet
+        sim_U[2,:] += yaw_doublet
         
+        
+
         # single step integrate through each time step
         for idx, t in enumerate(t_vector):
             current_rho = get_rho(current_alt_m)
+
+            # add actuator dynamics to control inputs:
+            U_actual = update_actuators(sim_U[:,idx], U_actual, simdt, ACT_TAU)
             
             # integrate 6-DOF
-            this_AC_int.set_f_params(sim_U[:,idx], current_rho)
+            this_AC_int.set_f_params(U_actual, current_rho)
             this_AC_int.integrate(this_AC_int.t + simdt)
 
             # integrate navigation equations
@@ -1305,7 +1309,7 @@ if __name__ == "__main__":
             # store current state and time vector
             current_latlon_rad = this_latlonh_int.y[0:2] # store lat and long (RAD)
             current_alt_m = this_latlonh_int.y[2] # store altitude (m)
-            data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, sim_U[:,idx])))
+            data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_actual)))
             t_vector_collector.append(this_AC_int.t)
 
         print(f'Enf of simulation; {len(t_vector_collector)} time steps!')
