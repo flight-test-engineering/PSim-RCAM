@@ -931,7 +931,6 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     # ----------------------- controls ----------------------------------
     da, de, dr, dt1, dt2, dgsp = U[0], U[1], U[2], U[3], U[4], U[5]
 
-    
     #----------------- intermediate variables ---------------------------
     # airspeed
     Va = np.sqrt(u**2 + v**2 + w**2) # m/s
@@ -1219,7 +1218,7 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
 
     X = Z[:9]
     U = Z[9:]
-    U = np.append(U, 0)
+    U = np.append(U, 0) # need to force zero into ground spoilers control to be able to call RCAM
 
     
     # PASS h_trim to the model here:
@@ -1237,7 +1236,7 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
 
 #ground1
 def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, psi_trim=0.0, rho_trim=1.225, 
-               h_trim=100.0, # ADDED DEFAULT ARGUMENT
+               h_trim=100.0, 
                X0=np.array([85, 0, 0, 0, 0, 0, 0, 0.0, 0]), 
                U0=np.array([1, 1, 1, 0.08, 0.08, 0.0])) -> np.ndarray:
     """
@@ -1249,17 +1248,12 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     X0[6] = phi_trim
     X0[8] = psi_trim
 
-    # DEBUG
-    U0[5] = 0
-
     MAX_ITER = 10 
     iter_counter = 0
     epsilon = 1E-9
     converge = False
 
-    Z0 = np.concatenate((X0, U0[:-1]))
-    
-    # Updated call with h_trim
+    Z0 = np.concatenate((X0, U0[:-1])) # removing ground spoilers from trim variables
     print(f'initial cost: {trim_functional2(Z0,VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim):.3e}')
 
     # TODO: ONLY TRIM IF IN AIR
@@ -1298,7 +1292,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
         print('FAILED TO CONVERGE')
 
 
-    return result.x, result.message
+    return result.x, result.message #remember that the control vector is missing ground spoilers now
 
 
 
@@ -1340,7 +1334,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     print('Trimming',res4_status)
     print()
     X0 = res4[:9]
-    U0 = np.append(res4[9:], 0)
+    U0 = np.append(res4[9:], 0) # add back ground spoiler to control vector
     print(f'initial states: {X0}')
     print(f'initial inputs: {U0}')
     print()
