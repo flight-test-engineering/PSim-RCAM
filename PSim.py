@@ -721,7 +721,7 @@ def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.nda
 H_GROUND = 0.0
 
 @jit(nopython=True)
-def calculate_gear_compression(X:np.ndarray, h_cg:float, rwy_alt:float) -> np.ndarray:
+def calculate_gear_compression(X:np.ndarray, h_cg:float) -> np.ndarray:
     """
     Calculates the vertical compression of each landing gear strut.
     Positive value = Gear is in contact with ground (compressed).
@@ -775,9 +775,9 @@ def calculate_gear_compression(X:np.ndarray, h_cg:float, rwy_alt:float) -> np.nd
     
     # Calculate compression (how far "underground" the tip is)
     # If compression > 0, we are on the ground.
-    comp_nose = rwy_alt - h_nose_tip
-    comp_main_l = rwy_alt - h_main_l_tip
-    comp_main_r = rwy_alt - h_main_r_tip
+    comp_nose = -h_nose_tip
+    comp_main_l = -h_main_l_tip
+    comp_main_r = -h_main_r_tip
 
     # Clip so that the gear does not deflect more than its full course
     clipped_compression = np.clip(np.array([comp_nose, comp_main_l, comp_main_r]),
@@ -788,14 +788,15 @@ def calculate_gear_compression(X:np.ndarray, h_cg:float, rwy_alt:float) -> np.nd
     return np.array([comp_nose, comp_main_l, comp_main_r])
 
 @jit(nopython=True)
-def get_air_ground_state(compressions:np.ndarray) -> int:
+def get_air_ground_state(compressions:np.ndarray) -> bool:
     """
-    Returns 1 (Ground) if ANY gear is compressed, 0 (Air) otherwise.
+    Returns True (Ground) if ANY gear is compressed, False (Air) otherwise.
     This acts as the requested 'air_ground' variable.
     """
     if compressions[0] > 0 or compressions[1] > 0 or compressions[2] > 0:
-        return 1
-    return 0
+        return True
+    else:
+        return False
 
 #ground1
 @jit(nopython=True)
@@ -810,7 +811,7 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float) -> np.ndarray:
     # Get current compressions
     # We assume ground is at 0.0m for now. 
     # In a full sim, pass the runway elevation here.
-    compressions = calculate_gear_compression(X, h_cg, 0.0)
+    compressions = calculate_gear_compression(X, h_cg)
 
     
     # State extractions for velocity calc
@@ -1490,7 +1491,6 @@ if __name__ == "__main__":
 
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG, height=100.0)
-    U1[5] = 0 #force spoilers retracted.
     U_man = U1.copy()
 
     # Initialize Actual Surface Positions
@@ -1504,6 +1504,15 @@ if __name__ == "__main__":
     current_alt_m = INIT_ALT_FT * FT2M # m
     current_latlon_rad = INIT_LATLON_DEG
     current_AGL_m = get_AGL(INIT_LATLON_DEG, current_alt_m)
+
+    # set air-ground status
+    if current_alt_m > current_AGL_m:
+        on_ground = False
+    else:
+        on_ground = True
+    
+    # arm ground spoilers for landing
+    gnd_spoilers_armed = True
     
     frame_count = 0
 
@@ -1639,8 +1648,8 @@ if __name__ == "__main__":
                 # DEBUG - the value "4" is to adjust for grar height
                 # NEED TO MAKE IT A LATCH - IF GROUND THEN OPEN
                 # need to make it a variable (aircraft gear height)
-                if current_AGL_m < 4 : 
-                    current_NED[2] = 0
+                if on_ground : 
+                    #current_NED[2] = 0
                     this_wind[2] = 0
                     U_man[5] = 0.8 # 80% spoiler
 
@@ -1677,9 +1686,6 @@ if __name__ == "__main__":
                 U_actual[3] = e1_thrust
                 U_actual[4] = e2_thrust
 
-
-
-
                 #ground1
                 this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m)
                 this_AC_int.integrate(this_AC_int.t + dt)
@@ -1688,8 +1694,6 @@ if __name__ == "__main__":
                 # integrate navigation equations
                 current_NED = NED(this_AC_int.y[:3], this_AC_int.y[6:])
                 this_wind = add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
-
-
 
                 this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon_rad[0], current_alt_m)
                 this_latlonh_int.integrate(this_latlonh_int.t + dt) #in radians and alt in meters
@@ -1730,6 +1734,11 @@ if __name__ == "__main__":
                         pass
                     send_frame_trigger = False
 
+                    #CODE OPTIMIZATION
+                    # using this loop to check air-ground as well
+                    # we do not need to check at full sim speed
+                    on_ground = on_ground or (get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m)) and gnd_spoilers_armed)
+
                 if calc_eng_trigger:
                     if jobs_queue.empty():
                         #print(f"[Main Process] Triggering new engine calculation...{VA(current_uvw)*MS2KT:.2f}, {current_alt_m*M2FT:.1f}")
@@ -1754,14 +1763,9 @@ if __name__ == "__main__":
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                     #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
                     #print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m:0.0f}')
-                    print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, U_man[5]={U_man[5]}')
+                    print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, U_man[5]={U_man[5]}, {on_ground=}')
                     last_frame_time = this_AC_int.t
-
-                # update height DEBUG FOR NOW
-                if (frame_count % 500) == 0:
-                    print(f'{current_alt_m=}, {current_AGL_m=}, {current_latlon_rad*RAD2DEG=}')
-                    # TODO: MOVE THIS TO ITS OWN PROCESS AND CALCULATE AT MAYBE 100 HZ
-                    
+                  
                 
 
                 # reset integrator timestep counter
