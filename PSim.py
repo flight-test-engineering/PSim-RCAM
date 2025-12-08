@@ -290,20 +290,9 @@ except (KeyError, json.JSONDecodeError) as e:
 # Units: Meters
 # Assumes a typical configuration for an aircraft of RCAM size (~40t)
 
-
-
-
-
 print(f"Landing Gear Model Loaded:")
 print(f"  Nose Rel Pos: {LG_NOSE_POS}")
 print(f"  Main Rel Pos: {LG_MAIN_L_POS}")
-
-#ground1
-
-
-  
-
-
 
 
 HBTF_200kN_class = Turbofan_Deck('PW2000_similar_deck.csv')
@@ -732,7 +721,7 @@ def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.nda
 H_GROUND = 0.0
 
 @jit(nopython=True)
-def calculate_gear_compression(X:np.ndarray, h_cg:float, height_AGL:float) -> np.ndarray:
+def calculate_gear_compression(X:np.ndarray, h_cg:float, rwy_alt:float) -> np.ndarray:
     """
     Calculates the vertical compression of each landing gear strut.
     Positive value = Gear is in contact with ground (compressed).
@@ -741,7 +730,7 @@ def calculate_gear_compression(X:np.ndarray, h_cg:float, height_AGL:float) -> np
     Inputs:
         X: State vector (needs phi [6] and theta [7])
         h_cg: Current altitude of the Center of Gravity (meters)
-        height_AGL: height of the ground/runway (meters)
+        rwy_alt: height of the ground/runway (meters)
         
     Returns:
         compressions: np.array([nose_comp, main_l_comp, main_r_comp])
@@ -786,10 +775,16 @@ def calculate_gear_compression(X:np.ndarray, h_cg:float, height_AGL:float) -> np
     
     # Calculate compression (how far "underground" the tip is)
     # If compression > 0, we are on the ground.
-    comp_nose = height_AGL - h_nose_tip
-    comp_main_l = height_AGL - h_main_l_tip
-    comp_main_r = height_AGL - h_main_r_tip
+    comp_nose = rwy_alt - h_nose_tip
+    comp_main_l = rwy_alt - h_main_l_tip
+    comp_main_r = rwy_alt - h_main_r_tip
+
+    # Clip so that the gear does not deflect more than its full course
+    clipped_compression = np.clip(np.array([comp_nose, comp_main_l, comp_main_r]),
+                                     np.array([0.0, 0.0, 0.0]),
+                                     np.array([LG_NOSE_POS[2], LG_MAIN_L_POS[2], LG_MAIN_R_POS[2]]))
     
+    #return clipped_compression
     return np.array([comp_nose, comp_main_l, comp_main_r])
 
 @jit(nopython=True)
@@ -807,13 +802,16 @@ def get_air_ground_state(compressions:np.ndarray) -> int:
 def calculate_ground_forces(X:np.ndarray, h_cg:float) -> np.ndarray:
     """
     Calculates total Forces and Moments (Body Frame) from all 3 landing gears.
+    h_cg is height AGL (RADALT) in (m)
     Returns: 6-element array [Fx, Fy, Fz, Mx, My, Mz]
+
     """
     
     # Get current compressions
     # We assume ground is at 0.0m for now. 
     # In a full sim, pass the runway elevation here.
     compressions = calculate_gear_compression(X, h_cg, 0.0)
+
     
     # State extractions for velocity calc
     u, v, w = X[0], X[1], X[2]
@@ -1218,7 +1216,7 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
 
     X = Z[:9]
     U = Z[9:]
-    U = np.append(U, 0) # need to force zero into ground spoilers control to be able to call RCAM
+    U = np.append(U, 0.0) # need to force zero into ground spoilers control to be able to call RCAM
 
     
     # PASS h_trim to the model here:
@@ -1254,6 +1252,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     converge = False
 
     Z0 = np.concatenate((X0, U0[:-1])) # removing ground spoilers from trim variables
+
     print(f'initial cost: {trim_functional2(Z0,VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim):.3e}')
 
     # TODO: ONLY TRIM IF IN AIR
@@ -1638,6 +1637,7 @@ if __name__ == "__main__":
                 #ground1
                 # if on ground, don't keep going down
                 # DEBUG - the value "4" is to adjust for grar height
+                # NEED TO MAKE IT A LATCH - IF GROUND THEN OPEN
                 # need to make it a variable (aircraft gear height)
                 if current_AGL_m < 4 : 
                     current_NED[2] = 0
