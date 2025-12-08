@@ -254,6 +254,9 @@ def load_aircraft_parameters(filepath: str) -> dict:
     consts['LG_FRICTION_MU'] = ldg_dynamics['lg_rolling_friction_mu'] * 10 # DEBUG
     consts['LG_MU_BRAKE'] = ldg_dynamics['lg_mu_brake']
 
+    # Actuator Dynamics
+    act_dyn = params['actuator_dynamics']
+    consts['ACT_TAU'] = np.array([act_dyn["tau_aileron"], act_dyn["tau_elevator"], act_dyn["tau_rudder"]])
 
     return consts
 
@@ -697,6 +700,27 @@ def control_sat(U:np.ndarray) -> np.ndarray:
     '''
     return np.clip(U, U_LIMITS_MIN, U_LIMITS_MAX)
 
+@jit(nopython=True)
+def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.ndarray) -> np.ndarray:
+    """
+    Simulates first order lag for control surfaces.
+    y_dot = (u_cmd - y_current) / tau
+    y_new = y_current + y_dot * dt
+    
+    Only applies to indices 0, 1, 2 (Ail, Elev, Rud).
+    Throttles (3, 4) are passed through unchanged (handled by engine deck).
+    """
+    U_new = np.zeros_like(U_actual)
+
+    # 1. Aerodynamic Surfaces (First Order Lag)
+    rate = (U_cmd[:3] - U_actual[:3]) / tau 
+    U_new[:3] = U_actual[:3] + rate * dt
+             
+    # 2. Engines (Pass through - The engine deck handles spool up dynamics)
+    U_new[3:] = U_cmd[3:]
+
+    
+    return U_new
 
 #ground1
 # ############################################################################
@@ -856,6 +880,7 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float) -> np.ndarray:
     return np.concatenate((total_F, total_M))
 
 
+
 # ############################################################################
 # RCAM flight dynamics model
 # ############################################################################
@@ -905,6 +930,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
 
     # ----------------------- controls ----------------------------------
     da, de, dr, dt1, dt2, dgsp = U[0], U[1], U[2], U[3], U[4], U[5]
+
     
     #----------------- intermediate variables ---------------------------
     # airspeed
@@ -1193,6 +1219,8 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
 
     X = Z[:9]
     U = Z[9:]
+    U = np.append(U, 0)
+
     
     # PASS h_trim to the model here:
     X_dot = RCAM_model(X, U, rho_trim, h_trim)
@@ -1229,7 +1257,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     epsilon = 1E-9
     converge = False
 
-    Z0 = np.concatenate((X0, U0))
+    Z0 = np.concatenate((X0, U0[:-1]))
     
     # Updated call with h_trim
     print(f'initial cost: {trim_functional2(Z0,VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim):.3e}')
@@ -1312,7 +1340,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     print('Trimming',res4_status)
     print()
     X0 = res4[:9]
-    U0 = res4[9:]
+    U0 = np.append(res4[9:], 0)
     print(f'initial states: {X0}')
     print(f'initial inputs: {U0}')
     print()
@@ -1355,8 +1383,7 @@ if __name__ == "__main__":
     SIM_TOTAL_TIME_S = 1 * 60 # (s) total simulation time
     SIM_LOOP_HZ = 400 # (Hz) simulation loop frame rate throttling
     FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FG
-    ENGINE_TRIGGER_S = 0.1
-    PRINT_TRIGGER_S = 1.0 # trigger printing for awareness
+    DECK_LOOP_HZ = 10 # (Hz) frame rate to calculate engine deck
 
 
 ###########################################################################
@@ -1377,10 +1404,12 @@ if __name__ == "__main__":
     # check if joystick is connected
     joystick_count = pygame.joystick.get_count()
     if joystick_count == 0:
-        print('Will run OFFLINE simulation, no joystick detected')
+        print()
+        print('Will run OFFLINE simulation, no joystick detected!')
         OFFLINE = True
     else:
         this_joy = pygame.joystick.Joystick(0)
+        print()
         print(f'found {joystick_count} joysticks connected: {this_joy.get_name()}, axes={this_joy.get_numaxes()}')
         OFFLINE = False
 
@@ -1470,6 +1499,11 @@ if __name__ == "__main__":
     this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG, height=100.0)
     U1[5] = 0 #force spoilers retracted.
     U_man = U1.copy()
+
+    # Initialize Actual Surface Positions
+    # We start with actual = commanded (assuming stable trim)
+    U_actual = U1.copy() 
+
     e1_thrust = U1[3]
     e2_thrust = U1[4]
 
@@ -1488,6 +1522,8 @@ if __name__ == "__main__":
 
     fgdt = 1.0 / FG_OUTPUT_LOOP_HZ # (s) fg frame period
     simdt = 1 / SIM_LOOP_HZ # (s) desired simulation time step
+    deckdt = 1 / DECK_LOOP_HZ
+
     
     sim_time_adder, fg_time_adder = 0, 0 # counts the time between integration steps to trigger next simulation frame and FG dispatch
     eng_time_adder = 0 # loop to calculate engine
@@ -1503,26 +1539,33 @@ if __name__ == "__main__":
         t_vector = np.arange(0, SIM_TOTAL_TIME_S, simdt)
         print(f'Offline sim time vector: {t_vector[0]:.2f}s to {t_vector[-1]:.2f}s')
 
-        # create control inputs
-        sim_U = np.ones((U_man.shape[0],t_vector.shape[0]))
+        # create control inputs and set equal to trim
+        sim_U = np.zeros((U_man.shape[0],t_vector.shape[0]))
         for i in range(sim_U.shape[0]):
-            sim_U[i,:] = sim_U[i,:] * U_man[i]
-        '''
+            sim_U[i,:] = sim_U[i,:] + U_man[i]
+        
+        # all doublets have zero as starting amplitude
         pitch_doublet = get_doublet(t_vector,t=5, duration=2, amplitude=0.2)
         roll_doublet = get_doublet(t_vector,t=15, duration=2, amplitude=0.2)
         yaw_doublet = get_doublet(t_vector,t=25, duration=4, amplitude=0.2)
-        sim_U[0,:] = roll_doublet
-        sim_U[1,:] = pitch_doublet
-        sim_U[2,:] = yaw_doublet
-        '''
+        # therefore we sum on top of the trim
+        sim_U[0,:] += roll_doublet
+        sim_U[1,:] += pitch_doublet
+        sim_U[2,:] += yaw_doublet
         
+        
+
         # single step integrate through each time step
         for idx, t in enumerate(t_vector):
             current_rho = get_rho(current_alt_m)
+
+            # add actuator dynamics to control inputs:
+            U_actual = update_actuators(sim_U[:,idx], U_actual, simdt, ACT_TAU)
             
             # integrate 6-DOF
+            
             #ground1
-            this_AC_int.set_f_params(U_man_plus_thrust, current_rho, current_AGL_m)
+            this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m)
             this_AC_int.integrate(this_AC_int.t + simdt)
 
             # integrate navigation equations
@@ -1533,12 +1576,15 @@ if __name__ == "__main__":
             
             # store current state and time vector
             current_latlon_rad = this_latlonh_int.y[0:2] # store lat and long (RAD)
+            
             if current_AGL_m != 0 : 
                 current_alt_m = this_latlonh_int.y[2] # store altitude (m)
             else:
                 this_latlonh_int.y[2] = current_alt_m
 
-            data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, sim_U[:,idx])))
+            data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_actual)))
+            current_alt_m = this_latlonh_int.y[2] # store altitude (m)
+            
             t_vector_collector.append(this_AC_int.t)
 
         print(f'Enf of simulation; {len(t_vector_collector)} time steps!')
@@ -1559,7 +1605,7 @@ if __name__ == "__main__":
         U_man[3] = U1[3]
         U_man[4] = U1[4]
 
-        print(f'this is the inverse deck response: {U1[3]:.4f} % power')
+        print(f'this is the inverse deck response: E1:{U1[3]:.4f}/E2:{U1[4]:.4f} % power')
         print()
 
         while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
@@ -1576,6 +1622,9 @@ if __name__ == "__main__":
             
             
                 U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
+
+                # saturate commands
+                U_man = control_sat(U_man)
                 
                 # trim bias is always positive, so we washout if throttles move back
                 delta_throttle_1 = U_man[3] - current_throttle[0]
@@ -1589,6 +1638,7 @@ if __name__ == "__main__":
                         if U1[3] < 0 : U1[3] = 0
                         if U1[4] < 0 : U1[4] = 0
 
+
                 U_man = control_sat(U_man)
 
                 #ground1
@@ -1601,6 +1651,8 @@ if __name__ == "__main__":
                     U_man[5] = 0.8 # 80% spoiler
 
                 # check if we have thrust etc from engine deck
+
+
                 try:
                     # MULTIPROCESSING: The API is the same, but we import mp.queues for the exception.
                     eng_vals = results_queue.get(block=False) # block=False is equivalent to get_nowait()
@@ -1610,20 +1662,32 @@ if __name__ == "__main__":
                     #print(f"[Main Process] Updated engine results")
                 except mp.queues.Empty:
                     pass
+                
+                # -------------------------------------------------------
+                # NEW: ACTUATOR UPDATE
+                # -------------------------------------------------------
+                # We calculate the time step for this specific loop iteration
+                # If this is the first step, prev_dt might be 0, so guard against it
+                actuator_dt = dt if dt > 0 else simdt 
+                
+                # Update the physical position of the surfaces
+                U_actual = update_actuators(U_man, U_actual, actuator_dt, ACT_TAU)
 
-                # set current integration step commands, density and integrate aircraft states
+                # -------------------------------------------------------
+                # PREPARE FOR INTEGRATOR
+                # -------------------------------------------------------
+                
                 prev_uvw = current_uvw
-                #change U_man to instead of having TLA, pass thrust
-                U_man_plus_thrust = U_man.copy()
 
+                # Update thrust values (Engine deck results)
+                U_actual[3] = e1_thrust
+                U_actual[4] = e2_thrust
 
-                U_man_plus_thrust[3] = e1_thrust
-                U_man_plus_thrust[4] = e2_thrust
 
 
 
                 #ground1
-                this_AC_int.set_f_params(U_man_plus_thrust, current_rho, current_AGL_m)
+                this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m)
                 this_AC_int.integrate(this_AC_int.t + dt)
                 current_uvw = this_AC_int.y[0:3]
 
@@ -1659,7 +1723,7 @@ if __name__ == "__main__":
 
                     # set values and send frames
                     set_FDM(my_fgFDM, this_AC_int.y, 
-                            control_norm(U_man), 
+                            control_norm(U_actual), 
                             current_latlon_rad, 
                             current_alt_m,
                             body_accels)
@@ -1723,7 +1787,7 @@ if __name__ == "__main__":
                 send_frame_trigger = True
 
             # check/set engine calc trigger
-            if eng_time_adder >= ENGINE_TRIGGER_S:
+            if eng_time_adder >= deckdt:
                 eng_time_adder = 0
                 calc_eng_trigger = True
 

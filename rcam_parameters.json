@@ -108,5 +108,10 @@
     "lg_side_friction_mu": 0.6,
     "lg_rolling_friction_mu": 0.08,
     "lg_mu_brake": 0.8
+  },
+  "actuator_dynamics": {
+    "tau_aileron": 0.15,
+    "tau_elevator": 0.15,
+    "tau_rudder": 0.30
   }
 }
