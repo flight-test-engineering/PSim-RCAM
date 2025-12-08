@@ -716,10 +716,6 @@ def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.nda
 # STEP 2: Ground Detection Logic
 # ############################################################################
 
-# Define the altitude of the runway (MSL) in meters
-# For this example, we assume 0.0, or set it to match your INIT_ALT_FT if starting on ground
-H_GROUND = 0.0
-
 @jit(nopython=True)
 def calculate_gear_compression(X:np.ndarray, h_cg:float) -> np.ndarray:
     """
@@ -913,9 +909,9 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
             0: aileron (rad)
             1: stabilator (rad)
             2: rudder (rad)
-            3: throttle 1 (%) ->>>E1 THRUST (N)
-            4: throttle 2 (%) ->>>E2 THRUST (N)
-            5: spoilers (%)
+            3: E1 THRUST (N) (original RCAM was throttle 1 in %)
+            4: E2 THRUST (N)  (original RCAM was throttle 2 in %)
+            5: spoilers (%) (not included in original RCAM)
         rho: density for current altitude (kg/m3)
         h: height above ground (m)
     outputs:
@@ -1017,7 +1013,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     
     #---------------------- engine force and moment --------------------------
     # thrust
-    #F1 = dt1 * M * G
+    #F1 = dt1 * M * G # orginal RCAM
     #F2 = dt2 * M * G
     F1 = dt1
     F2 = dt2
@@ -1183,7 +1179,7 @@ def get_AGL(current_latlon_deg, current_alt_m):
         print('Below ground!')
 
 
-    return current_alt_m - ground_alt - 8 #DEBUG adding 8 meters to correct for cabin 
+    return current_alt_m - ground_alt - SIM_VISUAL_OFFSET #DEBUG adding 8 meters to correct for cabin 
 
 
 # ############################################################################
@@ -1378,6 +1374,7 @@ if __name__ == "__main__":
     SIM_LOOP_HZ = 400 # (Hz) simulation loop frame rate throttling
     FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FG
     DECK_LOOP_HZ = 10 # (Hz) frame rate to calculate engine deck
+    SIM_VISUAL_OFFSET = 6 # Simulator Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
 
 
 ###########################################################################

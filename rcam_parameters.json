@@ -102,7 +102,7 @@
     "right_mains_pos": [-4.5, 4.7, 3.5]
   },
   "landing_gear_dynamics":{
-    "lg_spring_k": 4.0E6,
+    "lg_spring_k": 6.0E6,
     "lg_damp_compression": 5.0E5,
     "lg_damp_rebound": 2.5E6,
     "lg_side_friction_mu": 0.6,
