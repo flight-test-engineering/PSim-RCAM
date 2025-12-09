@@ -113,7 +113,7 @@ N2LBF = 1 / LBF2N
 # Aircraft Parameter Loader
 # ############################################################################
 
-def load_aircraft_parameters(filepath: str) -> dict:
+def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
     """
     Loads aircraft parameters from a JSON file, processes them, and returns
     them as a dictionary of constants ready for the simulation.
@@ -258,6 +258,29 @@ def load_aircraft_parameters(filepath: str) -> dict:
     act_dyn = params['actuator_dynamics']
     consts['ACT_TAU'] = np.array([act_dyn["tau_aileron"], act_dyn["tau_elevator"], act_dyn["tau_rudder"]])
 
+    # Joystick Mappings
+    # available models:
+    # - Logitech Extreme 3D
+    joystick_library = params['joystick_maps']
+    if joy_name in joystick_library.keys():
+        print('yes')
+        joy_map = joystick_library[joy_name]
+        consts['JOY_ROLL_AXIS'] = joy_map["roll_axis"]
+        consts['JOY_PITCH_AXIS'] = joy_map["pitch_axis"]
+        consts['JOY_ROLL_AXIS'] = joy_map["yaw_axis"]  
+        consts['JOY_ZERO_AIL_RUD_THR'] = joy_map["zero_ail_rud_thr"]
+        consts['JOY_PITCH_TRIM_DN'] = joy_map["pitch_dn"]
+        consts['JOY_PITCH_TRIM_UP'] = joy_map["pitch_up"]
+        consts['JOY_ROLL_TRIM_RH'] = joy_map["roll_rt"]
+        consts['JOY_ROLL_TRIM_LH'] = joy_map["roll_lt"]
+        consts['JOY_E1_THR_TRIM_FWD'] = joy_map["T1_fd"]
+        consts['JOY_E1_THR_TRIM_AFT'] = joy_map["T1_af"]
+        consts['JOY_E2_THR_TRIM_FWD'] = joy_map["T2_fd"]
+        consts['JOY_E2_THR_TRIM_AFT'] = joy_map["T2_af"]
+        consts['JOY_EXIT_SIGNAL'] = joy_map["exit_signal"]
+    else:
+        print('no')
+
     return consts
 
 
@@ -270,9 +293,31 @@ def load_aircraft_parameters(filepath: str) -> dict:
 # functions without needing to pass them as arguments on every call.
 # ############################################################################
 
+############################################################################
+# we need first the joystick name, to load the correct parameters in
+# JOYSTICK INIT AND CHECK
+pygame.init() # automatically initializes joystick also
+
+# check if joystick is connected
+joystick_count = pygame.joystick.get_count()
+if joystick_count == 0:
+    print()
+    print('Will run OFFLINE simulation, no joystick detected!')
+    OFFLINE = True
+    joy_name = None
+else:
+    this_joy = pygame.joystick.Joystick(0)
+    joy_name = this_joy.get_name()
+    print()
+    print(f'found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
+    OFFLINE = False
+    
+
+
+
 try:
     # Unpack the dictionary into global variables
-    globals().update(load_aircraft_parameters('rcam_parameters.json'))
+    globals().update(load_aircraft_parameters('rcam_parameters.json', joy_name))
 except FileNotFoundError:
     print("ERROR: `rcam_parameters.json` not found. Please create it.")
     sys.exit(1)
@@ -594,16 +639,16 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     throttle_trim_step = trim_params['throttle'] / fr
 
     # read joystick button states for trimming
-    zero_ail_rud_thr = joystick.get_button(0)
-    pitch_dn = joystick.get_button(4)
-    pitch_up = joystick.get_button(2)
-    roll_rt = joystick.get_button(7)
-    roll_lt = joystick.get_button(6)
-    T1_fd = joystick.get_button(8)
-    T1_af = joystick.get_button(10)
-    T2_fd = joystick.get_button(9)
-    T2_af = joystick.get_button(11)
-    exit_signal = joystick.get_button(1)
+    zero_ail_rud_thr = joystick.get_button(JOY_ZERO_AIL_RUD_THR)
+    pitch_dn = joystick.get_button(JOY_PITCH_TRIM_DN)
+    pitch_up = joystick.get_button(JOY_PITCH_TRIM_UP)
+    roll_rt = joystick.get_button(JOY_ROLL_TRIM_RH)
+    roll_lt = joystick.get_button(JOY_ROLL_TRIM_LH)
+    T1_fd = joystick.get_button(JOY_E1_THR_TRIM_FWD)
+    T1_af = joystick.get_button(JOY_E1_THR_TRIM_AFT)
+    T2_fd = joystick.get_button(JOY_E2_THR_TRIM_FWD)
+    T2_af = joystick.get_button(JOY_E2_THR_TRIM_AFT)
+    exit_signal = joystick.get_button(JOY_EXIT_SIGNAL)
 
     # if trigger is pressed, then zero out aileron, rudder states and make thrust equal on both sides
     if zero_ail_rud_thr == 1:
@@ -621,9 +666,9 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     # # # JOYSTICK COMMAND
 
     # joystick constants/multipliers to adjust correct movement and amplitude
-    U[0] = U_trim[0] + joystick.get_axis(0) * joy_factors['aileron']
-    U[1] = U_trim[1] + joystick.get_axis(1) * joy_factors['elevator']
-    U[2] = U_trim[2] + joystick.get_axis(2) * joy_factors['rudder']
+    U[0] = U_trim[0] + joystick.get_axis(JOY_ROLL_AXIS) * joy_factors['aileron']
+    U[1] = U_trim[1] + joystick.get_axis(JOY_PITCH_AXIS) * joy_factors['elevator']
+    U[2] = U_trim[2] + joystick.get_axis(JOY_ROLL_AXIS) * joy_factors['rudder']
     throttle_cmd = joystick.get_axis(3) * joy_factors['throttle_m'] + joy_factors['throttle_b'] # linearly map joystick inputs to RCAM
     U[3] = U_trim[3] + throttle_cmd
     U[4] = U_trim[4] + throttle_cmd
@@ -1388,21 +1433,7 @@ if __name__ == "__main__":
     JOY_FACTORS = { 'aileron': -0.7, 'elevator': -0.5, 'rudder': -0.52, 'throttle_m': THROTTLE_MAP_M, 'throttle_b': THROTTLE_MAP_b } # specific for this joystick model
 
 
-############################################################################
-    # JOYSTICK INIT AND CHECK
-    pygame.init() # automatically initializes joystick also
 
-    # check if joystick is connected
-    joystick_count = pygame.joystick.get_count()
-    if joystick_count == 0:
-        print()
-        print('Will run OFFLINE simulation, no joystick detected!')
-        OFFLINE = True
-    else:
-        this_joy = pygame.joystick.Joystick(0)
-        print()
-        print(f'found {joystick_count} joysticks connected: {this_joy.get_name()}, axes={this_joy.get_numaxes()}')
-        OFFLINE = False
 
     signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp']
 

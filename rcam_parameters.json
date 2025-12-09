@@ -113,5 +113,22 @@
     "tau_aileron": 0.15,
     "tau_elevator": 0.15,
     "tau_rudder": 0.30
+  },
+  "joystick_maps":{
+    "Logitech Extreme 3D":{
+    "roll_axis": 0,
+    "pitch_axis": 1,
+    "yaw_axis": 2,  
+    "zero_ail_rud_thr": 0,
+    "pitch_dn": 4,
+    "pitch_up": 2,
+    "roll_rt": 7,
+    "roll_lt": 6,
+    "T1_fd": 8,
+    "T1_af": 10,
+    "T2_fd": 9,
+    "T2_af": 11,
+    "exit_signal": 1
+    }
   }
 }
