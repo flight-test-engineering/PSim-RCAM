@@ -128,7 +128,10 @@
     "T1_af": 10,
     "T2_fd": 9,
     "T2_af": 11,
-    "exit_signal": 1
+    "exit_signal": 1,
+    "trim_params": {"pitch": 0.01, "aileron": 0.003, "throttle": 0.01},
+    "joy_throttle_limits": [1, -1],
+    "partial_joy_factors": {"aileron": -0.7, "elevator": -0.5, "rudder": -0.52}
     }
   }
 }

@@ -265,21 +265,34 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
     if joy_name in joystick_library.keys():
         print('yes')
         joy_map = joystick_library[joy_name]
-        consts['JOY_ROLL_AXIS'] = joy_map["roll_axis"]
-        consts['JOY_PITCH_AXIS'] = joy_map["pitch_axis"]
-        consts['JOY_ROLL_AXIS'] = joy_map["yaw_axis"]  
-        consts['JOY_ZERO_AIL_RUD_THR'] = joy_map["zero_ail_rud_thr"]
-        consts['JOY_PITCH_TRIM_DN'] = joy_map["pitch_dn"]
-        consts['JOY_PITCH_TRIM_UP'] = joy_map["pitch_up"]
-        consts['JOY_ROLL_TRIM_RH'] = joy_map["roll_rt"]
-        consts['JOY_ROLL_TRIM_LH'] = joy_map["roll_lt"]
-        consts['JOY_E1_THR_TRIM_FWD'] = joy_map["T1_fd"]
-        consts['JOY_E1_THR_TRIM_AFT'] = joy_map["T1_af"]
-        consts['JOY_E2_THR_TRIM_FWD'] = joy_map["T2_fd"]
-        consts['JOY_E2_THR_TRIM_AFT'] = joy_map["T2_af"]
-        consts['JOY_EXIT_SIGNAL'] = joy_map["exit_signal"]
+        consts['JOY_ROLL_AXIS'] = joy_map["roll_axis"] # axis number that controls roll
+        consts['JOY_PITCH_AXIS'] = joy_map["pitch_axis"] # axis number tht controls pitch
+        consts['JOY_YAW_AXIS'] = joy_map["yaw_axis"]  # axis number for yaw
+        consts['JOY_ZERO_AIL_RUD_THR'] = joy_map["zero_ail_rud_thr"] # convenience function to zero ail,rud and thrust trim points
+        consts['JOY_PITCH_TRIM_DN'] = joy_map["pitch_dn"] # pitch trim nose down button
+        consts['JOY_PITCH_TRIM_UP'] = joy_map["pitch_up"] # pitch trim nose up button
+        consts['JOY_ROLL_TRIM_RH'] = joy_map["roll_rt"] # roll trim right wing down button
+        consts['JOY_ROLL_TRIM_LH'] = joy_map["roll_lt"] # roll trim left wing down button
+        consts['JOY_E1_THR_TRIM_FWD'] = joy_map["T1_fd"] # E1 trim forward (adds incremental thrust)
+        consts['JOY_E1_THR_TRIM_AFT'] = joy_map["T1_af"] # E1 trim aft (subtracts incremental thrust)
+        consts['JOY_E2_THR_TRIM_FWD'] = joy_map["T2_fd"] # same for E2
+        consts['JOY_E2_THR_TRIM_AFT'] = joy_map["T2_af"] # same for E2
+        consts['JOY_EXIT_SIGNAL'] = joy_map["exit_signal"] # ends the simulation
+        consts['JOY_TRIM_PARAMS'] = joy_map["trim_params"]  # Trim rate adjustment (amount per second)
+        consts['JOY_THROTTLE_LIMITS'] = joy_map["joy_throttle_limits"] # these are the limits for the throttle input for this specific joystick - full fwd = -1
+        
+        # linearly map the joystick input to the RCAM limits
+        throttle_map_m = (consts['U_LIMITS_MAX'][3] - consts['U_LIMITS_MIN'][3]) / (consts['JOY_THROTTLE_LIMITS'][1] - consts['JOY_THROTTLE_LIMITS'][0])
+        throttle_map_b = consts['U_LIMITS_MAX'][3] - throttle_map_m * (consts['JOY_THROTTLE_LIMITS'][1]) # y = mx + b - equation for a line
+        consts['JOY_FACTORS'] = joy_map["partial_joy_factors"]
+        consts['JOY_FACTORS']['throttle_m'] = throttle_map_m
+        consts['JOY_FACTORS']['throttle_b'] = throttle_map_b
+        consts['OFFLINE'] = False # if a joytick is present, then run online
+
+
     else:
         print('no')
+        consts['OFFLINE'] = True
 
     return consts
 
@@ -301,18 +314,10 @@ pygame.init() # automatically initializes joystick also
 # check if joystick is connected
 joystick_count = pygame.joystick.get_count()
 if joystick_count == 0:
-    print()
-    print('Will run OFFLINE simulation, no joystick detected!')
-    OFFLINE = True
     joy_name = None
 else:
     this_joy = pygame.joystick.Joystick(0)
     joy_name = this_joy.get_name()
-    print()
-    print(f'found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
-    OFFLINE = False
-    
-
 
 
 try:
@@ -324,6 +329,18 @@ except FileNotFoundError:
 except (KeyError, json.JSONDecodeError) as e:
     print(f"ERROR: Invalid format in `rcam_parameters.json`: {e}")
     sys.exit(1)
+
+
+if OFFLINE:
+    if joy_name == None:
+        print()
+        print('Will run OFFLINE simulation, no joystick detected!')
+    else:
+        print()
+        print(f'Will run OFFLINE simulation, joystick model {joy_name} not in JSON config file!')
+else:
+    print()
+    print(f'found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
 
 
 #ground1
@@ -668,7 +685,7 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     # joystick constants/multipliers to adjust correct movement and amplitude
     U[0] = U_trim[0] + joystick.get_axis(JOY_ROLL_AXIS) * joy_factors['aileron']
     U[1] = U_trim[1] + joystick.get_axis(JOY_PITCH_AXIS) * joy_factors['elevator']
-    U[2] = U_trim[2] + joystick.get_axis(JOY_ROLL_AXIS) * joy_factors['rudder']
+    U[2] = U_trim[2] + joystick.get_axis(JOY_YAW_AXIS) * joy_factors['rudder']
     throttle_cmd = joystick.get_axis(3) * joy_factors['throttle_m'] + joy_factors['throttle_b'] # linearly map joystick inputs to RCAM
     U[3] = U_trim[3] + throttle_cmd
     U[4] = U_trim[4] + throttle_cmd
@@ -1422,19 +1439,7 @@ if __name__ == "__main__":
     SIM_VISUAL_OFFSET = 6 # Simulator Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
 
 
-###########################################################################
-    # JOYSTICK SCALING FACTORS
-    TRIM_PARAMS = { 'pitch': 0.01, 'aileron': 0.003, 'throttle': 0.01 } # Trim adjustment per second
-    # linearly map the joystick input to the RCAM limits
-    JOY_THROTTLE_LIMITS = [1, -1] # these are the limits for the throttle input for this specific joystick - full fwd = -1
-    THROTTLE_MAP_M = (U_LIMITS_MAX[3] - U_LIMITS_MIN[3]) / (JOY_THROTTLE_LIMITS[1] - JOY_THROTTLE_LIMITS[0])
-    THROTTLE_MAP_b = U_LIMITS_MAX[3] - THROTTLE_MAP_M * (JOY_THROTTLE_LIMITS[1]) # y = mx + b - equation for a line
-    print(f'Joystick mapping: M={THROTTLE_MAP_M}, b={THROTTLE_MAP_b}, from JSON:{U_LIMITS_MAX[3]=}, {U_LIMITS_MIN[3]=} ')
-    JOY_FACTORS = { 'aileron': -0.7, 'elevator': -0.5, 'rudder': -0.52, 'throttle_m': THROTTLE_MAP_M, 'throttle_b': THROTTLE_MAP_b } # specific for this joystick model
-
-
-
-
+##########################################################################
     signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp']
 
     
@@ -1651,7 +1656,7 @@ if __name__ == "__main__":
                 current_rho = get_rho(current_alt_m)
             
             
-                U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, TRIM_PARAMS, JOY_FACTORS)
+                U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS)
 
                 # saturate commands
                 U_man = control_sat(U_man)
