@@ -94,7 +94,8 @@
     "rudder": [-30.0, 30.0],
     "throttle1": [0, 57.32],
     "throttle2": [0, 57.32],
-    "gnd_spoilers": [0, 45.84]
+    "gnd_spoilers": [0, 45.84],
+    "brake": [0, 57.32]
   },
   "landing_gear_geometry": {
     "nose_pos": [11.0, 0.0, 2.5],
@@ -118,8 +119,8 @@
     "Logitech Extreme 3D":{
     "roll_axis": 0,
     "pitch_axis": 1,
-    "yaw_axis": 2,  
-    "zero_ail_rud_thr": 0,
+    "yaw_axis": 2,
+    "zero_ail_rud_thr": 3,
     "pitch_dn": 4,
     "pitch_up": 2,
     "roll_rt": 7,
@@ -129,6 +130,7 @@
     "T2_fd": 9,
     "T2_af": 11,
     "exit_signal": 1,
+    "brake": 0,
     "trim_params": {"pitch": 0.01, "aileron": 0.003, "throttle": 0.01},
     "joy_throttle_limits": [1, -1],
     "partial_joy_factors": {"aileron": -0.7, "elevator": -0.5, "rudder": -0.52}

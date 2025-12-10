@@ -51,9 +51,9 @@ this version separates FlightGear packet sending to its own thread to improve sp
 
 
 TODO:
-    1) add engine dynamics (spool up/down)
+    1) add engine dynamics (spool up/down) [DONE]
     2) add atmospheric disturbances/turbulence
-    3) add other actuator dynamics
+    3) add other actuator dynamics [DONE]
     4) save/read trim point
     5) fuel detot / inertia update
 
@@ -278,6 +278,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
         consts['JOY_E2_THR_TRIM_FWD'] = joy_map["T2_fd"] # same for E2
         consts['JOY_E2_THR_TRIM_AFT'] = joy_map["T2_af"] # same for E2
         consts['JOY_EXIT_SIGNAL'] = joy_map["exit_signal"] # ends the simulation
+        consts['JOY_BRAKE'] = joy_map["brake"] # ends the simulation
         consts['JOY_TRIM_PARAMS'] = joy_map["trim_params"]  # Trim rate adjustment (amount per second)
         consts['JOY_THROTTLE_LIMITS'] = joy_map["joy_throttle_limits"] # these are the limits for the throttle input for this specific joystick - full fwd = -1
         
@@ -433,7 +434,7 @@ def network_worker(socks, packet_queue, fg_addresses):
     print("Network thread finished.")
 
 def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
-                header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp'], skip=0):
+                header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp', 'brake'], skip=0):
 
     '''
     Function to plot results.
@@ -462,7 +463,7 @@ def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
 
 
 def save2disk(filename, x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
-                header=['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2'], skip=0):
+                header=['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'brake'], skip=0):
     '''
     saves data to disk
     '''
@@ -666,6 +667,7 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     T2_fd = joystick.get_button(JOY_E2_THR_TRIM_FWD)
     T2_af = joystick.get_button(JOY_E2_THR_TRIM_AFT)
     exit_signal = joystick.get_button(JOY_EXIT_SIGNAL)
+    brake_applied = joystick.get_button(JOY_BRAKE)
 
     # if trigger is pressed, then zero out aileron, rudder states and make thrust equal on both sides
     if zero_ail_rud_thr == 1:
@@ -689,6 +691,7 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     throttle_cmd = joystick.get_axis(3) * joy_factors['throttle_m'] + joy_factors['throttle_b'] # linearly map joystick inputs to RCAM
     U[3] = U_trim[3] + throttle_cmd
     U[4] = U_trim[4] + throttle_cmd
+    U[5] = brake_applied
 
 
     return U, U_trim, exit_signal
@@ -986,7 +989,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     phi, theta, psi = X[6], X[7], X[8] # rad
 
     # ----------------------- controls ----------------------------------
-    da, de, dr, dt1, dt2, dgsp = U[0], U[1], U[2], U[3], U[4], U[5]
+    da, de, dr, dt1, dt2, dgsp, brake = U[0], U[1], U[2], U[3], U[4], U[5], U[6]
 
     #----------------- intermediate variables ---------------------------
     # airspeed
@@ -1275,7 +1278,7 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
 
     X = Z[:9]
     U = Z[9:]
-    U = np.append(U, 0.0) # need to force zero into ground spoilers control to be able to call RCAM
+    U = np.append(U, [0.0, 0.0]) # need to force zero into ground spoilers control to be able to call RCAM
 
     
     # PASS h_trim to the model here:
@@ -1295,7 +1298,7 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
 def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, psi_trim=0.0, rho_trim=1.225, 
                h_trim=100.0, 
                X0=np.array([85, 0, 0, 0, 0, 0, 0, 0.0, 0]), 
-               U0=np.array([1, 1, 1, 0.08, 0.08, 0.0])) -> np.ndarray:
+               U0=np.array([1, 1, 1, 0.08, 0.08, 0.0, 0.0])) -> np.ndarray:
     """
     uses scipy minimize on functional to find trim point
     h_trim is passed on to check ground proximity
@@ -1310,9 +1313,9 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     epsilon = 1E-9
     converge = False
 
-    Z0 = np.concatenate((X0, U0[:-1])) # removing ground spoilers from trim variables
+    Z0 = np.concatenate((X0, U0[:-2])) # removing ground spoilers from trim variables
 
-    print(f'initial cost: {trim_functional2(Z0,VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim):.3e}')
+    print(f'initial cost: {trim_functional2(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim):.3e}')
 
     # TODO: ONLY TRIM IF IN AIR
 
@@ -1340,7 +1343,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
         print(f'trimmed speed = {VA(Z0[:3]):.3f}')
         
         # Updated X_dot check
-        X_dot = RCAM_model(result.x[:9], result.x[9:], rho_trim, h_trim)
+        #X_dot = RCAM_model(result.x[:9], result.x[9:], rho_trim, h_trim)
 
         print(f'check gamma {result.x[7] - np.arctan2(result.x[2], result.x[0])} RAD')
         print(f'check side vel {result.x[1]} m/s')
@@ -1392,7 +1395,8 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     print('Trimming',res4_status)
     print()
     X0 = res4[:9]
-    U0 = np.append(res4[9:], 0) # add back ground spoiler to control vector
+    #U0 = np.append(res4[9:], 0.0) # add back ground spoiler to control vector
+    U0 = np.append(res4[9:], [0.0, 0.0]) # add back ground spoiler and brakes to control vector
     print(f'initial states: {X0}')
     print(f'initial inputs: {U0}')
     print()
@@ -1440,7 +1444,7 @@ if __name__ == "__main__":
 
 
 ##########################################################################
-    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp']
+    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp', 'brake']
 
     
     # we only start the network and multiprocessing if doing online sim, at least for now
