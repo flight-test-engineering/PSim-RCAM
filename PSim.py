@@ -251,7 +251,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
     consts['LG_DAMP_COMPRESSION'] = ldg_dynamics['lg_damp_compression']
     consts['LG_DAMP_REBOUND'] = ldg_dynamics['lg_damp_rebound']
     consts['LG_SIDE_FRICTION_MU'] = ldg_dynamics['lg_side_friction_mu']
-    consts['LG_FRICTION_MU'] = ldg_dynamics['lg_rolling_friction_mu'] * 10 # DEBUG
+    consts['LG_ROLLING_FRICTION_MU'] = ldg_dynamics['lg_rolling_friction_mu'] * 10 # DEBUG
     consts['LG_MU_BRAKE'] = ldg_dynamics['lg_mu_brake']
 
     # Actuator Dynamics
@@ -691,7 +691,7 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     throttle_cmd = joystick.get_axis(3) * joy_factors['throttle_m'] + joy_factors['throttle_b'] # linearly map joystick inputs to RCAM
     U[3] = U_trim[3] + throttle_cmd
     U[4] = U_trim[4] + throttle_cmd
-    U[5] = brake_applied
+    U[6] = float(brake_applied)
 
 
     return U, U_trim, exit_signal
@@ -861,7 +861,7 @@ def get_air_ground_state(compressions:np.ndarray) -> bool:
 
 #ground1
 @jit(nopython=True)
-def calculate_ground_forces(X:np.ndarray, h_cg:float) -> np.ndarray:
+def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float) -> np.ndarray:
     """
     Calculates total Forces and Moments (Body Frame) from all 3 landing gears.
     h_cg is height AGL (RADALT) in (m)
@@ -921,15 +921,20 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float) -> np.ndarray:
             
             # Friction
             # A simple "stiffness" approach to friction to stop sliding
-            # Using v_x and v_y
-            F_x = -V_gear[0] * 50000.0 
+            # Side force
             F_y = -V_gear[1] * 50000.0 
+            # for longitudinal force, we have the brakes
+            if brake > 0.1:
+                F_x = F_normal * LG_MU_BRAKE
+            else:
+                F_x = F_normal * LG_ROLLING_FRICTION_MU
             
             # Optional: Cap friction so it doesn't exceed mu * Normal Force (Coulomb friction)
             # This prevents numerical instability if sliding sideways fast
-            max_fric = abs(F_normal * LG_FRICTION_MU)
-            if abs(F_x) > max_fric: F_x = np.sign(F_x) * max_fric
-            if abs(F_y) > max_fric: F_y = np.sign(F_y) * max_fric
+            #max_fric_x = abs(F_normal * LG_MU_BRAKE)
+            max_fric_y = abs(F_normal * LG_SIDE_FRICTION_MU)
+            #if abs(F_x) > max_fric_x: F_x = np.sign(F_x) * max_fric_x
+            if abs(F_y) > max_fric_y: F_y = np.sign(F_y) * max_fric_y
 
             F_gear_b = np.array([F_x, F_y, F_normal])
             M_gear_b = np.cross(r_gear, F_gear_b)
@@ -1105,7 +1110,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
 
     #---------------------- GROUND REACTION ----------------------------------
     # This is the new part for Step 3
-    Gnd_Reac = calculate_ground_forces(X, h)
+    Gnd_Reac = calculate_ground_forces(X, h, brake)
     F_gnd_b = Gnd_Reac[:3]
     M_gnd_b = Gnd_Reac[3:]
     
@@ -1688,7 +1693,7 @@ if __name__ == "__main__":
                 if on_ground : 
                     #current_NED[2] = 0
                     this_wind[2] = 0
-                    U_man[5] = 0.8 # 80% spoiler
+                    U_man[5] = 0.4 # 80% spoiler
 
                 # check if we have thrust etc from engine deck
 
