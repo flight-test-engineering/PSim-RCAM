@@ -433,6 +433,51 @@ def network_worker(socks, packet_queue, fg_addresses):
             break
     print("Network thread finished.")
 
+
+def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
+    """
+    Listens for UDP packets from FlightGear containing ground elevation.
+    Updates shared_data['ground_alt'] with the latest received value.
+    """
+    print(f"Starting Terrain RX Worker on {ip}:{port}...", end="")
+    
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # Bind to the interface/port we expect FG to send TO
+    sock.bind((ip, port))
+    
+    # Set a timeout so the loop can check the shutdown queue periodically
+    sock.settimeout(0.5) 
+    
+    print(" Listening.")
+    
+    while True:
+        # Check for kill signal
+        if not shutdown_queue.empty():
+            break
+            
+        try:
+            # Block until data arrives (or timeout)
+            # 1024 bytes is plenty for a single float string
+            data, _ = sock.recvfrom(1024)
+            
+            # Data comes in as bytes like b'123.456\n'
+            decoded_str = data.decode('utf-8').strip()
+            
+            if decoded_str:
+                # Convert Feet to Meters
+                val_ft = float(decoded_str)
+                shared_data['ground_alt'] = val_ft * 0.3048
+                
+        except socket.timeout:
+            # Just loop back and check shutdown_queue
+            continue
+        except (ValueError, Exception) as e:
+            # Ignore parsing errors (partial packets)
+            pass
+            
+    sock.close()
+    print("Terrain RX Worker finished.")
+
 def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
                 header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp', 'brake'], skip=0):
 
@@ -1447,6 +1492,9 @@ if __name__ == "__main__":
     DECK_LOOP_HZ = 10 # (Hz) frame rate to calculate engine deck
     SIM_VISUAL_OFFSET = 6 # Simulator Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
 
+###########################################################################
+    # SHARED DATA
+    terrain_shared_data = {'ground_alt': 0.0}
 
 ##########################################################################
     signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp', 'brake']
@@ -1456,6 +1504,7 @@ if __name__ == "__main__":
     if OFFLINE == False:
     ############################################################################
         # FLIGHTGEAR SOCKS
+        # OUTGOING data (from Python to FG)
         # Open network sockets to communicate with FlightGear
         UDP_IP1 = "127.0.0.1" # set to localhost
         UDP_PORT1 = 5500
@@ -1485,6 +1534,27 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error in network thread: {e}")
             exit()
+
+        # INCOMING DATA (from FG to Python)
+        # ... UDP TX Setup ...
+
+        # --- NEW: TERRAIN UDP RECEIVER ---
+        # IP 0.0.0.0 means "Listen on all network interfaces"
+        TERRAIN_RX_IP = "127.0.0.1" 
+        TERRAIN_RX_PORT = 5502 # Port we listen ON
+
+         # Queue used only for shutdown signal
+        terrain_shutdown_queue = queue.Queue()
+        
+        terrain_thread = threading.Thread(
+            target=terrain_udp_worker,
+            args=(TERRAIN_RX_IP, TERRAIN_RX_PORT, terrain_shared_data, terrain_shutdown_queue),
+            daemon=True
+        )
+        terrain_thread.start()
+
+
+
 
 
         # instantiate FG comms object and initialize it
@@ -1743,7 +1813,10 @@ if __name__ == "__main__":
                 # store current state and time vector
                 current_latlon_rad = this_latlonh_int.y[0:2] # store lat and long (RAD)
                 current_alt_m = this_latlonh_int.y[2] # store altitude (m)
-                current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
+                # EXPERIMENTAL
+                current_AGL_m = current_alt_m - terrain_shared_data['ground_alt'] # this in meters
+                ####################################################
+                #current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
                 data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man)))
                 t_vector_collector.append(this_AC_int.t)
                 
@@ -1805,7 +1878,7 @@ if __name__ == "__main__":
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                     #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
                     #print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m:0.0f}')
-                    print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, U_man[5]={U_man[5]}, {on_ground=}')
+                    print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, {on_ground=}')
                     last_frame_time = this_AC_int.t
                   
                 
@@ -1850,12 +1923,17 @@ if __name__ == "__main__":
 
     if OFFLINE == False:
         # close threads
+        # Stop TX threads
         print()
-        print("Shutting down network thread...")
+        print("Shutting down network threads...")
         fdm_packet_queue.put(None)  # Send the shutdown signal
         network_thread.join(timeout=1.0) # Wait for the thread to finish
         for s in socks:
             s.close()
+                
+        # Stop RX thread
+        terrain_shutdown_queue.put(True)
+        terrain_thread.join(timeout=1.0)
 
         jobs_queue.put(None)
         engine_process.join(timeout=2.0) # Wait for the worker process to finish
