@@ -109,6 +109,20 @@ LBF2N = 4.44822 # from pound force to N
 N2LBF = 1 / LBF2N
 
 
+# .. States and Controls Indices ..
+# STATE INDICES
+IDX_U, IDX_V, IDX_W = 0, 1, 2
+IDX_P, IDX_Q, IDX_R = 3, 4, 5
+IDX_PHI, IDX_THETA, IDX_PSI = 6, 7, 8
+
+# CONTROL INDICES
+IDX_AIL, IDX_ELE, IDX_RUD = 0, 1, 2
+IDX_THR1, IDX_THR2 = 3, 4
+IDX_GNDSP, IDX_BRAKE = 5, 6
+
+  
+
+
 # ############################################################################
 # Aircraft Parameter Loader
 # ############################################################################
@@ -447,6 +461,7 @@ def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
     
     # Set a timeout so the loop can check the shutdown queue periodically
     sock.settimeout(0.5) 
+    sock.setblocking(0) # Non-blocking mode
     
     print(" Listening.")
     
@@ -456,23 +471,25 @@ def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
             break
             
         try:
-            # Block until data arrives (or timeout)
-            # 1024 bytes is plenty for a single float string
-            data, _ = sock.recvfrom(1024)
+            # Loop to drain buffer and get the absolutely latest packet
+            data = None
+            while True:
+                try:
+                    chunk, _ = sock.recvfrom(1024)
+                    data = chunk
+                except BlockingIOError:
+                    # Buffer empty, we have the latest 'data' (if any)
+                    break
             
-            # Data comes in as bytes like b'123.456\n'
-            decoded_str = data.decode('utf-8').strip()
+            if data:
+                decoded_str = data.decode('utf-8').strip()
+                if decoded_str:
+                    val_ft = float(decoded_str)
+                    shared_data['ground_alt'] = val_ft * FT2M
+                    
+            time.sleep(0.01) # Slight rest to prevent CPU hogging
             
-            if decoded_str:
-                # Convert Feet to Meters
-                val_ft = float(decoded_str)
-                shared_data['ground_alt'] = val_ft * 0.3048
-                
-        except socket.timeout:
-            # Just loop back and check shutdown_queue
-            continue
-        except (ValueError, Exception) as e:
-            # Ignore parsing errors (partial packets)
+        except Exception:
             pass
             
     sock.close()
@@ -656,13 +673,13 @@ def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels):
     alt - in meters
     NED - velocities in m/s
     '''
-    this_fgFDM.set('phi', X[6])
-    this_fgFDM.set('theta', X[7])
-    this_fgFDM.set('psi', X[8])
+    this_fgFDM.set('phi', X[IDX_PHI])
+    this_fgFDM.set('theta', X[IDX_THETA])
+    this_fgFDM.set('psi', X[IDX_PSI])
 
-    this_fgFDM.set('phidot', X[3])
-    this_fgFDM.set('thetadot', X[4])
-    this_fgFDM.set('psidot', X[5])
+    this_fgFDM.set('phidot', X[IDX_P])
+    this_fgFDM.set('thetadot', X[IDX_Q])
+    this_fgFDM.set('psidot', X[IDX_R])
     
     # this sets units to kts because the HUD does not apply any conversions to the speed
     # if we send speed in fps as the API requires, the HUD displays wrong value
@@ -729,14 +746,14 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
 
     # # # JOYSTICK COMMAND
 
-    # joystick constants/multipliers to adjust correct movement and amplitude
-    U[0] = U_trim[0] + joystick.get_axis(JOY_ROLL_AXIS) * joy_factors['aileron']
-    U[1] = U_trim[1] + joystick.get_axis(JOY_PITCH_AXIS) * joy_factors['elevator']
-    U[2] = U_trim[2] + joystick.get_axis(JOY_YAW_AXIS) * joy_factors['rudder']
+    # joystick constants/multipliers to adjust correct movemG12ent and amplitude
+    U[IDX_AIL] = U_trim[IDX_AIL] + joystick.get_axis(JOY_ROLL_AXIS) * joy_factors['aileron']
+    U[IDX_ELE] = U_trim[IDX_ELE] + joystick.get_axis(JOY_PITCH_AXIS) * joy_factors['elevator']
+    U[IDX_RUD] = U_trim[IDX_RUD] + joystick.get_axis(JOY_YAW_AXIS) * joy_factors['rudder']
     throttle_cmd = joystick.get_axis(3) * joy_factors['throttle_m'] + joy_factors['throttle_b'] # linearly map joystick inputs to RCAM
-    U[3] = U_trim[3] + throttle_cmd
-    U[4] = U_trim[4] + throttle_cmd
-    U[6] = float(brake_applied)
+    U[IDX_THR1] = U_trim[IDX_THR1] + throttle_cmd
+    U[IDX_THR2] = U_trim[IDX_THR2] + throttle_cmd
+    U[IDX_BRAKE] = float(brake_applied)
 
 
     return U, U_trim, exit_signal
@@ -783,15 +800,25 @@ def control_norm(U:np.array) -> np.array:
     returns:
         vector with control positions normalized between 1 and -1
     '''
-    U_norm = np.zeros_like(U)
-    for i in range(len(U)):
-        u_min, u_max = U_LIMITS_MIN[i], U_LIMITS_MAX[i]
-        if U[i] < 0:
-            U_norm[i] = U[i] / abs(u_min) if u_min != 0 else 0
-        else:
-            U_norm[i] = U[i] / u_max if u_max != 0 else 0
-    return U_norm[:3] # Only return first 3 for FG FDM (ail, elev, rud)
+    # Extract limits for first 3 channels
+    mins = U_LIMITS_MIN[:3]
+    maxs = U_LIMITS_MAX[:3]
+    
+    # Avoid divide by zero
+    mins = np.where(mins == 0, 1.0, mins)
+    maxs = np.where(maxs == 0, 1.0, maxs)
 
+    # Slice input
+    u_subset = U[:3]
+    
+    # Vectorized normalization
+    # If U < 0: U / abs(min)
+    # If U >= 0: U / max
+    U_norm = np.where(u_subset < 0, 
+                      u_subset / np.abs(mins), 
+                      u_subset / maxs)
+    
+    return U_norm
 @jit(nopython=True)
 def control_sat(U:np.ndarray) -> np.ndarray:
     '''
@@ -841,57 +868,41 @@ def calculate_gear_compression(X:np.ndarray, h_cg:float) -> np.ndarray:
     Returns:
         compressions: np.array([nose_comp, main_l_comp, main_r_comp])
     """
-    phi = X[6]
-    theta = X[7]
+    phi = X[IDX_PHI]
+    theta = X[IDX_THETA]
     
-    # Pre-calculate trig functions for the rotation matrix (Body -> NED, Z-axis only)
-    # The 3rd row of the rotation matrix (C_b_n) represents the Z (Down) component
-    # R31 = -sin(theta)
-    # R32 = sin(phi) * cos(theta)
-    # R33 = cos(phi) * cos(theta)
+    # The bottom row of the Direction Cosine Matrix (Body to NED)
+    # This vector transforms a body vector [x,y,z] into the Down component
+    DCM_z_row = np.array([
+        -np.sin(theta), 
+        np.sin(phi) * np.cos(theta), 
+        np.cos(phi) * np.cos(theta)
+    ])
     
-    sin_theta = np.sin(theta)
-    cos_theta = np.cos(theta)
-    sin_phi = np.sin(phi)
-    cos_phi = np.cos(phi)
+    # Stack gear positions into a 3x3 matrix for batch processing
+    # Rows: Nose, MainL, MainR
+    gear_positions = np.zeros((3, 3))
+    gear_positions[0, :] = LG_NOSE_POS
+    gear_positions[1, :] = LG_MAIN_L_POS
+    gear_positions[2, :] = LG_MAIN_R_POS
     
-    # Calculate vertical distance from CG to each gear tip (Positive = DOWN)
-    # d_z = R31*x + R32*y + R33*z
+    # Calculate vertical distance (dz) for all 3 gears at once
+    # Result is a vector of 3 elements
+    dz = gear_positions @ DCM_z_row 
     
-    # Nose Gear
-    dz_nose = -sin_theta * LG_NOSE_POS[0] + \
-               sin_phi * cos_theta * LG_NOSE_POS[1] + \
-               cos_phi * cos_theta * LG_NOSE_POS[2]
-               
-    # Main Left
-    dz_main_l = -sin_theta * LG_MAIN_L_POS[0] + \
-                 sin_phi * cos_theta * LG_MAIN_L_POS[1] + \
-                 cos_phi * cos_theta * LG_MAIN_L_POS[2]
+    # Calculate tips
+    h_tips = h_cg - dz
+    
+    # Compression is simply -h_tips (assuming ground is 0 relative to h_cg passed in)
+    # We clip negative values (air) to 0.0
+    compressions = np.maximum(-h_tips, 0.0)
+    
+    # Clip max compression
+    max_travel = np.array([LG_NOSE_POS[2], LG_MAIN_L_POS[2], LG_MAIN_R_POS[2]])
+    compressions = np.minimum(compressions, max_travel)
+    
+    return compressions
 
-    # Main Right
-    dz_main_r = -sin_theta * LG_MAIN_R_POS[0] + \
-                 sin_phi * cos_theta * LG_MAIN_R_POS[1] + \
-                 cos_phi * cos_theta * LG_MAIN_R_POS[2]
-
-    # Calculate absolute altitude of the gear tips
-    # Altitude = h_cg - vertical_distance_down
-    h_nose_tip = h_cg - dz_nose
-    h_main_l_tip = h_cg - dz_main_l
-    h_main_r_tip = h_cg - dz_main_r
-    
-    # Calculate compression (how far "underground" the tip is)
-    # If compression > 0, we are on the ground.
-    comp_nose = -h_nose_tip
-    comp_main_l = -h_main_l_tip
-    comp_main_r = -h_main_r_tip
-
-    # Clip so that the gear does not deflect more than its full course
-    clipped_compression = np.clip(np.array([comp_nose, comp_main_l, comp_main_r]),
-                                     np.array([0.0, 0.0, 0.0]),
-                                     np.array([LG_NOSE_POS[2], LG_MAIN_L_POS[2], LG_MAIN_R_POS[2]]))
-    
-    #return clipped_compression
-    return np.array([comp_nose, comp_main_l, comp_main_r])
 
 @jit(nopython=True)
 def get_air_ground_state(compressions:np.ndarray) -> bool:
@@ -921,8 +932,8 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float) -> np.ndarray
 
     
     # State extractions for velocity calc
-    u, v, w = X[0], X[1], X[2]
-    p, q, r = X[3], X[4], X[5]
+    u, v, w = X[IDX_U], X[IDX_V], X[IDX_W]
+    p, q, r = X[IDX_P], X[IDX_Q], X[IDX_R]
     wbe_b = np.array([p, q, r])
     V_cg_b = np.array([u, v, w])
     
@@ -970,7 +981,7 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float) -> np.ndarray
             F_y = -V_gear[1] * 50000.0 
             # for longitudinal force, we have the brakes
             if brake > 0.1:
-                F_x = F_normal * LG_MU_BRAKE
+                F_x = F_normal * LG_MU_BRAKE * 1 # DEBUG
             else:
                 F_x = F_normal * LG_ROLLING_FRICTION_MU
             
@@ -1034,12 +1045,12 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     """
    
     # ------------------------- states ----------------------------------
-    u, v, w = X[0], X[1], X[2] # m/s
-    p, q, r = X[3], X[4], X[5] # rad/s
-    phi, theta, psi = X[6], X[7], X[8] # rad
+    u, v, w = X[IDX_U], X[IDX_V], X[IDX_W] # m/s
+    p, q, r = X[IDX_P], X[IDX_Q], X[IDX_R] # rad/s
+    phi, theta, psi = X[IDX_PHI], X[IDX_THETA], X[IDX_PSI] # rad
 
     # ----------------------- controls ----------------------------------
-    da, de, dr, dt1, dt2, dgsp, brake = U[0], U[1], U[2], U[3], U[4], U[5], U[6]
+    da, de, dr, dt1, dt2, dgsp, brake = U[IDX_AIL], U[IDX_ELE], U[IDX_RUD], U[IDX_THR1], U[IDX_THR2], X[IDX_GNDSP], U[IDX_BRAKE]
 
     #----------------- intermediate variables ---------------------------
     # airspeed
@@ -1336,9 +1347,9 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
     
     VA_current = VA(X[:3])
     
-    gamma_current = X[7] - np.arctan2(X[2], X[0]) 
+    gamma_current = X[IDX_THETA] - np.arctan2(X[IDX_W], X[IDX_U]) 
      
-    Q = np.concatenate((X_dot, [VA_current - VA_trim], [gamma_current - gamma_trim], [X[1] - side_speed_trim], [X[6] - phi_trim], [X[8] - psi_trim]))
+    Q = np.concatenate((X_dot, [VA_current - VA_trim], [gamma_current - gamma_trim], [X[IDX_V] - side_speed_trim], [X[IDX_PHI] - phi_trim], [X[IDX_PSI] - psi_trim]))
     diag_ones = np.ones(Q.shape[0])
     H = np.diag(diag_ones)
     
@@ -1446,7 +1457,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     print()
     X0 = res4[:9]
     #U0 = np.append(res4[9:], 0.0) # add back ground spoiler to control vector
-    U0 = np.append(res4[9:], [0.0, 0.0]) # add back ground spoiler and brakes to control vector
+    U0 = np.concatenate((res4[9:], np.array([0.0, 0.0]))) # add back ground spoiler and brakes to control vector
     print(f'initial states: {X0}')
     print(f'initial inputs: {U0}')
     print()
@@ -1486,11 +1497,11 @@ if __name__ == "__main__":
 
 ###########################################################################
     # SIMULATION OPTIONS
-    SIM_TOTAL_TIME_S = 1 * 60 # (s) total simulation time
+    SIM_TOTAL_TIME_S = 10 * 60 # (s) total simulation time
     SIM_LOOP_HZ = 400 # (Hz) simulation loop frame rate throttling
     FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FG
-    DECK_LOOP_HZ = 10 # (Hz) frame rate to calculate engine deck
-    SIM_VISUAL_OFFSET = 6 # Simulator Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
+    DECK_LOOP_HZ = 10 # (Hz) fra1me rate to calculate engine deck
+    SIM_VISUAL_OFFSET = 0 # Simulator Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
 
 ###########################################################################
     # SHARED DATA
@@ -1660,8 +1671,8 @@ if __name__ == "__main__":
         
         # all doublets have zero as starting amplitude
         pitch_doublet = get_doublet(t_vector,t=5, duration=2, amplitude=0.2)
-        roll_doublet = get_doublet(t_vector,t=15, duration=2, amplitude=0.2)
-        yaw_doublet = get_doublet(t_vector,t=25, duration=4, amplitude=0.2)
+        roll_doublet = get_doublet(t_vector,t=200, duration=2, amplitude=0.2)
+        yaw_doublet = get_doublet(t_vector,t=400, duration=4, amplitude=0.2)
         # therefore we sum on top of the trim
         sim_U[0,:] += roll_doublet
         sim_U[1,:] += pitch_doublet
@@ -1728,17 +1739,17 @@ if __name__ == "__main__":
 
             if run_sim_loop:
 
-                _ = pygame.event.get()
+                pygame.event.pump() # More efficient than event.get() if just reading axes
+
+                # -- Sensors & Environment
                 
                 # get density, inputs
                 current_throttle = [U_man[3], U_man[4]] # keep track of throttle to zero-out the trim bias
                 current_rho = get_rho(current_alt_m)
             
             
+                # -- Inputs & Actuators
                 U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS)
-
-                # saturate commands
-                U_man = control_sat(U_man)
                 
                 # trim bias is always positive, so we washout if throttles move back
                 delta_throttle_1 = U_man[3] - current_throttle[0]
@@ -1752,9 +1763,20 @@ if __name__ == "__main__":
                         if U1[3] < 0 : U1[3] = 0
                         if U1[4] < 0 : U1[4] = 0
 
+                U_man = control_sat(U_man) # saturate commands
 
-                U_man = control_sat(U_man)
+                                # -------------------------------------------------------
+                # NEW: ACTUATOR UPDATE
+                # -------------------------------------------------------
+                # We calculate the time step for this specific loop iteration
+                # If this is the first step, prev_dt might be 0, so guard against it
+                actuator_dt = dt if dt > 0 else simdt 
+                
+                # Update the physical position of the surfaces
+                U_actual = update_actuators(U_man, U_actual, actuator_dt, ACT_TAU)
 
+
+                # -- Ground Logic
                 #ground1
                 # if on ground, don't keep going down
                 # DEBUG - the value "4" is to adjust for grar height
@@ -1765,9 +1787,9 @@ if __name__ == "__main__":
                     this_wind[2] = 0
                     U_man[5] = 0.4 # 80% spoiler
 
-                # check if we have thrust etc from engine deck
 
 
+                # -- Engines
                 try:
                     # MULTIPROCESSING: The API is the same, but we import mp.queues for the exception.
                     eng_vals = results_queue.get(block=False) # block=False is equivalent to get_nowait()
@@ -1777,50 +1799,41 @@ if __name__ == "__main__":
                     #print(f"[Main Process] Updated engine results")
                 except mp.queues.Empty:
                     pass
-                
-                # -------------------------------------------------------
-                # NEW: ACTUATOR UPDATE
-                # -------------------------------------------------------
-                # We calculate the time step for this specific loop iteration
-                # If this is the first step, prev_dt might be 0, so guard against it
-                actuator_dt = dt if dt > 0 else simdt 
-                
-                # Update the physical position of the surfaces
-                U_actual = update_actuators(U_man, U_actual, actuator_dt, ACT_TAU)
+
+                # Update thrust values (Engine deck results)
+                U_actual[3] = e1_thrust
+                U_actual[4] = e2_thrust                
+
 
                 # -------------------------------------------------------
                 # PREPARE FOR INTEGRATOR
                 # -------------------------------------------------------
-                
                 prev_uvw = current_uvw
 
-                # Update thrust values (Engine deck results)
-                U_actual[3] = e1_thrust
-                U_actual[4] = e2_thrust
 
-                #ground1
+                # -- Integrate Physics
                 this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m)
                 this_AC_int.integrate(this_AC_int.t + dt)
                 current_uvw = this_AC_int.y[0:3]
 
-                # integrate navigation equations
+                # -- Integrate navigation equations
                 current_NED = NED(this_AC_int.y[:3], this_AC_int.y[6:])
                 this_wind = add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
 
                 this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon_rad[0], current_alt_m)
                 this_latlonh_int.integrate(this_latlonh_int.t + dt) #in radians and alt in meters
                 
-                # store current state and time vector
+                # keep current state and time vector for next iteration
                 current_latlon_rad = this_latlonh_int.y[0:2] # store lat and long (RAD)
                 current_alt_m = this_latlonh_int.y[2] # store altitude (m)
-                # EXPERIMENTAL
                 current_AGL_m = current_alt_m - terrain_shared_data['ground_alt'] # this in meters
-                ####################################################
                 #current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
+
+                # -- Data Logging
                 data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man)))
                 t_vector_collector.append(this_AC_int.t)
                 
-                # check for FG frame trigger
+                # -- FlightGear Output
                 if send_frame_trigger:
                     # it is easier to calculate body accelerations instead of reaching into the RCAM function
                     if dt == 0:
@@ -1854,6 +1867,7 @@ if __name__ == "__main__":
                     # we do not need to check at full sim speed
                     on_ground = on_ground or (get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m)) and gnd_spoilers_armed)
 
+                # -- Engine Deck trigger
                 if calc_eng_trigger:
                     if jobs_queue.empty():
                         #print(f"[Main Process] Triggering new engine calculation...{VA(current_uvw)*MS2KT:.2f}, {current_alt_m*M2FT:.1f}")
@@ -1870,6 +1884,7 @@ if __name__ == "__main__":
                     calc_eng_trigger = False
 
                 
+                # -- Next frame setup
                 frame_count += 1
                 # DEBUG ONLY - 
                 # print out stuff every so often
