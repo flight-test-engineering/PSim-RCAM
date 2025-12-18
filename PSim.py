@@ -264,6 +264,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
     consts['LG_SPRING_K'] = ldg_dynamics['lg_spring_k']
     consts['LG_DAMP_COMPRESSION'] = ldg_dynamics['lg_damp_compression']
     consts['LG_DAMP_REBOUND'] = ldg_dynamics['lg_damp_rebound']
+    consts['LG_FRICTION_STIFFNESS'] = ldg_dynamics['lg_friction_stiffness'] # "Virtual spring" to hold plane still when stopped
     consts['LG_SIDE_FRICTION_MU'] = ldg_dynamics['lg_side_friction_mu']
     consts['LG_ROLLING_FRICTION_MU'] = ldg_dynamics['lg_rolling_friction_mu'] * 10 # DEBUG
     consts['LG_MU_BRAKE'] = ldg_dynamics['lg_mu_brake']
@@ -841,9 +842,6 @@ def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.nda
     Simulates first order lag for control surfaces.
     y_dot = (u_cmd - y_current) / tau
     y_new = y_current + y_dot * dt
-    
-    Only applies to indices 0, 1, 2 (Ail, Elev, Rud).
-    Throttles (3, 4) are passed through unchanged (handled by engine deck).
     """
     U_new = np.zeros_like(U_actual)
 
@@ -852,7 +850,8 @@ def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.nda
     U_new = U_actual + rate * dt
              
     # 2. Engines (Pass through - The engine deck handles spool up dynamics)
-    #U_new[3:] = U_cmd[3:]
+    # testing fast time constant for engine, which should have no effect
+    #U_new[3:5] = U_cmd[3:5]
 
     
     return U_new
@@ -988,16 +987,25 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float) -> np.ndarray
             # A simple "stiffness" approach to friction to stop sliding
             # Side force
             F_y = -V_gear[1] * 50000.0 
+            raw_fy = -V_gear[1] * LG_FRICTION_STIFFNESS
             # for longitudinal force, we have the brakes
             F_x = F_normal * (LG_MU_BRAKE * brake + LG_ROLLING_FRICTION_MU)
+            raw_fx = -V_gear[0] * LG_FRICTION_STIFFNESS
 
             
             # Optional: Cap friction so it doesn't exceed mu * Normal Force (Coulomb friction)
             # This prevents numerical instability if sliding sideways fast
-            max_fric_x = abs(F_normal * (LG_MU_BRAKE + LG_ROLLING_FRICTION_MU))
-            max_fric_y = abs(F_normal * LG_SIDE_FRICTION_MU)
-            if abs(F_x) > max_fric_x: F_x = np.sign(F_x) * max_fric_x
-            if abs(F_y) > max_fric_y: F_y = np.sign(F_y) * max_fric_y
+            max_fx = abs(F_normal * (LG_MU_BRAKE + LG_ROLLING_FRICTION_MU))
+            max_fy = abs(F_normal * LG_SIDE_FRICTION_MU)
+            if abs(V_gear[0]) > 10.0:
+                if abs(F_x) > max_fx: F_x = np.sign(F_x) * max_fx # we are fast, use normal friction
+            else:
+                F_x = raw_fx * (1 + 4 * brake)# we are at low speed, use stiffness and brake 
+
+            if abs(V_gear[1]) > 10.0:
+                if abs(F_y) > max_fy: F_y = np.sign(F_y) * max_fy
+            else:
+                F_y = raw_fy
 
             F_gear_b = np.array([F_x, F_y, F_normal])
             M_gear_b = np.cross(r_gear, F_gear_b)
