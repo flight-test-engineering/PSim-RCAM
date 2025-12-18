@@ -270,7 +270,13 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
 
     # Actuator Dynamics
     act_dyn = params['actuator_dynamics']
-    consts['ACT_TAU'] = np.array([act_dyn["tau_aileron"], act_dyn["tau_elevator"], act_dyn["tau_rudder"]])
+    consts['ACT_TAU'] = np.array([act_dyn["tau_aileron"], 
+                                  act_dyn["tau_elevator"], 
+                                  act_dyn["tau_rudder"],
+                                  act_dyn["tau_engine"],
+                                  act_dyn["tau_engine"],
+                                  act_dyn["tau_gnd_spoiler"],
+                                  act_dyn["tau_brakes"]])
 
     # Joystick Mappings
     # available models:
@@ -283,6 +289,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
         consts['JOY_PITCH_AXIS'] = joy_map["pitch_axis"] # axis number tht controls pitch
         consts['JOY_YAW_AXIS'] = joy_map["yaw_axis"]  # axis number for yaw
         consts['JOY_ZERO_AIL_RUD_THR'] = joy_map["zero_ail_rud_thr"] # convenience function to zero ail,rud and thrust trim points
+        consts['JOY_ARM_DIS_GND_SPOILER'] = joy_map["arm_disarm_gnd_spoiler"] # toggles ARM/DISARM of ground spoilers
         consts['JOY_PITCH_TRIM_DN'] = joy_map["pitch_dn"] # pitch trim nose down button
         consts['JOY_PITCH_TRIM_UP'] = joy_map["pitch_up"] # pitch trim nose up button
         consts['JOY_ROLL_TRIM_RH'] = joy_map["roll_rt"] # roll trim right wing down button
@@ -730,6 +737,7 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     T2_af = joystick.get_button(JOY_E2_THR_TRIM_AFT)
     exit_signal = joystick.get_button(JOY_EXIT_SIGNAL)
     brake_applied = joystick.get_button(JOY_BRAKE)
+    toggle_gnd_spoiler = joystick.get_button(JOY_ARM_DIS_GND_SPOILER)
 
     # if trigger is pressed, then zero out aileron, rudder states and make thrust equal on both sides
     if zero_ail_rud_thr == 1:
@@ -754,6 +762,7 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     U[IDX_THR1] = U_trim[IDX_THR1] + throttle_cmd
     U[IDX_THR2] = U_trim[IDX_THR2] + throttle_cmd
     U[IDX_BRAKE] = float(brake_applied)
+    U[IDX_GNDSP] = float(toggle_gnd_spoiler)
 
 
     return U, U_trim, exit_signal
@@ -839,11 +848,11 @@ def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.nda
     U_new = np.zeros_like(U_actual)
 
     # 1. Aerodynamic Surfaces (First Order Lag)
-    rate = (U_cmd[:3] - U_actual[:3]) / tau 
-    U_new[:3] = U_actual[:3] + rate * dt
+    rate = (U_cmd - U_actual) / tau 
+    U_new = U_actual + rate * dt
              
     # 2. Engines (Pass through - The engine deck handles spool up dynamics)
-    U_new[3:] = U_cmd[3:]
+    #U_new[3:] = U_cmd[3:]
 
     
     return U_new
@@ -980,16 +989,14 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float) -> np.ndarray
             # Side force
             F_y = -V_gear[1] * 50000.0 
             # for longitudinal force, we have the brakes
-            if brake > 0.1:
-                F_x = F_normal * LG_MU_BRAKE * 1 # DEBUG
-            else:
-                F_x = F_normal * LG_ROLLING_FRICTION_MU
+            F_x = F_normal * (LG_MU_BRAKE * brake + LG_ROLLING_FRICTION_MU)
+
             
             # Optional: Cap friction so it doesn't exceed mu * Normal Force (Coulomb friction)
             # This prevents numerical instability if sliding sideways fast
-            #max_fric_x = abs(F_normal * LG_MU_BRAKE)
+            max_fric_x = abs(F_normal * (LG_MU_BRAKE + LG_ROLLING_FRICTION_MU))
             max_fric_y = abs(F_normal * LG_SIDE_FRICTION_MU)
-            #if abs(F_x) > max_fric_x: F_x = np.sign(F_x) * max_fric_x
+            if abs(F_x) > max_fric_x: F_x = np.sign(F_x) * max_fric_x
             if abs(F_y) > max_fric_y: F_y = np.sign(F_y) * max_fric_y
 
             F_gear_b = np.array([F_x, F_y, F_normal])
@@ -1038,6 +1045,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
             3: E1 THRUST (N) (original RCAM was throttle 1 in %)
             4: E2 THRUST (N)  (original RCAM was throttle 2 in %)
             5: spoilers (%) (not included in original RCAM)
+            6: wheel brakes (%) (not included in original RCAM)
         rho: density for current altitude (kg/m3)
         h: height above ground (m)
     outputs:
@@ -1627,15 +1635,11 @@ if __name__ == "__main__":
     current_alt_m = INIT_ALT_FT * FT2M # m
     current_latlon_rad = INIT_LATLON_DEG
     current_AGL_m = get_AGL(INIT_LATLON_DEG, current_alt_m)
-
-    # set air-ground status
-    if current_alt_m > current_AGL_m:
-        on_ground = False
-    else:
-        on_ground = True
-    
+   
     # arm ground spoilers for landing
     gnd_spoilers_armed = True
+    open_gnd_spoiler = False
+    toggle_gnd_spoiler_debounce = 0 # counter to debounce toggle ground spoiler button press
     
     frame_count = 0
 
@@ -1782,10 +1786,10 @@ if __name__ == "__main__":
                 # DEBUG - the value "4" is to adjust for grar height
                 # NEED TO MAKE IT A LATCH - IF GROUND THEN OPEN
                 # need to make it a variable (aircraft gear height)
-                if on_ground : 
+                if open_gnd_spoiler : 
                     #current_NED[2] = 0
                     this_wind[2] = 0
-                    U_man[5] = 0.4 # 80% spoiler
+                    U_actual[IDX_GNDSP] = 0.4 # 80% spoiler
 
 
 
@@ -1865,7 +1869,12 @@ if __name__ == "__main__":
                     #CODE OPTIMIZATION
                     # using this loop to check air-ground as well
                     # we do not need to check at full sim speed
-                    on_ground = on_ground or (get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m)) and gnd_spoilers_armed)
+                    toggle_gnd_spoiler_debounce += 1
+                    if U_man[IDX_GNDSP] > 0 and toggle_gnd_spoiler_debounce > 50:
+                        gnd_spoilers_armed = not(gnd_spoilers_armed)
+                        toggle_gnd_spoiler_debounce = 0
+
+                    open_gnd_spoiler = get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m)) and gnd_spoilers_armed
 
                 # -- Engine Deck trigger
                 if calc_eng_trigger:
@@ -1893,7 +1902,7 @@ if __name__ == "__main__":
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                     #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
                     #print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m:0.0f}')
-                    print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, {on_ground=}')
+                    print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, {open_gnd_spoiler=}, {gnd_spoilers_armed=}, {toggle_gnd_spoiler_debounce=}, {U_man[IDX_GNDSP]=}')
                     last_frame_time = this_AC_int.t
                   
                 

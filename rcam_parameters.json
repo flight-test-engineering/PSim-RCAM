@@ -94,26 +94,29 @@
     "rudder": [-30.0, 30.0],
     "throttle1": [0, 57.32],
     "throttle2": [0, 57.32],
-    "gnd_spoilers": [0, 45.84],
+    "gnd_spoilers": [0, 57.32],
     "brake": [0, 57.32]
   },
   "landing_gear_geometry": {
-    "nose_pos": [11.0, 0.0, 2.3],
-    "left_mains_pos": [-4.5, -4.7, 2.4],
-    "right_mains_pos": [-4.5, 4.7, 2.4]
+    "nose_pos": [11.0, 0.0, 2.25],
+    "left_mains_pos": [-4.5, -4.7, 2.35],
+    "right_mains_pos": [-4.5, 4.7, 2.35]
   },
   "landing_gear_dynamics":{
     "lg_spring_k": 3.5E7,
     "lg_damp_compression": 6.0E5,
     "lg_damp_rebound": 7.0E6,
     "lg_side_friction_mu": 0.6,
-    "lg_rolling_friction_mu": 0.08,
+    "lg_rolling_friction_mu": 0.01,
     "lg_mu_brake": 0.8
   },
   "actuator_dynamics": {
     "tau_aileron": 0.15,
     "tau_elevator": 0.15,
-    "tau_rudder": 0.30
+    "tau_rudder": 0.30,
+    "tau_engine": 0.0000001,
+    "tau_gnd_spoiler": 0.50,
+    "tau_brakes": 0.30
   },
   "joystick_maps":{
     "Logitech Extreme 3D":{
@@ -123,6 +126,7 @@
     "zero_ail_rud_thr": 3,
     "pitch_dn": 4,
     "pitch_up": 2,
+    "arm_disarm_gnd_spoiler": 5,
     "roll_rt": 7,
     "roll_lt": 6,
     "T1_fd": 8,
