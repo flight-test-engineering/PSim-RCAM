@@ -1212,6 +1212,84 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     
     return X_dot
 
+# for efficiency, we create a new function twin just to calculate the internal states and return them for logging. 
+# we do not need to log at full simulation frame rate.
+@jit(nopython=True)
+def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
+    """
+    Performs the same calculations as RCAM_model but returns internal variables
+    for logging purposes instead of state derivatives.
+    
+    Returns array:
+    [0:Va, 1:alpha, 2:beta, 3:CL, 4:CD, 5:CY, 6:Gnd_Fx, 7:Gnd_Fy, 8:Gnd_Fz]
+    """
+   
+    # ------------------------- states ----------------------------------
+    u, v, w = X[IDX_U], X[IDX_V], X[IDX_W] # m/s
+    p, q, r = X[IDX_P], X[IDX_Q], X[IDX_R] # rad/s
+    phi, theta, psi = X[IDX_PHI], X[IDX_THETA], X[IDX_PSI] # rad
+
+    # ----------------------- controls ----------------------------------
+    da, de, dr, dt1, dt2, dgsp, brake = U[IDX_AIL], U[IDX_ELE], U[IDX_RUD], U[IDX_THR1], U[IDX_THR2], X[IDX_GNDSP], U[IDX_BRAKE]
+
+    #----------------- intermediate variables ---------------------------
+    # airspeed
+    Va = np.sqrt(u**2 + v**2 + w**2) # m/s
+    
+    # alpha and beta
+    # Protect against divide by zero if Va is very small (on ground)
+    if Va < 0.1:
+        alpha = 0.0
+        beta = 0.0
+    else:
+        alpha = np.arctan2(w, u)
+        beta = np.arcsin(v / Va)
+       
+    #----------------- aerodynamic force coefficients ---------------------
+        # this is only available in the newer RCAM document (rev Feb 1997)
+    # which is not availble to the public
+    # CL - wing + body
+    # adding spoiler to kill lift
+    CL_wb = N * (alpha - ALPHA_L0) * (1 - dgsp) if alpha <= ALPHA_SWITCH else (A3 * alpha**3 + A2 * alpha**2 + A1 * alpha + A0) * (1 - dgsp)
+
+    # CL thrust
+    epsilon = DEPSDA * (alpha - ALPHA_L0)
+    # Prevent divide by zero in epsilon_dot term
+    q_term = (EPSILON_DOT * q * LT / Va) if Va > 0.1 else 0.0
+    alpha_t = alpha - epsilon + de + q_term
+    CL_t = NT * (ST / S) * alpha_t
+
+    # Total CL
+    CL = CL_wb + CL_t
+
+    # Total CD (in stability frame)
+    CD = CDMIN + D1 * (N * alpha + D0)**2
+
+    # Total side force CY (stability frame)
+    CY = CY_BETA * beta + CY_DR * dr
+
+    
+    #---------------------- engine force and moment --------------------------
+    # thrust
+    F1 = dt1
+    F2 = dt2
+
+
+
+    #---------------------- GROUND REACTION ----------------------------------
+    # This is the new part for Step 3
+    Gnd_Reac = calculate_ground_forces(X, h, brake)
+    F_gnd_b = Gnd_Reac[:3]
+    F_gnd_x = Gnd_Reac[0]
+    F_gnd_y = Gnd_Reac[1]
+    F_gnd_z = Gnd_Reac[2]
+
+
+
+    
+    return np.array([Va, alpha*RAD2DEG, beta*RAD2DEG, CL, CD, CY, F_gnd_x, F_gnd_y, F_gnd_z])
+
+
 
 # ############################################################################
 # Navigation Equations
@@ -1525,6 +1603,8 @@ if __name__ == "__main__":
 
 ##########################################################################
     signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp', 'brake']
+    internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz']
+    full_header = signals_header + internals_header
 
     
     # we only start the network and multiprocessing if doing online sim, at least for now
@@ -1842,7 +1922,8 @@ if __name__ == "__main__":
                 #current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
 
                 # -- Data Logging
-                data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man)))
+                internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m)
+                data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man, internals)))
                 t_vector_collector.append(this_AC_int.t)
                 
                 # -- FlightGear Output
@@ -1976,6 +2057,6 @@ if __name__ == "__main__":
             engine_process.terminate()
         
     # save data to disk
-    save2disk('test_data.csv', x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=signals_header, skip=0)
-    fig1 = make_plots(x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=signals_header, skip=0)
+    save2disk('test_data.csv', x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=full_header, skip=0)
+    fig1 = make_plots(x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=full_header, skip=0)
     plt.show();
