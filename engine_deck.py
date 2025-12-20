@@ -162,11 +162,12 @@ class Turbofan_Deck():
         return TLA * (1.0 - idle) + idle
         
 
-    def _get_idle(self, altitude:float)->float:
+    def _get_idle(self, altitude:float, on_ground:bool)->float:
         """
         given an altitude, returns idle value
         """
         # simple table
+        if on_ground: return 0.075
         if altitude < 3000:    return 0.15
         elif altitude < 5000:  return 0.18
         elif altitude < 8000:  return 0.20
@@ -451,7 +452,7 @@ class Turbofan_Deck():
         return res
 
 
-    def run_deck(self, alt:float, MN:float, TLA:float, current_time:float)->dict:
+    def run_deck(self, alt:float, MN:float, TLA:float, on_ground:bool, current_time:float)->dict:
         """
         mainclass API to run deck
         inputs:
@@ -467,7 +468,7 @@ class Turbofan_Deck():
             throttle changes
         """
 
-        idle_PC = self._get_idle(alt)
+        idle_PC = self._get_idle(alt, on_ground)
         TLA_temp = self._TLA_response(current_time, TLA)
         PC = self._get_PC_from_TLA(TLA_temp, idle_PC)
         

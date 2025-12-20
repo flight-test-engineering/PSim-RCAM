@@ -397,9 +397,9 @@ def engine_worker(jobs_queue, results_queue):
                 break
             
             # unpack the arguments
-            job_alt, job_MN, job_E1_TLA, job_E2_TLA, job_time = job
-            E1_res = HBTF_200kN_class.run_deck(job_alt, job_MN, job_E1_TLA, job_time)
-            E2_res = HBTF_200kN_class.run_deck(job_alt, job_MN, job_E2_TLA, job_time)
+            job_alt, job_MN, job_E1_TLA, job_E2_TLA, job_on_ground, job_time = job
+            E1_res = HBTF_200kN_class.run_deck(job_alt, job_MN, job_E1_TLA, job_on_ground, job_time)
+            E2_res = HBTF_200kN_class.run_deck(job_alt, job_MN, job_E2_TLA, job_on_ground, job_time)
             results = (E1_res, E2_res)
             
             # The logic for clearing old results remains the same.
@@ -1499,8 +1499,8 @@ if __name__ == "__main__":
 
 ############################################################################
     # INITIAL CONDITIONS (for trim)
-    INIT_ALT_FT = 2100 #ft
-    V_TRIM_MPS = 170 * KT2MS # m/s
+    INIT_ALT_FT = 2400 #ft
+    V_TRIM_MPS = 160 * KT2MS # m/s
     GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
     INIT_HDG_DEG = 82.0 # DEG
     # Lat/Lon
@@ -1886,9 +1886,10 @@ if __name__ == "__main__":
 
                 # -- Engine Deck trigger
                 if calc_eng_trigger:
+                    on_ground = get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m))
                     if jobs_queue.empty():
                         #print(f"[Main Process] Triggering new engine calculation...{VA(current_uvw)*MS2KT:.2f}, {current_alt_m*M2FT:.1f}")
-                        new_job = (current_alt_m*M2FT, ISA.Vt2M(VA(current_uvw)*MS2KT, current_alt_m*M2FT), U_man[3], U_man[4], time.perf_counter())
+                        new_job = (current_alt_m*M2FT, ISA.Vt2M(VA(current_uvw)*MS2KT, current_alt_m*M2FT), U_man[3], U_man[4], on_ground, time.perf_counter())
                         try:
                             jobs_queue.put(new_job, block=False)
                             eng_time_adder = 0
