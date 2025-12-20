@@ -1593,7 +1593,7 @@ if __name__ == "__main__":
     # SIMULATION OPTIONS
     SIM_TOTAL_TIME_S = 10 * 60 # (s) total simulation time
     SIM_LOOP_HZ = 400 # (Hz) simulation loop frame rate throttling
-    FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FG
+    FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FlightGear AND for recording data
     DECK_LOOP_HZ = 10 # (Hz) fra1me rate to calculate engine deck
     SIM_VISUAL_OFFSET = 0 # Simulator Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
 
@@ -1921,13 +1921,16 @@ if __name__ == "__main__":
                 current_AGL_m = current_alt_m - terrain_shared_data['ground_alt'] # this in meters
                 #current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
 
-                # -- Data Logging
-                internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m)
-                data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man, internals)))
-                t_vector_collector.append(this_AC_int.t)
                 
                 # -- FlightGear Output
                 if send_frame_trigger:
+                    # for efficiency, we will use this loop to record the data as well
+                    # because we are not doing structures sim, we do not need to record at full sim frame rate
+                    # -- Data Logging
+                    internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m)
+                    data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man, internals)))
+                    t_vector_collector.append(this_AC_int.t)
+
                     # it is easier to calculate body accelerations instead of reaching into the RCAM function
                     if dt == 0:
                         body_accels = (current_uvw - prev_uvw) / prev_dt
