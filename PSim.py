@@ -11,7 +11,6 @@
 # "v" muda o visual
 # https://wiki.flightgear.org/Command_line_options
 
-# prototype for moving engine deck to a dedicated CPU core
 
 '''
 Partial Python implementation of the non-linear flight dynamics model proposed by:
@@ -28,7 +27,7 @@ https://www.youtube.com/watch?v=bFFAL9lI2IQ
 2 - Matlab implementation
 https://www.youtube.com/watch?v=m5sEln5bWuM
 
-The program runs the integration loop as fast as possible, adjusting the integration steps to the available computing cycles
+The program runs the integration loop at a target pf 400Hz, adjusting the integration steps to the available computing cycles
 It uses Numba to speed up the main functions involved in the integration loop
 
 Output is sent to FlightGear (FG), over UDP, at a reduced frame rate (60)
@@ -36,8 +35,9 @@ The FG interface uses the class implemented by Andrew Tridgel (fgFDM):
 https://github.com/ArduPilot/pymavlink/blob/master/fgFDM.py
 
 currently, the UDP address is set to the local machine.
+A second UDP address is available for an extra screen/instance of FG
 
-Run this program and from a separate terminal, start FG with one of the following commands (depending on the aircraft addons installed):
+Run this Python program and from a separate terminal, start FG with one of the following commands (depending on the aircraft addons installed):
 fgfs --airport=KSFO --runway=28R --aircraft=ufo --native-fdm=socket,in,60,,5500,udp --fdm=null
 fgfs --airport=KSFO --runway=28R --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null
 fgfs --airport=KSFO --runway=28R --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs/Aircraft/org.flightgear.fgaddon.stable_2020/Aircraft/757-200 --native-fdm=socket,in,60,,5500,udp --fdm=null
@@ -46,8 +46,6 @@ DRI_PRIME=1 fgfs --airport=LOWI  --aircraft=Embraer170 --aircraft-dir=./FlightGe
 
 If a joystick is detected, then inputs come from it
 Otherwise, offline simulation is run
-
-this version separates FlightGear packet sending to its own thread to improve speed and eliminate frame rate stutter
 
 
 TODO:
@@ -330,7 +328,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
 # ############################################################################
 
 ############################################################################
-# we need first the joystick name, to load the correct parameters in
+# we first need the joystick name, to load the correct parameters...
 # JOYSTICK INIT AND CHECK
 pygame.init() # automatically initializes joystick also
 
@@ -366,23 +364,30 @@ else:
     print(f'found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
 
 
-#ground1
 # ############################################################################
-# STEP 1: Rigid Landing Gear Model Initialization
+# Landing Gear Model Initialization
 # ############################################################################
 # Define contact points relative to the Center of Gravity (CG)
 # Frame: Body Axis (X=Forward, Y=Right, Z=Down)
 # Units: Meters
-# Assumes a typical configuration for an aircraft of RCAM size (~40t)
 
 print(f"Landing Gear Model Loaded:")
 print(f"  Nose Rel Pos: {LG_NOSE_POS}")
 print(f"  Main Rel Pos: {LG_MAIN_L_POS}")
 
-
+# ############################################################################
+# Load Engine Deck
+# ############################################################################
+# Uses data and code from https://youtu.be/95Gy2wg3olE
 HBTF_200kN_class = Turbofan_Deck('PW2000_similar_deck.csv')
 
 
+
+# ############################################################################
+# Helper Functions
+# ############################################################################
+
+# This will run on its own process because it is very CPU intensive
 def engine_worker(jobs_queue, results_queue):
     """
     This is the worker function that runs in its own PROCESS.
@@ -416,11 +421,7 @@ def engine_worker(jobs_queue, results_queue):
     print("[Engine Process] Worker has shut down.")
 
 
-
-# ############################################################################
-# Helper Functions
-# ############################################################################
-
+# Threads for communication with FlightGear
 def network_worker(socks, packet_queue, fg_addresses):
     """
     This function runs in a separate thread. It waits for FDM packets to appear
@@ -503,6 +504,7 @@ def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
     sock.close()
     print("Terrain RX Worker finished.")
 
+# auxiliary function for plotting results
 def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
                 header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp', 'brake'], skip=0):
 
@@ -516,8 +518,6 @@ def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
     '''
     plotlist = []
 
-    #plt.ioff()
-    #plt.clf()
     counter = 1
     myfig = plt.figure(figsize = (16,(y_data.shape[1]*4)))
     myfig.patch.set_edgecolor('w')
@@ -548,6 +548,7 @@ def save2disk(filename, x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
             row_list.insert(0, x_data[idx].astype('float'))
             writer.writerow(row_list)
 
+# Velocity, FPA and Geodesy functions
 @jit(nopython=True)
 def VA(uvw:np.ndarray) -> float:
     '''
@@ -566,6 +567,7 @@ def get_rho(altitude:float)->float:
     '''
     return ISA.rho_SL * ISA.sigma(altitude * M2FT) # ISA expects alt in ft
 
+
 @jit(nopython=True)
 def fpa(V_NED)->float:
     '''
@@ -581,6 +583,38 @@ def course(V_NED)->float:
     '''
     return np.pi/2 - np.arctan2(V_NED[0], V_NED[1])
 
+
+# geodsy
+# https://www.youtube.com/watch?v=4BJ-GpYbZlU
+@jit(nopython=True)
+def WGS84_MN(lat:float):
+    '''
+    Meridian Radius of Curvature
+    Prime Vertical Radius of Curvature
+    for WGS-84
+    
+    Input is latitude in degress (decimal)
+    '''
+    a = 6378137.0 #meters
+    e_sqrd = 6.69437999014E-3
+    M = (a * (1 - e_sqrd)) / ((1 - e_sqrd * np.sin(lat)**2)**(1.5))
+    N = a / ((1 - e_sqrd * np.sin(lat)**2)**(0.5))
+    return M, N
+
+
+@jit(nopython=True)
+def latlonh_dot(V_NED, lat, h):
+    '''
+    V_NED: m/s
+    lat: latitude in degrees (decimal)
+    h: altitude in meters
+    '''
+    M, N = WGS84_MN(lat)
+    return np.array([(V_NED[0]) / (M + h), 
+                     (V_NED[1]) / ((N + h) * np.cos(lat)),
+                     -V_NED[2]])
+
+
 @jit(nopython=True)
 def add_wind(NED:np.ndarray, std_dev:np.ndarray)->np.ndarray:
     '''
@@ -594,6 +628,7 @@ def add_wind(NED:np.ndarray, std_dev:np.ndarray)->np.ndarray:
     return NED + np.multiply(np.random.rand(3), std_dev)
 
 
+# OFFLINE control inputs creation
 def get_doublet(t_vector, t=0, duration=1, amplitude=0.1):
     '''
     calculates a doublet input
@@ -671,6 +706,7 @@ def create_cmd(t_vector=np.zeros(5), input_channel='ail', cmd_type='doublet', at
         
     return input_ch_num, cmd
 
+
 def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels):
     '''
     function to set the current time step data to be sent to FlightGear
@@ -707,7 +743,7 @@ def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels):
     this_fgFDM.set('A_Z_pilot', body_accels[2], units='mpss')
 
 
-
+# controls
 def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     '''
     function that will read joystick positions and adjust controls:
@@ -717,8 +753,6 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     button pressed, throttle should be commanded left/right/both
     '''
     U = np.zeros(U_trim.shape)
-
-    # # # TRIM
 
     # multipliers to adjust how much trim is added per integration step.
     # --- TRIM ---
@@ -749,13 +783,12 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
 
     U_trim[0] = U_trim[0] - aileron_trim_step * roll_rt + aileron_trim_step * roll_lt
     U_trim[1] = U_trim[1] - pitch_trim_step * pitch_up  + pitch_trim_step * pitch_dn
-    #U_trim[2] = U_trim[2] + rudder_trim_step *  - rudder_trim_step * roll_lt
+    #U_trim[2] = U_trim[2] + rudder_trim_step *  - rudder_trim_step * roll_lt  # no rudder trim buttons available
     U_trim[3] = U_trim[3] - throttle_trim_step * T1_af + throttle_trim_step * T1_fd
     U_trim[4] = U_trim[4] - throttle_trim_step * T2_af + throttle_trim_step * T2_fd
 
     # # # JOYSTICK COMMAND
-
-    # joystick constants/multipliers to adjust correct movemG12ent and amplitude
+    # joystick constants/multipliers to adjust correct movement and amplitude
     U[IDX_AIL] = U_trim[IDX_AIL] + joystick.get_axis(JOY_ROLL_AXIS) * joy_factors['aileron']
     U[IDX_ELE] = U_trim[IDX_ELE] + joystick.get_axis(JOY_PITCH_AXIS) * joy_factors['elevator']
     U[IDX_RUD] = U_trim[IDX_RUD] + joystick.get_axis(JOY_YAW_AXIS) * joy_factors['rudder']
@@ -769,38 +802,6 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     return U, U_trim, exit_signal
 
 
-
-# geodsy
-# https://www.youtube.com/watch?v=4BJ-GpYbZlU
-@jit(nopython=True)
-def WGS84_MN(lat:float):
-    '''
-    Meridian Radius of Curvature
-    Prime Vertical Radius of Curvature
-    for WGS-84
-    
-    Input is latitude in degress (decimal)
-    '''
-    a = 6378137.0 #meters
-    e_sqrd = 6.69437999014E-3
-    M = (a * (1 - e_sqrd)) / ((1 - e_sqrd * np.sin(lat)**2)**(1.5))
-    N = a / ((1 - e_sqrd * np.sin(lat)**2)**(0.5))
-    return M, N
-
-@jit(nopython=True)
-def latlonh_dot(V_NED, lat, h):
-    '''
-    V_NED: m/s
-    lat: latitude in degrees (decimal)
-    h: altitude in meters
-    '''
-    M, N = WGS84_MN(lat)
-    return np.array([(V_NED[0]) / (M + h), 
-                     (V_NED[1]) / ((N + h) * np.cos(lat)),
-                     -V_NED[2]])
-
-
-# controls
 def control_norm(U:np.array) -> np.array:
     '''
     normalizes controls to be sent to FG
@@ -829,12 +830,15 @@ def control_norm(U:np.array) -> np.array:
                       u_subset / maxs)
     
     return U_norm
+
+
 @jit(nopython=True)
 def control_sat(U:np.ndarray) -> np.ndarray:
     '''
     saturates the control inputs to maximum allowable in RCAM model
     '''
     return np.clip(U, U_LIMITS_MIN, U_LIMITS_MAX)
+
 
 @jit(nopython=True)
 def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.ndarray) -> np.ndarray:
@@ -852,13 +856,12 @@ def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.nda
     # 2. Engines (Pass through - The engine deck handles spool up dynamics)
     # testing fast time constant for engine, which should have no effect
     #U_new[3:5] = U_cmd[3:5]
-
     
     return U_new
 
-#ground1
+
 # ############################################################################
-# STEP 2: Ground Detection Logic
+# Ground Detection Logic
 # ############################################################################
 
 @jit(nopython=True)
@@ -923,7 +926,7 @@ def get_air_ground_state(compressions:np.ndarray) -> bool:
     else:
         return False
 
-#ground1
+
 @jit(nopython=True)
 def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float) -> np.ndarray:
     """
@@ -1021,7 +1024,6 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float) -> np.ndarray
 # RCAM flight dynamics model
 # ############################################################################
 
-#ground1
 @jit(nopython=True)
 def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     """
@@ -1212,6 +1214,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     
     return X_dot
 
+
 # for efficiency, we create a new function twin just to calculate the internal states and return them for logging. 
 # we do not need to log at full simulation frame rate.
 @jit(nopython=True)
@@ -1344,7 +1347,11 @@ def NED(uvw, phithetapsi):
     # Scipy's "integrate.ode" does not accept a numba/@jit(nopython=True) compiled function
     # therefore, we need to create dummy wrappers
 
-#ground1
+
+################################################################################################################
+# TODO: MAYBE CREATE A SPECIAL WRAPPER FOR TRIM FUNCTION SO THAT WE DO NOT NEED TO REMOVE/ADD SPOILER AND BRAKES
+################################################################################################################
+
 def RCAM_model_wrapper(t, X, U, rho, h):
     return RCAM_model(X, U, rho, h)
 
@@ -1356,7 +1363,6 @@ def latlonh_dot_wrapper(t, X, V_NED, lat, h):
 
 
 # # # integrators
-#ground1
 def ss_integrator(t_ini:float, X0:np.ndarray, U:np.ndarray, rho:float, h:float):
     """
     single step integrator
@@ -1384,7 +1390,7 @@ def latlonh_int(t_ini:float, latlonh0:np.ndarray, V_NED):
     RK_integrator.set_initial_value(latlonh0, t_ini)
     return RK_integrator
 
-#ground1
+
 def get_AGL(current_latlon_deg, current_alt_m):
     '''
     this function fetches the current AGL n meters from the SRTM database
@@ -1406,7 +1412,6 @@ def get_AGL(current_latlon_deg, current_alt_m):
 # Model Trimming Function
 # ############################################################################
 
-#ground1
 def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim) -> np.dtype('f8'):
     """
     functional to calculate a cost for minimizer (used to find trim point)
@@ -1449,7 +1454,7 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
     
     return np.dot(np.dot(Q.T, H), Q)
 
-#ground1
+
 def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, psi_trim=0.0, rho_trim=1.225, 
                h_trim=100.0, 
                X0=np.array([85, 0, 0, 0, 0, 0, 0, 0.0, 0]), 
@@ -1516,7 +1521,6 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
 # Model Initialization
 # ############################################################################
 
-#ground1
 def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi_t=0.0, height=0.0):
     """
     this initializes the integrators at a straight and level flight condition
@@ -1835,11 +1839,9 @@ if __name__ == "__main__":
 
                 # -- Sensors & Environment
                 
-                # get density, inputs
+                # get inputs
                 current_throttle = [U_man[3], U_man[4]] # keep track of throttle to zero-out the trim bias
-                current_rho = get_rho(current_alt_m)
-            
-            
+                            
                 # -- Inputs & Actuators
                 U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS)
                 
@@ -1868,27 +1870,20 @@ if __name__ == "__main__":
                 U_actual = update_actuators(U_man, U_actual, actuator_dt, ACT_TAU)
 
 
-                # -- Ground Logic
-                #ground1
-                # if on ground, don't keep going down
-                # DEBUG - the value "4" is to adjust for grar height
-                # NEED TO MAKE IT A LATCH - IF GROUND THEN OPEN
-                # need to make it a variable (aircraft gear height)
+                # -- Ground Spoiler Logic
                 if open_gnd_spoiler : 
                     #current_NED[2] = 0
-                    this_wind[2] = 0
-                    U_actual[IDX_GNDSP] = 0.4 # 80% spoiler
+                    this_wind[2] = 0 # zero out wind because we do not have nose wheel steering
+                    U_actual[IDX_GNDSP] = 0.4 # 40% lift-dump spoiler
 
 
-
-                # -- Engines
+                # -- Engines - multiprocessing
+                # if there are new deck values, fetch them,
+                # if not, keep what we have
                 try:
-                    # MULTIPROCESSING: The API is the same, but we import mp.queues for the exception.
                     eng_vals = results_queue.get(block=False) # block=False is equivalent to get_nowait()
-                    e1_thrust = eng_vals[0]['Fn'] * LBF2N
+                    e1_thrust = eng_vals[0]['Fn'] * LBF2N # deck returns lbf, need to convert to N
                     e2_thrust = eng_vals[1]['Fn'] * LBF2N
-                    #print(f"[Main Process] Updated engine results at t={t:.2f}s.")
-                    #print(f"[Main Process] Updated engine results")
                 except mp.queues.Empty:
                     pass
 
@@ -1901,6 +1896,7 @@ if __name__ == "__main__":
                 # PREPARE FOR INTEGRATOR
                 # -------------------------------------------------------
                 prev_uvw = current_uvw
+                current_rho = get_rho(current_alt_m)
 
 
                 # -- Integrate Physics
@@ -1915,25 +1911,32 @@ if __name__ == "__main__":
                 this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon_rad[0], current_alt_m)
                 this_latlonh_int.integrate(this_latlonh_int.t + dt) #in radians and alt in meters
                 
-                # keep current state and time vector for next iteration
-                current_latlon_rad = this_latlonh_int.y[0:2] # store lat and long (RAD)
-                current_alt_m = this_latlonh_int.y[2] # store altitude (m)
+                # store current state and time vector for next iteration
+                current_latlon_rad = this_latlonh_int.y[0:2]
+                current_alt_m = this_latlonh_int.y[2]
                 current_AGL_m = current_alt_m - terrain_shared_data['ground_alt'] # this in meters
+                # alternate: if using SRTM...
                 #current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
 
                 
                 # -- FlightGear Output
                 if send_frame_trigger:
-                    # for efficiency, we will use this loop to record the data as well
-                    # because we are not doing structures sim, we do not need to record at full sim frame rate
+                    # for efficiency, we will use this loop to 
+                    # 1. send the datagram to FlightGear
+                    # 2. log the data
+                    # 3. check/toggle ground spoilers
+                    # because we are not doing structures sim, we do not need to log at full sim frame rate
+                    # also, understood that altitude and rho will be "ahead" one step
+
                     # -- Data Logging
                     internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m)
                     data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man, internals)))
                     t_vector_collector.append(this_AC_int.t)
 
+                    # -- Send data to FlightGear
                     # it is easier to calculate body accelerations instead of reaching into the RCAM function
                     if dt == 0:
-                        body_accels = (current_uvw - prev_uvw) / prev_dt
+                        body_accels = np.zeros(prev_uvw.shape)
                     else:
                         body_accels = (current_uvw - prev_uvw) / dt
                     # add gravity
@@ -1958,15 +1961,13 @@ if __name__ == "__main__":
                         pass
                     send_frame_trigger = False
 
-                    #CODE OPTIMIZATION
-                    # using this loop to check air-ground as well
-                    # we do not need to check at full sim speed
+                    # -- set/toggle ground spoilers
                     toggle_gnd_spoiler_debounce += 1
                     if U_man[IDX_GNDSP] > 0 and toggle_gnd_spoiler_debounce > 50:
                         gnd_spoilers_armed = not(gnd_spoilers_armed)
                         toggle_gnd_spoiler_debounce = 0
-
                     open_gnd_spoiler = get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m)) and gnd_spoilers_armed
+
 
                 # -- Engine Deck trigger
                 if calc_eng_trigger:
@@ -1982,7 +1983,7 @@ if __name__ == "__main__":
                             pass
                     else:
                         #print("[Main Process] Engine is still busy with a pending job, skipping this trigger.")
-                        print("Ebusy.",end="")
+                        pass
                     calc_eng_trigger = False
 
                 
@@ -2040,7 +2041,7 @@ if __name__ == "__main__":
 
     if OFFLINE == False:
         # close threads
-        # Stop TX threads
+        # -- Stop TX threads
         print()
         print("Shutting down network threads...")
         fdm_packet_queue.put(None)  # Send the shutdown signal
@@ -2048,10 +2049,11 @@ if __name__ == "__main__":
         for s in socks:
             s.close()
                 
-        # Stop RX thread
+        # -- Stop RX thread
         terrain_shutdown_queue.put(True)
         terrain_thread.join(timeout=1.0)
 
+        # close engine process
         jobs_queue.put(None)
         engine_process.join(timeout=2.0) # Wait for the worker process to finish
         # It's good practice to terminate if it doesn't join cleanly
