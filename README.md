@@ -1,4 +1,5 @@
 # PSim-RCAM
+Welcome to PSim-RCAM - short for Python Simulation - Research Civil Aircraft Model!
 Partial Python implementation of the non-linear flight dynamics model proposed by:
 Group for Aeronautical Research and Technology Europe (GARTEUR) - Research Civil Aircraft Model (RCAM)
 http://garteur.org/wp-content/reports/FM/FM_AG-08_TP-088-3.pdf
