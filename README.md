@@ -2,39 +2,46 @@
 
 # PSim-RCAM
 Welcome to PSim-RCAM - short for Python Simulation - Research Civil Aircraft Model!
-Partial Python implementation of the non-linear flight dynamics model proposed by:
-Group for Aeronautical Research and Technology Europe (GARTEUR) - Research Civil Aircraft Model (RCAM)
+
+This is a Python implementation of the non-linear flight dynamics model proposed by:
+Group for Aeronautical Research and Technology Europe (GARTEUR) - Research Civil Aircraft Model (RCAM) (rev Jun 1995)
 http://garteur.org/wp-content/reports/FM/FM_AG-08_TP-088-3.pdf
-HOWEVER!!!
-    # many equations and values are only available in the newer RCAM document (rev Feb 1997)
-    # which is not availble to the public
-    # the values from this reference were obtained from the youtube videos below
+HOWEVER:
+    # a few equations and values are only available in the later RCAM revision (rev Feb 1997)
+    # the 1997 revision is not availble to the public
+    # the values and equations from this reference were obtained from youtube videos listed below:
 
 The excellent tutorials by Christopher Lum (for Matlab/Simulink) were used as a guide:
-1 - Equations/Modeling
-https://www.youtube.com/watch?v=bFFAL9lI2IQ
-2 - Matlab implementation
-https://www.youtube.com/watch?v=m5sEln5bWuM
+1 - Equations/Modeling: https://www.youtube.com/watch?v=bFFAL9lI2IQ
+2 - Matlab implementation: https://www.youtube.com/watch?v=m5sEln5bWuM
 
-The program runs the integration loop at a target pf 400Hz, adjusting the integration steps to the available computing cycles
+In addition to what prof. Lum implements, the following features are added here:
+1 - Ground reactions (landing gear), to allow for takeoff and landing
+2 - Actuator dynamics
+3 - Turbofan engine deck (parallel processing/multi-core), based on: https://youtu.be/95Gy2wg3olE
+4 - Terrain database based in SRTM data
+5 - Terrain database from FlightGear
+6 - FlightGear integration (parallel threading)
+
+Aiming for performance, the program runs the integration loop at a target pf 400Hz, adjusting the integration steps to the available computing cycles
 It uses Numba to speed up the main functions involved in the integration loop
 
 Output is sent to FlightGear (FG), over UDP, at a reduced frame rate (60)
 The FG interface uses the class implemented by Andrew Tridgel (fgFDM):
 https://github.com/ArduPilot/pymavlink/blob/master/fgFDM.py
 
-currently, the UDP address is set to the local machine.
-A second UDP address is available for an extra screen/instance of FG
-
-Run this Python program and from a separate terminal, start FG with one of the following commands (depending on the aircraft addons installed):
-fgfs --airport=KSFO --runway=28R --aircraft=ufo --native-fdm=socket,in,60,,5500,udp --fdm=null
-fgfs --airport=KSFO --runway=28R --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null
-fgfs --airport=KSFO --runway=28R --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs/Aircraft/org.flightgear.fgaddon.stable_2020/Aircraft/757-200 --native-fdm=socket,in,60,,5500,udp --fdm=null
-fgfs --airport=KSFO --runway=28R --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs/Aircraft/org.flightgear.fgaddon.stable_2020/Aircraft/757-200 --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --turbulence=0.5 --in-air  --enable-rembrandt
-DRI_PRIME=1 fgfs --airport=LOWI  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/fte.xml 2>/dev/null
+currently, the UDP address is set to the local machine, with  second UDP address available for an extra screen/instance of FG.
 
 If a joystick is detected, then inputs come from it
 Otherwise, offline simulation is run.
+
+To run:
+1 - make sure the joystick is connected
+2 - from a terminal, start the FlightGear instance that will render visuals and inform the terrain height. For example, in my setup I have FlightGear installed into its own directory. After cd'ing into it, I run this:
+DRI_PRIME=1 ./flightgear-2024.1.3-linux-amd64.AppImage --airport=LOWI  --aircraft=Embraer170 --aircraft-dir=CustomAircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/NTPS.xml --generic=socket,out,5,127.0.0.1,5502,udp,rcam_terrain
+3 - from its own terminal, run PSim.py
+
+
 
 Here is the simulation flowchart:
 
