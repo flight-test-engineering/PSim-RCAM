@@ -1,3 +1,5 @@
+<img width="3840" height="2160" alt="from_below" src="https://github.com/user-attachments/assets/f1e18d71-cb84-44b5-a1de-5bc535ad681e" />
+
 # PSim-RCAM
 Welcome to PSim-RCAM - short for Python Simulation - Research Civil Aircraft Model!
 Partial Python implementation of the non-linear flight dynamics model proposed by:
