@@ -1601,6 +1601,7 @@ if __name__ == "__main__":
     FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FlightGear AND for recording data
     DECK_LOOP_HZ = 10 # (Hz) fra1me rate to calculate engine deck
     SIM_VISUAL_OFFSET = 0 # Simulator Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
+    USE_FG_AS_TERRAIN_DB = False # if False, use SRTM database instead
 
 ###########################################################################
     # SHARED DATA
@@ -1915,9 +1916,12 @@ if __name__ == "__main__":
                 # store current state and time vector for next iteration
                 current_latlon_rad = this_latlonh_int.y[0:2]
                 current_alt_m = this_latlonh_int.y[2]
-                current_AGL_m = current_alt_m - terrain_shared_data['ground_alt'] # this in meters
-                # alternate: if using SRTM...
-                #current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
+                if USE_FG_AS_TERRAIN_DB:
+                    current_AGL_m = current_alt_m - terrain_shared_data['ground_alt'] # this in meters
+                else:
+                    # alternate: if using SRTM...
+                    current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
+                
 
                 
                 # -- FlightGear Output
