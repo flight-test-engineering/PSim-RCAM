@@ -379,7 +379,8 @@ print(f"  Main Rel Pos: {LG_MAIN_L_POS}")
 # Load Engine Deck
 # ############################################################################
 # Uses data and code from https://youtu.be/95Gy2wg3olE
-HBTF_200kN_class = Turbofan_Deck('PW2000_similar_deck.csv')
+E1_deck = Turbofan_Deck('PW2000_similar_deck.csv')
+E2_deck = Turbofan_Deck('PW2000_similar_deck.csv')
 
 
 
@@ -403,8 +404,8 @@ def engine_worker(jobs_queue, results_queue):
             
             # unpack the arguments
             job_alt, job_MN, job_E1_TLA, job_E2_TLA, job_on_ground, job_time = job
-            E1_res = HBTF_200kN_class.run_deck(job_alt, job_MN, job_E1_TLA, job_on_ground, job_time)
-            E2_res = HBTF_200kN_class.run_deck(job_alt, job_MN, job_E2_TLA, job_on_ground, job_time)
+            E1_res = E1_deck.run_deck(job_alt, job_MN, job_E1_TLA, job_on_ground, job_time)
+            E2_res = E2_deck.run_deck(job_alt, job_MN, job_E2_TLA, job_on_ground, job_time)
             results = (E1_res, E2_res)
             
             # The logic for clearing old results remains the same.
@@ -776,16 +777,16 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
 
     # if trigger is pressed, then zero out aileron, rudder states and make thrust equal on both sides
     if zero_ail_rud_thr == 1:
-        U_trim[0] = 0.0
-        U_trim[2] = 0.0
-        U_trim[3] = U_trim[4]
+        U_trim[IDX_AIL] = 0.0
+        U_trim[IDX_RUD] = 0.0
+        U_trim[IDX_THR1] = U_trim[IDX_THR2]
     
 
-    U_trim[0] = U_trim[0] - aileron_trim_step * roll_rt + aileron_trim_step * roll_lt
-    U_trim[1] = U_trim[1] - pitch_trim_step * pitch_up  + pitch_trim_step * pitch_dn
-    #U_trim[2] = U_trim[2] + rudder_trim_step *  - rudder_trim_step * roll_lt  # no rudder trim buttons available
-    U_trim[3] = U_trim[3] - throttle_trim_step * T1_af + throttle_trim_step * T1_fd
-    U_trim[4] = U_trim[4] - throttle_trim_step * T2_af + throttle_trim_step * T2_fd
+    U_trim[IDX_AIL] += aileron_trim_step * roll_lt - aileron_trim_step * roll_rt
+    U_trim[IDX_ELE] += pitch_trim_step * pitch_dn - pitch_trim_step * pitch_up
+    #U_trim[IDX_RUD] = U_trim[IDX_RUD] + rudder_trim_step *  - rudder_trim_step * roll_lt  # no rudder trim buttons available
+    U_trim[IDX_THR1] += throttle_trim_step * T1_fd - throttle_trim_step * T1_af
+    U_trim[IDX_THR2] += throttle_trim_step * T2_fd - throttle_trim_step * T2_af
 
     # # # JOYSTICK COMMAND
     # joystick constants/multipliers to adjust correct movement and amplitude
@@ -1821,10 +1822,10 @@ if __name__ == "__main__":
         # let's run the reverse deck:
         print(f'running inverse deck with - alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]*N2LBF:.0f} lbf')
 
-        U1[3] = HBTF_200kN_class.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC']
-        U1[4] = HBTF_200kN_class.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
-        U_man[3] = U1[3]
-        U_man[4] = U1[4]
+        U1[IDX_THR1] = E1_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC']
+        U1[IDX_THR2] = E2_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
+        U_man[IDX_THR1] = U1[IDX_THR1]
+        U_man[IDX_THR2] = U1[IDX_THR2]
 
         print(f'this is the inverse deck response: E1:{U1[3]:.4f}/E2:{U1[4]:.4f} % power')
         print()
@@ -1840,22 +1841,22 @@ if __name__ == "__main__":
                 # -- Sensors & Environment
                 
                 # get inputs
-                current_throttle = [U_man[3], U_man[4]] # keep track of throttle to zero-out the trim bias
+                current_throttle = [U_man[IDX_THR1], U_man[IDX_THR2]] # keep track of throttle to zero-out the trim bias
                             
                 # -- Inputs & Actuators
                 U_man, U1, exit_signal = get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS)
                 
                 # trim bias is always positive, so we washout if throttles move back
-                delta_throttle_1 = U_man[3] - current_throttle[0]
-                if delta_throttle_1 < 0 and U1[3] > 0: 
-                    if delta_throttle_1 > U1[3]:
-                        U1[3] = 0
-                        U1[4] = 0
+                delta_throttle_1 = U_man[IDX_THR1] - current_throttle[0]
+                if delta_throttle_1 < 0 and U1[IDX_THR1] > 0: 
+                    if delta_throttle_1 > U1[IDX_THR1]:
+                        U1[IDX_THR1] = 0
+                        U1[IDX_THR2] = 0
                     else:
-                        U1[3] = U1[3] + delta_throttle_1
-                        U1[4] = U1[4] + delta_throttle_1
-                        if U1[3] < 0 : U1[3] = 0
-                        if U1[4] < 0 : U1[4] = 0
+                        U1[IDX_THR1] += delta_throttle_1
+                        U1[IDX_THR2] += delta_throttle_1
+                        if U1[IDX_THR1] < 0 : U1[IDX_THR1] = 0
+                        if U1[IDX_THR2] < 0 : U1[IDX_THR2] = 0
 
                 U_man = control_sat(U_man) # saturate commands
 
@@ -1888,8 +1889,8 @@ if __name__ == "__main__":
                     pass
 
                 # Update thrust values (Engine deck results)
-                U_actual[3] = e1_thrust
-                U_actual[4] = e2_thrust                
+                U_actual[IDX_THR1] = e1_thrust
+                U_actual[IDX_THR2] = e2_thrust                
 
 
                 # -------------------------------------------------------
@@ -1974,7 +1975,7 @@ if __name__ == "__main__":
                     on_ground = get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m))
                     if jobs_queue.empty():
                         #print(f"[Main Process] Triggering new engine calculation...{VA(current_uvw)*MS2KT:.2f}, {current_alt_m*M2FT:.1f}")
-                        new_job = (current_alt_m*M2FT, ISA.Vt2M(VA(current_uvw)*MS2KT, current_alt_m*M2FT), U_man[3], U_man[4], on_ground, time.perf_counter())
+                        new_job = (current_alt_m*M2FT, ISA.Vt2M(VA(current_uvw)*MS2KT, current_alt_m*M2FT), U_man[IDX_THR1], U_man[IDX_THR2], on_ground, time.perf_counter())
                         try:
                             jobs_queue.put(new_job, block=False)
                             eng_time_adder = 0
@@ -1995,8 +1996,8 @@ if __name__ == "__main__":
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                     #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
-                    #print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m:0.0f}')
-                    print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, {open_gnd_spoiler=}, {gnd_spoilers_armed=}, {toggle_gnd_spoiler_debounce=}, {U_man[IDX_GNDSP]=}')
+                    print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, AGL={current_AGL_m:0.0f}')
+                    #print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, {open_gnd_spoiler=}, {gnd_spoilers_armed=}, {toggle_gnd_spoiler_debounce=}, {U_man[IDX_GNDSP]=}')
                     last_frame_time = this_AC_int.t
                   
                 
