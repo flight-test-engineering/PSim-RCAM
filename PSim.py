@@ -1462,19 +1462,36 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
                U0=np.array([1, 1, 1, 0.08, 0.08, 0.0, 0.0])) -> np.ndarray:
     """
     uses scipy minimize on functional to find trim point
+    X0 states:
+        u, v, w, p, q, r, phi, theta, psi
+    U0 controls:
+        ail, ele, rud, thr1, thr2, gnd spoiler, brake
     h_trim is passed on to check ground proximity
+    # .. States and Controls Indices ..
+    # STATE INDICES
+    IDX_U, IDX_V, IDX_W = 0, 1, 2
+    IDX_P, IDX_Q, IDX_R = 3, 4, 5
+    IDX_PHI, IDX_THETA, IDX_PSI = 6, 7, 8
+
+    # CONTROL INDICES
+    IDX_AIL, IDX_ELE, IDX_RUD = 0, 1, 2
+    IDX_THR1, IDX_THR2 = 3, 4
+    IDX_GNDSP, IDX_BRAKE = 5, 6
     """
 
-    X0[0] = VA_trim
-    X0[6] = phi_trim
-    X0[8] = psi_trim
+    # add target trim values to X0 vector, as a better initial guess for the states
+    X0[IDX_U] = VA_trim
+    X0[IDX_PHI] = phi_trim
+    X0[IDX_PSI] = psi_trim
 
     MAX_ITER = 10 
     iter_counter = 0
     epsilon = 1E-9
     converge = False
 
-    Z0 = np.concatenate((X0, U0[:-2])) # removing ground spoilers from trim variables
+    # concatenate states and inputs into single vector
+    # for trimming, ground spoilers and brakes are not a valid control
+    Z0 = np.concatenate((X0, U0[:-2])) # removing ground spoilers and brake from trim variables
 
     print(f'initial cost: {trim_functional2(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim):.3e}')
 
