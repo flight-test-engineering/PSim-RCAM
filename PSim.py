@@ -534,7 +534,7 @@ def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
 
 
 def save2disk(filename, x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
-                header=['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'brake'], skip=0):
+                header=['u', 'v', 'w'], skip=0):
     '''
     saves data to disk
     '''
@@ -1601,7 +1601,7 @@ if __name__ == "__main__":
     FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FlightGear AND for recording data
     DECK_LOOP_HZ = 10 # (Hz) fra1me rate to calculate engine deck
     SIM_VISUAL_OFFSET = 0 # Simulator Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
-    USE_FG_AS_TERRAIN_DB = False # if False, use SRTM database instead
+    USE_FG_AS_TERRAIN_DB = True # if False, use SRTM database instead
 
 ###########################################################################
     # SHARED DATA
