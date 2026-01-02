@@ -1467,16 +1467,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     U0 controls:
         ail, ele, rud, thr1, thr2, gnd spoiler, brake
     h_trim is passed on to check ground proximity
-    # .. States and Controls Indices ..
-    # STATE INDICES
-    IDX_U, IDX_V, IDX_W = 0, 1, 2
-    IDX_P, IDX_Q, IDX_R = 3, 4, 5
-    IDX_PHI, IDX_THETA, IDX_PSI = 6, 7, 8
 
-    # CONTROL INDICES
-    IDX_AIL, IDX_ELE, IDX_RUD = 0, 1, 2
-    IDX_THR1, IDX_THR2 = 3, 4
-    IDX_GNDSP, IDX_BRAKE = 5, 6
     """
 
     # add target trim values to X0 vector, as a better initial guess for the states
@@ -1961,9 +1952,9 @@ if __name__ == "__main__":
                     else:
                         body_accels = (current_uvw - prev_uvw) / dt
                     # add gravity
-                    g_b = np.array([-G * np.sin(this_AC_int.y[7]),
-                                    G * np.cos(this_AC_int.y[7]) * np.sin(this_AC_int.y[6]),
-                                    G * np.cos(this_AC_int.y[7]) * np.cos(this_AC_int.y[6])])
+                    g_b = np.array([-G * np.sin(this_AC_int.y[IDX_THETA]),
+                                    G * np.cos(this_AC_int.y[IDX_THETA]) * np.sin(this_AC_int.y[IDX_PHI]),
+                                    G * np.cos(this_AC_int.y[IDX_THETA]) * np.cos(this_AC_int.y[IDX_PHI])])
                     body_accels = body_accels + g_b
                     body_accels[2] = -body_accels[2] # FG expects Z-up
 
