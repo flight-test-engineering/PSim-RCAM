@@ -1505,7 +1505,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
                                                'maxfev':40000})
         
         # Updated cost check with h_trim
-        current_cost = trim_functional2(result.x, VA(result.x[:3]), result.x[7] - np.arctan2(result.x[2], result.x[0]), result.x[1], result.x[6], result.x[8], rho_trim, h_trim)
+        current_cost = trim_functional2(result.x, VA(result.x[:3]), result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U]), result.x[IDX_V], result.x[IDX_PHI], result.x[IDX_PSI], rho_trim, h_trim)
         print(f'iter: {iter_counter}, functional cost: {current_cost:.3e}')
 
         if current_cost < epsilon:
@@ -1518,15 +1518,15 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     if converge:
         print()
         print('Trim converged!')
-        print(f'trimmed speed = {VA(Z0[:3]):.3f}')
+        print(f'trimmed speed = {VA(Z0[:3]):.1f} m/s')
         
         # Updated X_dot check
         #X_dot = RCAM_model(result.x[:9], result.x[9:], rho_trim, h_trim)
 
-        print(f'check gamma {result.x[7] - np.arctan2(result.x[2], result.x[0])} RAD')
-        print(f'check side vel {result.x[1]} m/s')
-        print(f'check phi {result.x[6]} RAD')
-        print(f'check psi {result.x[8]} RAD')
+        print(f'check gamma {result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U])} RAD')
+        print(f'check side vel {result.x[IDX_V]:.1f} m/s')
+        print(f'check phi {result.x[IDX_PHI] * RAD2DEG:.1f} Deg')
+        print(f'check psi {result.x[IDX_PSI]* RAD2DEG:.1f} Deg')
     else:
         print('FAILED TO CONVERGE')
 
@@ -1571,8 +1571,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     print()
     print('Trimming',res4_status)
     print()
-    X0 = res4[:9]
-    #U0 = np.append(res4[9:], 0.0) # add back ground spoiler to control vector
+    X0 = res4[:9] # separate states and controls
     U0 = np.concatenate((res4[9:], np.array([0.0, 0.0]))) # add back ground spoiler and brakes to control vector
     print(f'initial states: {X0}')
     print(f'initial inputs: {U0}')
@@ -1838,14 +1837,14 @@ if __name__ == "__main__":
         # what comes out of the trimming function is thrust directly
         # for online sim, we can't use it
         # let's run the reverse deck:
-        print(f'running inverse deck with - alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]*N2LBF:.0f} lbf')
+        print(f'running inverse deck with alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]*N2LBF:.0f} lbf')
 
         U1[IDX_THR1] = E1_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC']
         U1[IDX_THR2] = E2_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
         U_man[IDX_THR1] = U1[IDX_THR1]
         U_man[IDX_THR2] = U1[IDX_THR2]
 
-        print(f'this is the inverse deck response: E1:{U1[3]:.4f}/E2:{U1[4]:.4f} % power')
+        print(f'this is the inverse deck response: E1:{U1[3]:.4f}; E2:{U1[4]:.4f} % power')
         print()
 
         while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
@@ -1878,7 +1877,7 @@ if __name__ == "__main__":
 
                 U_man = control_sat(U_man) # saturate commands
 
-                                # -------------------------------------------------------
+                # -------------------------------------------------------
                 # NEW: ACTUATOR UPDATE
                 # -------------------------------------------------------
                 # We calculate the time step for this specific loop iteration
@@ -2011,7 +2010,8 @@ if __name__ == "__main__":
                 
                 # -- Next frame setup
                 frame_count += 1
-                # DEBUG ONLY - 
+
+                # DEBUG ONLY - ################################################################################################################################################
                 # print out stuff every so often
                 if (frame_count % 100) == 0:
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
@@ -2020,8 +2020,7 @@ if __name__ == "__main__":
                     print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, AGL={current_AGL_m:0.0f}')
                     #print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, {open_gnd_spoiler=}, {gnd_spoilers_armed=}, {toggle_gnd_spoiler_debounce=}, {U_man[IDX_GNDSP]=}')
                     last_frame_time = this_AC_int.t
-                  
-                
+                #################################################################################################################################################################
 
                 # reset integrator timestep counter
                 # performance check
@@ -2045,9 +2044,8 @@ if __name__ == "__main__":
                 calc_eng_trigger = True
 
             # parking lot
-            # it will keep off the simulation loop above while time does not catch up
-            # with the desired "simdt".
-            # keeps adding time until that point, then releases the semaphore to run the sim
+            # it will keep off the simulation loop while time does not catch up with the desired "simdt".
+            # continuously adds time until that point, then releases the semaphore to run the sim
             if sim_time_adder >= simdt:
                 dt = sim_time_adder
                 sim_time_adder = 0
