@@ -165,12 +165,6 @@ print(f"Landing Gear Model Loaded:")
 print(f"  Nose Rel Pos: {LG_NOSE_POS}")
 print(f"  Main Rel Pos: {LG_MAIN_L_POS}")
 
-# ############################################################################
-# Load Engine Deck
-# ############################################################################
-# Uses data and code from https://youtu.be/95Gy2wg3olE
-E1_deck = Turbofan_Deck('PW2000_similar_deck.csv')
-E2_deck = Turbofan_Deck('PW2000_similar_deck.csv')
 
 
 
