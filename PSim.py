@@ -68,7 +68,6 @@ import matplotlib
 matplotlib.use('TkAgg')
 
 import ISA_module as ISA # International Standard Atmosphere library
-from engine_deck import Turbofan_Deck
 
 import time
 import csv
