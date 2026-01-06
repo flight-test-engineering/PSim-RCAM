@@ -96,6 +96,7 @@ import srtm
 
 from psim.constants import *
 from psim.config import load_aircraft_parameters
+import psim.environment as env
 
   
 
@@ -332,84 +333,9 @@ def save2disk(filename, x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
             row_list.insert(0, x_data[idx].astype('float'))
             writer.writerow(row_list)
 
-# Velocity, FPA and Geodesy functions
-@jit(nopython=True)
-def VA(uvw:np.ndarray) -> float:
-    '''
-    Calculate true airspeed
-    input:
-        uvw: vector of 3 speeds u, v, w
-    returns:
-        true airspeed
-    '''
-    return np.sqrt(np.dot(uvw.T, uvw))
 
 
-def get_rho(altitude:float)->float:
-    '''
-    calculate the air density given an altitude in meters
-    '''
-    return ISA.rho_SL * ISA.sigma(altitude * M2FT) # ISA expects alt in ft
 
-
-@jit(nopython=True)
-def fpa(V_NED)->float:
-    '''
-    returns flight path angle
-    input is a vector with North, East and Down velocities
-    '''
-    return np.arctan2(-V_NED[2], np.sqrt(V_NED[0]**2 + V_NED[1]**2))
-
-
-def course(V_NED)->float:
-    '''
-    returns the course, given NED velocities
-    '''
-    return np.pi/2 - np.arctan2(V_NED[0], V_NED[1])
-
-
-# geodsy
-# https://www.youtube.com/watch?v=4BJ-GpYbZlU
-@jit(nopython=True)
-def WGS84_MN(lat:float):
-    '''
-    Meridian Radius of Curvature
-    Prime Vertical Radius of Curvature
-    for WGS-84
-    
-    Input is latitude in degress (decimal)
-    '''
-    a = 6378137.0 #meters
-    e_sqrd = 6.69437999014E-3
-    M = (a * (1 - e_sqrd)) / ((1 - e_sqrd * np.sin(lat)**2)**(1.5))
-    N = a / ((1 - e_sqrd * np.sin(lat)**2)**(0.5))
-    return M, N
-
-
-@jit(nopython=True)
-def latlonh_dot(V_NED, lat, h):
-    '''
-    V_NED: m/s
-    lat: latitude in degrees (decimal)
-    h: altitude in meters
-    '''
-    M, N = WGS84_MN(lat)
-    return np.array([(V_NED[0]) / (M + h), 
-                     (V_NED[1]) / ((N + h) * np.cos(lat)),
-                     -V_NED[2]])
-
-
-@jit(nopython=True)
-def add_wind(NED:np.ndarray, std_dev:np.ndarray)->np.ndarray:
-    '''
-    returns wind at altitude Hp.
-    inputs:
-        NED: vector with wind speed
-        std_dev: vector with standard deviations for wind (one value for each N, E, D)
-    output:
-        wind speed vector
-    '''
-    return NED + np.multiply(np.random.rand(3), std_dev)
 
 
 # OFFLINE control inputs creation
@@ -511,7 +437,7 @@ def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels):
     
     # this sets units to kts because the HUD does not apply any conversions to the speed
     # if we send speed in fps as the API requires, the HUD displays wrong value
-    this_fgFDM.set('vcas', ISA.Vt2Vc(VA(X[:3]), alt*M2FT) * MS2KT) 
+    this_fgFDM.set('vcas', ISA.Vt2Vc(env.VA(X[:3]), alt*M2FT) * MS2KT) 
     this_fgFDM.set('cur_time', int(time.perf_counter() ), units='seconds')
     this_fgFDM.set('latitude', latlon[0], units='radians')
     this_fgFDM.set('longitude', latlon[1], units='radians')
@@ -1078,50 +1004,7 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
 
 
 
-# ############################################################################
-# Navigation Equations
-# ############################################################################
 
-# source:
-# Christopher Lum - "The Naviation Equations: Computing Position North, East and Down"
-# https://www.youtube.com/watch?v=XQZV-YZ7asE
-
-
-@jit(nopython=True)
-def NED(uvw, phithetapsi):
-    '''
-    compute the NED velocities from:
-    inputs
-    uvw: array with u, v, w
-    phithetapsi: array with phi, theta, psi
-    
-    returns
-    velocities in NED
-    
-    remember that h_dot = -Vd
-    '''
-    
-    u = uvw[0]
-    v = uvw[1]
-    w = uvw[2]
-    phi = phithetapsi[0]
-    the = phithetapsi[1]
-    psi = phithetapsi[2]
-    c1v = np.array([[np.cos(psi), np.sin(psi), 0.0],
-                    [-np.sin(psi), np.cos(psi), 0.0],
-                    [0.0, 0.0, 1.0]])
-    
-    c21 = np.array([[np.cos(the), 0.0, -np.sin(the)],
-                    [0.0, 1.0, 0.0],
-                    [np.sin(the), 0.0, np.cos(the)]])
-    
-    cb2 = np.array([[1.0, 0.0, 0.0],
-                    [0.0, np.cos(phi), np.sin(phi)],
-                    [0.0, -np.sin(phi), np.cos(phi)]])
-    
-    cbv = np.dot(cb2, np.dot(c21,c1v)) #numba does not support np.matmul
-    return np.dot(cbv.T, uvw)
-    
 
 # ############################################################################
 # Model Integration
@@ -1140,10 +1023,10 @@ def RCAM_model_wrapper(t, X, U, rho, h):
     return RCAM_model(X, U, rho, h)
 
 def NED_wrapper(t, X, NED):
-    return NED
+    return env.NED
 
 def latlonh_dot_wrapper(t, X, V_NED, lat, h):
-    return latlonh_dot(V_NED, lat, h)
+    return env.latlonh_dot(V_NED, lat, h)
 
 
 # # # integrators
@@ -1175,21 +1058,7 @@ def latlonh_int(t_ini:float, latlonh0:np.ndarray, V_NED):
     return RK_integrator
 
 
-def get_AGL(current_latlon_deg, current_alt_m):
-    '''
-    this function fetches the current AGL n meters from the SRTM database
-    needs lat/lon in degrees
-    '''
-    ground_alt = elevation_data.get_elevation(current_latlon_deg[0], current_latlon_deg[1])
-    if ground_alt is None:
-        ground_alt = 0.0 # Default to Sea Level over oceans
-        print('DEBUG - NO DEM DATA')
-    elif ground_alt < 0:
-        ground_alt = 0.0
-        print('Below ground!')
 
-
-    return current_alt_m - ground_alt - SIM_VISUAL_OFFSET #DEBUG adding 8 meters to correct for cabin 
 
 
 # ############################################################################
@@ -1228,7 +1097,7 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
     # PASS h_trim to the model here:
     X_dot = RCAM_model(X, U, rho_trim, h_trim)
     
-    VA_current = VA(X[:3])
+    VA_current = env.VA(X[:3])
     
     gamma_current = X[IDX_THETA] - np.arctan2(X[IDX_W], X[IDX_U]) 
      
@@ -1279,7 +1148,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
                                                'maxfev':40000})
         
         # Updated cost check with h_trim
-        current_cost = trim_functional2(result.x, VA(result.x[:3]), result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U]), result.x[IDX_V], result.x[IDX_PHI], result.x[IDX_PSI], rho_trim, h_trim)
+        current_cost = trim_functional2(result.x, env.VA(result.x[:3]), result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U]), result.x[IDX_V], result.x[IDX_PHI], result.x[IDX_PSI], rho_trim, h_trim)
         print(f'iter: {iter_counter}, functional cost: {current_cost:.3e}')
 
         if current_cost < epsilon:
@@ -1292,7 +1161,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     if converge:
         print()
         print('Trim converged!')
-        print(f'trimmed speed = {VA(Z0[:3]):.1f} m/s')
+        print(f'trimmed speed = {env.VA(Z0[:3]):.1f} m/s')
         
         # Updated X_dot check
         #X_dot = RCAM_model(result.x[:9], result.x[9:], rho_trim, h_trim)
@@ -1331,7 +1200,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     """
     t0 = 0.0 #intial time for integrators
     alt_m = altitude * FT2M
-    rho_trim = get_rho(alt_m)
+    rho_trim = env.get_rho(alt_m)
 
     print(f'initializing model with altitude {altitude} ft, rho={rho_trim:.4f} kg/m3')
     
@@ -1355,7 +1224,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     # Ensure this matches the Step 3 change (passing height)
     AC_integrator = ss_integrator(t0, X0, U0, rho_trim, height)
     
-    NED0 = NED(X0[:3], X0[6:]) #uvw and phithetapsi
+    NED0 = env.NED(X0[:3], X0[6:]) #uvw and phithetapsi
     
     latlonh_integrator = latlonh_int(t0, latlonh0, NED0)
     
@@ -1518,7 +1387,7 @@ if __name__ == "__main__":
     # frame variables
     current_alt_m = INIT_ALT_FT * FT2M # m
     current_latlon_rad = INIT_LATLON_DEG
-    current_AGL_m = get_AGL(INIT_LATLON_DEG, current_alt_m)
+    current_AGL_m = env.get_AGL(INIT_LATLON_DEG, current_alt_m, SIM_VISUAL_OFFSET)
    
     # arm ground spoilers for landing
     gnd_spoilers_armed = True
@@ -1570,7 +1439,7 @@ if __name__ == "__main__":
 
         # single step integrate through each time step
         for idx, t in enumerate(t_vector):
-            current_rho = get_rho(current_alt_m)
+            current_rho = env.get_rho(current_alt_m)
 
             # add actuator dynamics to control inputs:
             U_actual = update_actuators(sim_U[:,idx], U_actual, simdt, ACT_TAU)
@@ -1582,8 +1451,8 @@ if __name__ == "__main__":
             this_AC_int.integrate(this_AC_int.t + simdt)
 
             # integrate navigation equations
-            current_NED = NED(this_AC_int.y[:3], this_AC_int.y[6:])
-            this_wind = add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
+            current_NED = env.NED(this_AC_int.y[:3], this_AC_int.y[6:])
+            this_wind = env.add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
             this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon_rad[0], current_alt_m)
             this_latlonh_int.integrate(this_latlonh_int.t + simdt) #in radians and alt in meters
             
@@ -1688,7 +1557,7 @@ if __name__ == "__main__":
                 # PREPARE FOR INTEGRATOR
                 # -------------------------------------------------------
                 prev_uvw = current_uvw
-                current_rho = get_rho(current_alt_m)
+                current_rho = env.get_rho(current_alt_m)
 
 
                 # -- Integrate Physics
@@ -1697,8 +1566,8 @@ if __name__ == "__main__":
                 current_uvw = this_AC_int.y[0:3]
 
                 # -- Integrate navigation equations
-                current_NED = NED(this_AC_int.y[:3], this_AC_int.y[6:])
-                this_wind = add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
+                current_NED = env.NED(this_AC_int.y[:3], this_AC_int.y[6:])
+                this_wind = env.add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
 
                 this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon_rad[0], current_alt_m)
                 this_latlonh_int.integrate(this_latlonh_int.t + dt) #in radians and alt in meters
@@ -1710,7 +1579,7 @@ if __name__ == "__main__":
                     current_AGL_m = current_alt_m - terrain_shared_data['ground_alt'] # this in meters
                 else:
                     # alternate: if using SRTM...
-                    current_AGL_m = get_AGL(current_latlon_rad*RAD2DEG, current_alt_m)
+                    current_AGL_m = env.get_AGL(current_latlon_rad*RAD2DEG, current_alt_m, SIM_VISUAL_OFFSET)
                 
 
                 
@@ -1769,7 +1638,7 @@ if __name__ == "__main__":
                     on_ground = get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m))
                     if jobs_queue.empty():
                         #print(f"[Main Process] Triggering new engine calculation...{VA(current_uvw)*MS2KT:.2f}, {current_alt_m*M2FT:.1f}")
-                        new_job = (current_alt_m*M2FT, ISA.Vt2M(VA(current_uvw)*MS2KT, current_alt_m*M2FT), U_man[IDX_THR1], U_man[IDX_THR2], on_ground, time.perf_counter())
+                        new_job = (current_alt_m*M2FT, ISA.Vt2M(env.VA(current_uvw)*MS2KT, current_alt_m*M2FT), U_man[IDX_THR1], U_man[IDX_THR2], on_ground, time.perf_counter())
                         try:
                             jobs_queue.put(new_job, block=False)
                             eng_time_adder = 0
