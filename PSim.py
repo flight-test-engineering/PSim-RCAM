@@ -97,6 +97,7 @@ import srtm
 from psim.constants import *
 from psim.config import load_aircraft_parameters
 import psim.environment as env
+import psim.propulsion as prop
 import psim.helpers as helpers
 import psim.io.joystick as joy
 import psim.io.network as net
@@ -177,38 +178,6 @@ E2_deck = Turbofan_Deck('PW2000_similar_deck.csv')
 # Helper Functions
 # ############################################################################
 
-# This will run on its own process because it is very CPU intensive
-def engine_worker(jobs_queue, results_queue):
-    """
-    This is the worker function that runs in its own PROCESS.
-    """
-    print("[Engine Process] Worker started and waiting for jobs.")
-    while True:
-        try:
-            job = jobs_queue.get()
-            if job is None:
-                print()
-                print("[Engine Process] Shutdown signal received.")
-                break
-            
-            # unpack the arguments
-            job_alt, job_MN, job_E1_TLA, job_E2_TLA, job_on_ground, job_time = job
-            E1_res = E1_deck.run_deck(job_alt, job_MN, job_E1_TLA, job_on_ground, job_time)
-            E2_res = E2_deck.run_deck(job_alt, job_MN, job_E2_TLA, job_on_ground, job_time)
-            results = (E1_res, E2_res)
-            
-            # The logic for clearing old results remains the same.
-            if not results_queue.empty():
-                try:
-                    results_queue.get_nowait()
-                except mp.queues.Empty:
-                    pass
-            results_queue.put(results)
-
-        except Exception as e:
-            print(f"[Engine Process] Error: {e}")
-            break
-    print("[Engine Process] Worker has shut down.")
 
 
 
@@ -1056,7 +1025,7 @@ if __name__ == "__main__":
 
         # MULTIPROCESSING: Create and start the engine as a Process, not a Thread.
         engine_process = mp.Process(
-            target=engine_worker,
+            target=prop.engine_worker,
             args=(jobs_queue, results_queue),
             daemon=True  # Daemon processes are terminated when the parent exits
         )
@@ -1184,8 +1153,8 @@ if __name__ == "__main__":
         # let's run the reverse deck:
         print(f'running inverse deck with alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]*N2LBF:.0f} lbf')
 
-        U1[IDX_THR1] = E1_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC']
-        U1[IDX_THR2] = E2_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
+        U1[IDX_THR1] = prop.E1_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC']
+        U1[IDX_THR2] = prop.E2_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
         U_man[IDX_THR1] = U1[IDX_THR1]
         U_man[IDX_THR2] = U1[IDX_THR2]
 
