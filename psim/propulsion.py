@@ -1,5 +1,5 @@
 import multiprocessing as mp
-import sys
+
 
 # ############################################################################
 # Load Engine Deck
@@ -484,25 +484,22 @@ class Turbofan_Deck():
 
 
 
-# Add parent directory to path to find engine_deck if necessary
-sys.path.insert(1, '../')
 
-
-def initialize_deck(deck_name='PW2000_similar_deck.csv'):
+def initialize_deck(deck_name='./psim/PW2000_similar_deck.csv'):
         # Load deck logic inside the process to be safe across OSs
     try:
         # ############################################################################
         # Load Engine Deck
         # ############################################################################
         # Uses data and code from https://youtu.be/95Gy2wg3olE
-        E1_deck = Turbofan_Deck('PW2000_similar_deck.csv')
-        E2_deck = Turbofan_Deck('PW2000_similar_deck.csv')
+        E1_deck = Turbofan_Deck(deck_name)
+        E2_deck = Turbofan_Deck(deck_name)
         return (E1_deck, E2_deck)
     except Exception as e:
         print(f"[Engine Process] Failed to load deck: {e}")
         return
 
-E1_deck, E2_deck = initialize_deck(deck_name='PW2000_similar_deck.csv')
+E1_deck, E2_deck = initialize_deck(deck_name='./psim/PW2000_similar_deck.csv')
 
 # Instantiate the deck here (or inside the worker if you prefer isolation)
 # Since the worker runs in a separate process, this global is safe for Linux (fork)
