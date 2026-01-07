@@ -164,13 +164,8 @@ print(f"  Main Rel Pos: {LG_MAIN_L_POS}")
 
 
 # ############################################################################
-# Helper Functions
+# Controls and Actuators
 # ############################################################################
-
-
-
-
-
 
 def control_norm(U:np.array) -> np.array:
     '''
@@ -231,7 +226,7 @@ def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.nda
 
 
 # ############################################################################
-# Ground Detection Logic
+# Ground Reactions and Detection Logic
 # ############################################################################
 
 @jit(nopython=True)
@@ -302,13 +297,12 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float) -> np.ndarray
     """
     Calculates total Forces and Moments (Body Frame) from all 3 landing gears.
     h_cg is height AGL (RADALT) in (m)
+    brake is a float between 0 and 1 - represents brake percent
     Returns: 6-element array [Fx, Fy, Fz, Mx, My, Mz]
 
     """
     
     # Get current compressions
-    # We assume ground is at 0.0m for now. 
-    # In a full sim, pass the runway elevation here.
     compressions = calculate_gear_compression(X, h_cg)
 
     
@@ -674,11 +668,6 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     # Scipy's "integrate.ode" does not accept a numba/@jit(nopython=True) compiled function
     # therefore, we need to create dummy wrappers
 
-
-################################################################################################################
-# TODO: MAYBE CREATE A SPECIAL WRAPPER FOR TRIM FUNCTION SO THAT WE DO NOT NEED TO REMOVE/ADD SPOILER AND BRAKES
-################################################################################################################
-
 def RCAM_model_wrapper(t, X, U, rho, h):
     return RCAM_model(X, U, rho, h)
 
@@ -692,7 +681,7 @@ def latlonh_dot_wrapper(t, X, V_NED, lat, h):
 # # # integrators
 def ss_integrator(t_ini:float, X0:np.ndarray, U:np.ndarray, rho:float, h:float):
     """
-    single step integrator
+    single step integrator for FDM
     returns scipy object, initialized
     """
 
@@ -762,8 +751,8 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
     gamma_current = X[IDX_THETA] - np.arctan2(X[IDX_W], X[IDX_U]) 
      
     Q = np.concatenate((X_dot, [VA_current - VA_trim], [gamma_current - gamma_trim], [X[IDX_V] - side_speed_trim], [X[IDX_PHI] - phi_trim], [X[IDX_PSI] - psi_trim]))
-    diag_ones = np.ones(Q.shape[0])
-    H = np.diag(diag_ones)
+    square_ones = np.ones(Q.shape[0])
+    H = np.diag(square_ones)
     
     return np.dot(np.dot(Q.T, H), Q)
 
@@ -868,7 +857,6 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     latlonh0 = np.array([latlon[0]*DEG2RAD, latlon[1]*DEG2RAD, alt_m])
 
     # trim model
-    # UPDATED: Added h_trim=height
     res4, res4_status = trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
                                    phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=height)
     print()
@@ -881,7 +869,6 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     print()
 
     # initialize integrators
-    # Ensure this matches the Step 3 change (passing height)
     AC_integrator = ss_integrator(t0, X0, U0, rho_trim, height)
     
     NED0 = env.NED(X0[:3], X0[6:]) #uvw and phithetapsi
@@ -923,7 +910,7 @@ if __name__ == "__main__":
     USE_FG_AS_TERRAIN_DB = True # if False, use SRTM database instead
 
 ###########################################################################
-    # SHARED DATA
+    # TERRAIN SHARED DATA
     terrain_shared_data = {'ground_alt': 0.0}
 
 ##########################################################################
@@ -932,6 +919,8 @@ if __name__ == "__main__":
     full_header = signals_header + internals_header
 
     
+###########################################################################
+    # FlightGear Threads and Engine Deck Process Initialization
     # we only start the network and multiprocessing if doing online sim, at least for now
     if OFFLINE == False:
     ############################################################################
@@ -951,7 +940,7 @@ if __name__ == "__main__":
         socks = [sock1, sock2]
         fg_addresses = [(UDP_IP1, UDP_PORT1), (UDP_IP2, UDP_PORT2)]
 
-        fdm_packet_queue = queue.Queue() # async queue that will receive the packets
+        fdm_packet_queue = queue.Queue() # async queue that will send the packets
 
         # THREADING: Create and start the network worker thread.
         # It's a daemon thread, so it will exit automatically if the main program exits.
@@ -968,10 +957,9 @@ if __name__ == "__main__":
             exit()
 
         # INCOMING DATA (from FG to Python)
-        # ... UDP TX Setup ...
+        # ... UDP RX Setup ...
 
-        # --- NEW: TERRAIN UDP RECEIVER ---
-        # IP 0.0.0.0 means "Listen on all network interfaces"
+        # --- TERRAIN UDP RECEIVER ---
         TERRAIN_RX_IP = "127.0.0.1" 
         TERRAIN_RX_PORT = 5502 # Port we listen ON
 
@@ -984,8 +972,6 @@ if __name__ == "__main__":
             daemon=True
         )
         terrain_thread.start()
-
-
 
 
 
@@ -1004,7 +990,6 @@ if __name__ == "__main__":
 
     #######################################################################################
         # engine
-        #CF34 = Turbofan_Deck('deck_file_name', initial_time=time.perf_counter())
         # --- Multiprocessing Setup ---
         # MULTIPROCESSING: Use Queues from the multiprocessing module.
         # These queues handle the necessary serialization (pickling) to pass
@@ -1022,8 +1007,8 @@ if __name__ == "__main__":
 
 
 
-    
-    # initializations
+###########################################################################
+    # SIMULATION VARIABLES INITIALIZATION
     data_collector, t_vector_collector = [], [] # data collectors
     
     prev_uvw = np.array([0,0,0])
@@ -1074,6 +1059,9 @@ if __name__ == "__main__":
 
     exit_signal = 0 # if joystick button #1 is pressed, ends simulation
     
+###########################################################################
+    # RUN SIMULATION
+    # if no joystick, run offline
     if OFFLINE:
         # code for offline simulation
         # create time vector
@@ -1130,10 +1118,9 @@ if __name__ == "__main__":
 
         print(f'Enf of simulation; {len(t_vector_collector)} time steps!')
         
-    
+    # with joystick attached, run online
     else:
-
-        ##### SIMULATION LOOP #####
+        ##### ONLINE #####
 
         # adjust engine thrust
         # what comes out of the trimming function is thrust directly
@@ -1149,6 +1136,7 @@ if __name__ == "__main__":
         print(f'this is the inverse deck response: E1:{U1[3]:.4f}; E2:{U1[4]:.4f} % power')
         print()
 
+        ##### SIMULATION LOOP #####
         while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
             # get clock
             start = time.perf_counter()
@@ -1157,12 +1145,9 @@ if __name__ == "__main__":
 
                 pygame.event.pump() # More efficient than event.get() if just reading axes
 
-                # -- Sensors & Environment
-                
-                # get inputs
-                current_throttle = [U_man[IDX_THR1], U_man[IDX_THR2]] # keep track of throttle to zero-out the trim bias
-                            
+
                 # -- Inputs & Actuators
+                current_throttle = [U_man[IDX_THR1], U_man[IDX_THR2]] # keep track of throttle to zero-out the trim bias
                 U_man, U1, exit_signal = joy.get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS)
                 
                 # trim bias is always positive, so we washout if throttles move back
@@ -1179,20 +1164,17 @@ if __name__ == "__main__":
 
                 U_man = control_sat(U_man) # saturate commands
 
-                # -------------------------------------------------------
-                # NEW: ACTUATOR UPDATE
-                # -------------------------------------------------------
+
                 # We calculate the time step for this specific loop iteration
                 # If this is the first step, prev_dt might be 0, so guard against it
                 actuator_dt = dt if dt > 0 else simdt 
                 
-                # Update the physical position of the surfaces
+                # Update the physical position of the surfaces with actuator dynamics
                 U_actual = update_actuators(U_man, U_actual, actuator_dt, ACT_TAU)
 
 
                 # -- Ground Spoiler Logic
                 if open_gnd_spoiler : 
-                    #current_NED[2] = 0
                     this_wind[2] = 0 # zero out wind because we do not have nose wheel steering
                     U_actual[IDX_GNDSP] = 0.4 # 40% lift-dump spoiler
 
@@ -1293,6 +1275,9 @@ if __name__ == "__main__":
 
 
                 # -- Engine Deck trigger
+                # deck calculation is CPU intensive
+                # and engine dynamics are slow
+                # so we only trigger engine deck calc at a much slower frame rate
                 if calc_eng_trigger:
                     on_ground = get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m))
                     if jobs_queue.empty():
