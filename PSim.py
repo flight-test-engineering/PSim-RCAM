@@ -70,9 +70,7 @@ matplotlib.use('TkAgg')
 import ISA_module as ISA # International Standard Atmosphere library
 
 import time
-import csv
 import sys
-import json
 
 sys.path.insert(1, '../')
 
@@ -88,8 +86,6 @@ import multiprocessing as mp
 
 import pygame #joystick interface
 
-# digital elevation model
-import srtm
 
 
 
@@ -1024,7 +1020,6 @@ if __name__ == "__main__":
         )
         engine_process.start()
 
-        current_thrust = 0 # FOR DEBUG ONLY
 
 
     
@@ -1035,7 +1030,7 @@ if __name__ == "__main__":
     current_uvw = np.array([0,0,0])
 
     # Initialize the DEM data handler
-    elevation_data = srtm.get_data()
+    elevation_data = env.srtm.get_data()
 
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG, height=100.0)
