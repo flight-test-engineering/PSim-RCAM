@@ -50,7 +50,7 @@ Otherwise, offline simulation is run
 
 TODO:
     1) add engine dynamics (spool up/down) [DONE]
-    2) add atmospheric disturbances/turbulence
+    2) add atmospheric disturbances/turbulence [DONE - wind]
     3) add other actuator dynamics [DONE]
     4) save/read trim point
     5) fuel detot / inertia update
@@ -759,8 +759,8 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
 
 def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, psi_trim=0.0, rho_trim=1.225, 
                h_trim=100.0, 
-               X0=np.array([85, 0, 0, 0, 0, 0, 0, 0.0, 0]), 
-               U0=np.array([1, 1, 1, 0.08, 0.08, 0.0, 0.0])) -> np.ndarray:
+               X0=np.array([85.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), 
+               U0=np.array([1.0, 1.0, 1.0, 0.08, 0.08, 0.0, 0.0])) -> np.ndarray:
     """
     uses scipy minimize on functional to find trim point
     X0 states:
@@ -871,8 +871,8 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         print()
     else:
         # we are on the ground
-        X0=np.array([VA_t, 0, 0, 0, 0, 0, 0, 0.0, INIT_HDG_DEG * DEG2RAD])
-        U0=np.array([0, 0, 0, 0.0, 0.0, 0.0, 0.0])
+        X0=np.array([VA_t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, INIT_HDG_DEG * DEG2RAD])
+        U0=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
     # initialize integrators
     AC_integrator = ss_integrator(t0, X0, U0, rho_trim, height)
@@ -901,7 +901,7 @@ if __name__ == "__main__":
         # ON GROUND  
         INIT_ALT_FT = 585.553 * M2FT #ft
         V_TRIM_MPS = 0 * KT2MS # m/s
-        INIT_LATLON_DEG = np.array([.8248243303439*RAD2DEG, 0.1977872426444*RAD2DEG]) #LOWI, RWY
+        INIT_LATLON_DEG = np.array([.8248243303439*RAD2DEG, 0.1977872426444*RAD2DEG]) #LOWI, RWY 08
         gnd_spoilers_armed = False
     else:
         INIT_ALT_FT = 2400 #ft
@@ -978,7 +978,6 @@ if __name__ == "__main__":
 
         # INCOMING DATA (from FG to Python)
         # ... UDP RX Setup ...
-
         # --- TERRAIN UDP RECEIVER ---
         TERRAIN_RX_IP = "127.0.0.1" 
         TERRAIN_RX_PORT = 5502 # Port we listen ON
@@ -1017,7 +1016,7 @@ if __name__ == "__main__":
         jobs_queue = mp.Queue(maxsize=1)
         results_queue = mp.Queue(maxsize=1)
 
-        # MULTIPROCESSING: Create and start the engine as a Process, not a Thread.
+        # MULTIPROCESSING: Create and start the engine deck as a Process, not a Thread.
         engine_process = mp.Process(
             target=prop.engine_worker,
             args=(jobs_queue, results_queue),
@@ -1034,53 +1033,52 @@ if __name__ == "__main__":
     prev_uvw = np.array([0,0,0])
     current_uvw = np.array([0,0,0])
 
-    # Initialize the DEM data handler
-    elevation_data = env.srtm.get_data()
-
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG, height=100.0)
-    U_man = U1.copy()
+    # Vector U1 has the controls for the trimmed state
+    U_man = U1.copy() # we set U_man (for manual controls) as a copy of the trimmed control states first.
 
     # Initialize Actual Surface Positions
     # We start with actual = commanded (assuming stable trim)
-    U_actual = U1.copy() 
+    U_actual = U1.copy() # U_actual will be the controls after applying the actuator dynamics
 
     e1_thrust = U1[3]
     e2_thrust = U1[4]
 
-    # frame variables
-    current_alt_m = INIT_ALT_FT * FT2M # m
-    current_latlon_rad = INIT_LATLON_DEG
-    current_AGL_m = env.get_AGL(INIT_LATLON_DEG, current_alt_m, SIM_VISUAL_OFFSET)
-   
     # ground spoiler variables
     open_gnd_spoiler = False
     toggle_gnd_spoiler_debounce = 0 # counter to debounce toggle ground spoiler button press
-    
-    frame_count = 0
 
-    last_frame_time = 0 # holds the time from last 100 frame to calc frame rate at print statement
+    # aircraft position variables
+    current_alt_m = INIT_ALT_FT * FT2M # m
+    current_latlon_rad = INIT_LATLON_DEG
+    current_AGL_m = env.get_AGL(INIT_LATLON_DEG, current_alt_m, SIM_VISUAL_OFFSET)
     
-    send_frame_trigger = False
-    run_sim_loop = False # this is a semaphore. it will wait for the clock to reach the next "simdt" and run the simulation
-    calc_eng_trigger = True
+    # frame variables
+    frame_count = 0
+    last_frame_time = 0 # holds the time from last 100 frame to calc frame rate at print statement
 
     fgdt = 1.0 / FG_OUTPUT_LOOP_HZ # (s) fg frame period
     simdt = 1 / SIM_LOOP_HZ # (s) desired simulation time step
     deckdt = 1 / DECK_LOOP_HZ
-
     
+    # semaphores
+    send_frame_trigger = False
+    run_sim_loop = False # this is a semaphore. it will wait for the clock to reach the next "simdt" and run the simulation
+    calc_eng_trigger = True
+    
+    # time tracking
     sim_time_adder, fg_time_adder = 0, 0 # counts the time between integration steps to trigger next simulation frame and FG dispatch
     eng_time_adder = 0 # loop to calculate engine
     
     dt = 0 # actual integration time step
     prev_dt = dt
 
-    exit_signal = 0 # if joystick button #1 is pressed, ends simulation
+    exit_signal = 0 # if joystick button #1 is pressed, end simulation
     
 ###########################################################################
     # RUN SIMULATION
-    # if no joystick, run offline
+    # if no joystick detected, run offline
     if OFFLINE:
         # code for offline simulation
         # create time vector
@@ -1111,8 +1109,6 @@ if __name__ == "__main__":
             U_actual = update_actuators(sim_U[:,idx], U_actual, simdt, ACT_TAU)
             
             # integrate 6-DOF
-            
-            #ground1
             this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m)
             this_AC_int.integrate(this_AC_int.t + simdt)
 
@@ -1141,10 +1137,10 @@ if __name__ == "__main__":
     else:
         ##### ONLINE #####
 
-        # adjust engine thrust
+        # adjust engine command
         # what comes out of the trimming function is thrust directly
         # for online sim, we can't use it
-        # let's run the reverse deck:
+        # let's run the reverse deck to get the thrust lever angle:
         print(f'running inverse deck with alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]*N2LBF:.0f} lbf')
 
         U1[IDX_THR1] = prop.E1_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC']
@@ -1152,7 +1148,7 @@ if __name__ == "__main__":
         U_man[IDX_THR1] = U1[IDX_THR1]
         U_man[IDX_THR2] = U1[IDX_THR2]
 
-        print(f'this is the inverse deck response: E1:{U1[3]:.4f}; E2:{U1[4]:.4f} % power')
+        print(f'this is the inverse deck response: E1:{U1[IDX_THR1]:.4f}; E2:{U1[IDX_THR2]:.4f} % power')
         print()
 
         ##### SIMULATION LOOP #####
@@ -1164,27 +1160,28 @@ if __name__ == "__main__":
 
                 pygame.event.pump() # More efficient than event.get() if just reading axes
 
-
                 # -- Inputs & Actuators
                 current_throttle = [U_man[IDX_THR1], U_man[IDX_THR2]] # keep track of throttle to zero-out the trim bias
                 U_man, U1, exit_signal = joy.get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS)
+                # U_man is the manual control inputs (as the joystick is moved)
+                # U1 is the trim state, or the zero input values for each control.
                 
-                # trim bias is always positive, so we washout if throttles move back
-                delta_throttle_1 = U_man[IDX_THR1] - current_throttle[0]
-                if delta_throttle_1 < 0 and U1[IDX_THR1] > 0: 
-                    if delta_throttle_1 > U1[IDX_THR1]:
+                # for throtlle, initial trim state is always positive, so we washout if throttles move back
+                delta_throttle_1 = U_man[IDX_THR1] - current_throttle[0] #we look only at #1 engine for simplicity
+                if delta_throttle_1 < 0 and U1[IDX_THR1] > 0: # if we retard throttle and have positive trim bias
+                    if delta_throttle_1 > U1[IDX_THR1]: # if we move the throttle a lot, limit washout to zero
                         U1[IDX_THR1] = 0
                         U1[IDX_THR2] = 0
-                    else:
+                    else: #washout from the trim bias, the amount we moved the throttle lever
                         U1[IDX_THR1] += delta_throttle_1
                         U1[IDX_THR2] += delta_throttle_1
-                        if U1[IDX_THR1] < 0 : U1[IDX_THR1] = 0
+                        if U1[IDX_THR1] < 0 : U1[IDX_THR1] = 0 # ensure it is never less than zero
                         if U1[IDX_THR2] < 0 : U1[IDX_THR2] = 0
 
                 U_man = control_sat(U_man) # saturate commands
 
 
-                # We calculate the time step for this specific loop iteration
+                # Calculate the time step for this specific loop iteration
                 # If this is the first step, prev_dt might be 0, so guard against it
                 actuator_dt = dt if dt > 0 else simdt 
                 
@@ -1236,9 +1233,10 @@ if __name__ == "__main__":
                 current_latlon_rad = this_latlonh_int.y[0:2]
                 current_alt_m = this_latlonh_int.y[2]
                 if USE_FG_AS_TERRAIN_DB:
+                    # use FlightGear as a terrain database...
                     current_AGL_m = current_alt_m - terrain_shared_data['ground_alt'] # this in meters
                 else:
-                    # alternate: if using SRTM...
+                    # alternate: use SRTM instead...
                     current_AGL_m = env.get_AGL(current_latlon_rad*RAD2DEG, current_alt_m, SIM_VISUAL_OFFSET)
                 
 
@@ -1249,11 +1247,11 @@ if __name__ == "__main__":
                     # 1. send the datagram to FlightGear
                     # 2. log the data
                     # 3. check/toggle ground spoilers
-                    # because we are not doing structures sim, we do not need to log at full sim frame rate
+                    # because we are not doing flexible structures sim, we do not need to log at full sim frame rate
                     # also, understood that altitude and rho will be "ahead" one step
 
                     # -- Data Logging
-                    internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m)
+                    internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m) # get internal FDM states
                     data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man, internals)))
                     t_vector_collector.append(this_AC_int.t)
 
