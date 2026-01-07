@@ -27,8 +27,8 @@ Aiming for performance, the program runs the integration loop at a target pf 400
 It uses Numba to speed up the main functions involved in the integration loop.  
 
 Output is sent to FlightGear (FG), over UDP, at a reduced frame rate (60).  
-The FG interface uses the class implemented by Andrew Tridgel (fgFDM): 
- https://github.com/ArduPilot/pymavlink/blob/master/fgFDM.py  
+The FG interface uses the class implemented by Andrew Tridgel (fgDFM): 
+ https://github.com/ArduPilot/pymavlink/blob/master/fgDFM.py  
 
 Currently, the UDP address is set to the local machine, with  second UDP address available for an extra screen/instance of FG.
 
@@ -37,9 +37,11 @@ Otherwise, offline simulation is run.
 
 To run:  
 1 - make sure the joystick is connected  
-2 - from a terminal, start the FlightGear instance that will render visuals and inform the terrain height. For example, in my setup I have FlightGear installed into its own directory. After cd'ing into it, I run this:  
+2 - place a copy of rcam_terrain.xml in [your FlightGear root directory]/fgdata/Protocol/  
+(in my case, this is /home/username/FlightGear/fgdata/Protocol)  (ah! rcam_terrain.xml is in psim/io of this repo)  
+3 - from a terminal, start the FlightGear instance that will render visuals and inform the terrain height. For example, in my setup I have FlightGear installed into its own directory. After cd'ing into it, I run this:  
 DRI_PRIME=1 ./flightgear-2024.1.3-linux-amd64.AppImage --airport=LOWI  --aircraft=Embraer170 --aircraft-dir=CustomAircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/NTPS.xml --generic=socket,out,5,127.0.0.1,5502,udp,rcam_terrain  
-3 - from its own terminal, run PSim.py  
+4 - from its own terminal, run main.py  
 
 
 
