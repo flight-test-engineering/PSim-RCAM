@@ -74,7 +74,7 @@ import sys
 
 sys.path.insert(1, '../')
 
-from fgDFM import * # FlightGear comm class
+from psim.io.fgDFM import * # FlightGear comm class
 import socket
 
 # threading for FG comms
