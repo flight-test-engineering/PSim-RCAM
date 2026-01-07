@@ -856,17 +856,23 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
 
     latlonh0 = np.array([latlon[0]*DEG2RAD, latlon[1]*DEG2RAD, alt_m])
 
-    # trim model
-    res4, res4_status = trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
-                                   phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=height)
-    print()
-    print('Trimming',res4_status)
-    print()
-    X0 = res4[:9] # separate states and controls
-    U0 = np.concatenate((res4[9:], np.array([0.0, 0.0]))) # add back ground spoiler and brakes to control vector
-    print(f'initial states: {X0}')
-    print(f'initial inputs: {U0}')
-    print()
+    if VA_t > 15:
+        # we are flying
+        # trim model
+        res4, res4_status = trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
+                                    phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=height)
+        print()
+        print('Trimming',res4_status)
+        print()
+        X0 = res4[:9] # separate states and controls
+        U0 = np.concatenate((res4[9:], np.array([0.0, 0.0]))) # add back ground spoiler and brakes to control vector
+        print(f'initial states: {X0}')
+        print(f'initial inputs: {U0}')
+        print()
+    else:
+        # we are on the ground
+        X0=np.array([VA_t, 0, 0, 0, 0, 0, 0, 0.0, INIT_HDG_DEG * DEG2RAD])
+        U0=np.array([0, 0, 0, 0.0, 0.0, 0.0, 0.0])
 
     # initialize integrators
     AC_integrator = ss_integrator(t0, X0, U0, rho_trim, height)
@@ -887,15 +893,29 @@ if __name__ == "__main__":
 
 
 ############################################################################
+    # SELECT STARTING POINT: ON GROUND OR IN AIR
+    TRIM_ON_GROUND = False
+
     # INITIAL CONDITIONS (for trim)
-    INIT_ALT_FT = 2400 #ft
-    V_TRIM_MPS = 160 * KT2MS # m/s
+    if TRIM_ON_GROUND:
+        # ON GROUND  
+        INIT_ALT_FT = 585.553 * M2FT #ft
+        V_TRIM_MPS = 0 * KT2MS # m/s
+        INIT_LATLON_DEG = np.array([.8248243303439*RAD2DEG, 0.1977872426444*RAD2DEG]) #LOWI, RWY
+        gnd_spoilers_armed = False
+    else:
+        INIT_ALT_FT = 2400 #ft
+        V_TRIM_MPS = 160 * KT2MS # m/s
+        INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
+        gnd_spoilers_armed = True
+
+    
     GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
     INIT_HDG_DEG = 82.0 # DEG
     # Lat/Lon
     #INIT_LATLON_DEG = np.array([37.6213, -122.3790]) #in degrees - the func initialize transforms to radians internally
     #INIT_LATLON_DEG = np.array([-21.7632, -48.4051]) #in degrees - SBGP
-    INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
+    #INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
     # wind
     WIND_NED_MPS = np.array([0, 0, 0]) # (m/s), NED
     WIND_STDDEV_MPS = np.array([1, 1, 0]) # wind standard deviation, NED
@@ -1033,8 +1053,7 @@ if __name__ == "__main__":
     current_latlon_rad = INIT_LATLON_DEG
     current_AGL_m = env.get_AGL(INIT_LATLON_DEG, current_alt_m, SIM_VISUAL_OFFSET)
    
-    # arm ground spoilers for landing
-    gnd_spoilers_armed = True
+    # ground spoiler variables
     open_gnd_spoiler = False
     toggle_gnd_spoiler_debounce = 0 # counter to debounce toggle ground spoiler button press
     
@@ -1304,7 +1323,7 @@ if __name__ == "__main__":
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                     #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
-                    print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, elev={U1[1]:0.3f}  ail={U1[0]:0.3f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, AGL={current_AGL_m:0.0f}')
+                    print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}ft, alt={current_alt_m*M2FT:0.1f}, gnd_sp_arm:{gnd_spoilers_armed}')
                     #print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, {open_gnd_spoiler=}, {gnd_spoilers_armed=}, {toggle_gnd_spoiler_debounce=}, {U_man[IDX_GNDSP]=}')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
