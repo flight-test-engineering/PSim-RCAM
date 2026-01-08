@@ -38,7 +38,7 @@ Engine Deck file: (set in propulsion.py)
 Total simulation time: SIM_TOTAL_TIME_S  
 Main simulation loop frame rate: SIM_LOOP_HZ  
 Data rate output to FlightGear: FG_OUTPUT_LOOP_HZ  
-Engine deck calculation rate: DECK_LOOP_HZ
+Engine deck calculation rate: DECK_LOOP_HZ  
 Use FlightGear as terrain database: USE_FG_AS_TERRAIN_DB (if set to false, it will use SRTM data instead)  
 Results file (CSV): RESULTS_FILE
 ### FlightGear comms
