@@ -4,21 +4,20 @@
 Welcome to PSim-RCAM - short for Python Simulation - Research Civil Aircraft Model!
 
 This is a Python implementation of the non-linear flight dynamics model proposed by:  
-Group for Aeronautical Research and Technology Europe (GARTEUR) - Research Civil Aircraft Model (RCAM) (rev Jun 1995)
-http://garteur.org/wp-content/reports/FM/FM_AG-08_TP-088-3.pdf  
+Group for Aeronautical Research and Technology Europe (GARTEUR) - [Research Civil Aircraft Model (RCAM) (rev Jun 1995)](http://garteur.org/wp-content/reports/FM/FM_AG-08_TP-088-3.pdf)  
 HOWEVER:  
     # a few equations and values are only available in the later RCAM revision (rev Feb 1997)  
     # the 1997 revision is not availble to the public  
     # the values and equations from this reference were obtained from youtube videos listed below:  
 
 The excellent tutorials by Christopher Lum (for Matlab/Simulink) were used as a guide:  
-1 - Equations/Modeling: https://www.youtube.com/watch?v=bFFAL9lI2IQ  
-2 - Matlab implementation: https://www.youtube.com/watch?v=m5sEln5bWuM  
+1 - [Equations/Modeling](https://www.youtube.com/watch?v=bFFAL9lI2IQ)  
+2 - [Matlab implementation](https://www.youtube.com/watch?v=m5sEln5bWuM)  
 
 In addition to what prof. Lum implements, the following features are added here:  
 1 - Ground reactions (landing gear), to allow for takeoff and landing  
 2 - Actuator dynamics  
-3 - Turbofan engine deck (parallel processing/multi-core), based on: https://youtu.be/95Gy2wg3olE  
+3 - Turbofan engine deck (parallel processing/multi-core), based on: [Turbofan Palylist](https://www.youtube.com/playlist?list=PLqJt-rNo8TZ1Y5Pzlk4S1205NUt2t-t22)  
 4 - Terrain database based in SRTM data  
 5 - Terrain database from FlightGear  
 6 - FlightGear integration (parallel threading)  
@@ -27,8 +26,7 @@ Aiming for performance, the program runs the integration loop at a target pf 400
 It uses Numba to speed up the main functions involved in the integration loop.  
 
 Output is sent to FlightGear (FG), over UDP, at a reduced frame rate (60).  
-The FG interface uses the class implemented by Andrew Tridgel (fgDFM): 
- https://github.com/ArduPilot/pymavlink/blob/master/fgDFM.py  
+The FG interface uses the class implemented by Andrew Tridgel [fgDFM](https://github.com/ArduPilot/pymavlink/blob/master/fgDFM.py)  
 
 Currently, the UDP address is set to the local machine, with  second UDP address available for an extra screen/instance of FG.
 
