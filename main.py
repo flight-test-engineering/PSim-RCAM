@@ -928,6 +928,7 @@ if __name__ == "__main__":
     DECK_LOOP_HZ = 10 # (Hz) fra1me rate to calculate engine deck
     SIM_VISUAL_OFFSET = 0 # Simulator Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
     USE_FG_AS_TERRAIN_DB = True # if False, use SRTM database instead
+    RESULTS_FILE = 'test_data.csv'
 
 ###########################################################################
     # TERRAIN SHARED DATA
@@ -1386,6 +1387,6 @@ if __name__ == "__main__":
             engine_process.terminate()
         
     # save data to disk
-    helpers.save2disk('test_data.csv', x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=full_header, skip=0)
+    helpers.save2disk(RESULTS_FILE, x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=full_header, skip=0)
     fig1 = helpers.make_plots(x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=full_header, skip=0)
     plt.show();

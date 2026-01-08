@@ -22,6 +22,30 @@ In addition to what prof. Lum implements, the following features are added here:
 5 - Terrain database from FlightGear  
 6 - FlightGear integration (parallel threading)  
 
+## Program Options/Settings:  
+### Aircraft
+The aircraft parameters are defined in file *rcam_parameters.json*  
+Select the trim condition, if on ground or in air: TRIM_ON_GROUND  
+Intial altitude: INIT_ALT_FT  
+Trim speed: V_TRIM_MPS  
+Postion: INIT_LATLON_DEG  
+Flight path angle: GAMMA_TRIM_RAD  
+Heading: INIT_HDG_DEG  
+Wind: WIND_NED_MPS  
+Wind Std Dev: WIND_STDDEV_MPS  
+Engine Deck file: (set in propulsion.py)
+### Simulation
+Total simulation time: SIM_TOTAL_TIME_S  
+Main simulation loop frame rate: SIM_LOOP_HZ  
+Data rate output to FlightGear: FG_OUTPUT_LOOP_HZ  
+Engine deck calculation rate: DECK_LOOP_HZ
+Use FlightGear as terrain database: USE_FG_AS_TERRAIN_DB (if set to false, it will use SRTM data instead)  
+Results file (CSV): RESULTS_FILE
+### FlightGear comms
+Main instance for visual: UDP_IP1  
+Second instance for visual: UDP_IP2  
+
+
 Aiming for performance, the program runs the integration loop at a target pf 400Hz, adjusting the integration steps to the available computing cycles.  
 It uses Numba to speed up the main functions involved in the integration loop.  
 
