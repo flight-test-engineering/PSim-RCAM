@@ -54,6 +54,11 @@ TODO:
     3) add other actuator dynamics [DONE]
     4) save/read trim point
     5) fuel detot / inertia update
+    6) add engine cut logic with dynamics per RCAM and controls from joystick
+    7) update wind/turbulence per RCAM
+    8) add flaps (delta CL, CM, CD) with controls from joystick
+    9) add landing ger (delta CM, CD) with controls from joystick
+    10) add ground effect (delta CL) with radalt/height
 
 
 '''
