@@ -1246,15 +1246,15 @@ if __name__ == "__main__":
                 if send_frame_trigger:
                     # for efficiency, we will use this loop to 
                     # 1. send the datagram to FlightGear
-                    # 2. log the data
+                    # 2. log the data ->>> MOVED TO DECK LOOP
                     # 3. check/toggle ground spoilers
                     # because we are not doing flexible structures sim, we do not need to log at full sim frame rate
                     # also, understood that altitude and rho will be "ahead" one step
 
-                    # -- Data Logging
-                    internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m) # get internal FDM states
-                    data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man, internals)))
-                    t_vector_collector.append(this_AC_int.t)
+                    # -- Data Logging -> MOVED TO DECK LOOP
+                    #internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m) # get internal FDM states
+                    #data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man, internals)))
+                    #t_vector_collector.append(this_AC_int.t)
 
                     # -- Send data to FlightGear
                     # it is easier to calculate body accelerations instead of reaching into the RCAM function
@@ -1296,7 +1296,10 @@ if __name__ == "__main__":
                 # deck calculation is CPU intensive
                 # and engine dynamics are slow
                 # so we only trigger engine deck calc at a much slower frame rate
+                # for efficeincy, we also use this loop to:
+                # log data
                 if calc_eng_trigger:
+                    # Trigger Engine Deck Calculation
                     on_ground = get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m))
                     if jobs_queue.empty():
                         #print(f"[Main Process] Triggering new engine calculation...{VA(current_uvw)*MS2KT:.2f}, {current_alt_m*M2FT:.1f}")
@@ -1311,6 +1314,10 @@ if __name__ == "__main__":
                         #print("[Main Process] Engine is still busy with a pending job, skipping this trigger.")
                         pass
                     calc_eng_trigger = False
+                    # -- Data Logging -> MOVED TO DECK LOOP
+                    internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m) # get internal FDM states
+                    data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man, internals)))
+                    t_vector_collector.append(this_AC_int.t)
 
                 
                 # -- Next frame setup
