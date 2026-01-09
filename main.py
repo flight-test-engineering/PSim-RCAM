@@ -928,7 +928,8 @@ if __name__ == "__main__":
     DECK_LOOP_HZ = 10 # (Hz) fra1me rate to calculate engine deck
     SIM_VISUAL_OFFSET = 0 # Simulator Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
     USE_FG_AS_TERRAIN_DB = True # if False, use SRTM database instead
-    RESULTS_FILE = 'test_data.csv'
+    DATA_LOGGING_HZ = 10 # frames per second to be logged
+    RESULTS_FILE = 'test_data.csv' # name of log file
 
 ###########################################################################
     # TERRAIN SHARED DATA
@@ -1062,15 +1063,18 @@ if __name__ == "__main__":
     fgdt = 1.0 / FG_OUTPUT_LOOP_HZ # (s) fg frame period
     simdt = 1 / SIM_LOOP_HZ # (s) desired simulation time step
     deckdt = 1 / DECK_LOOP_HZ
+    datalogdt = 1 / DATA_LOGGING_HZ
     
     # semaphores
     send_frame_trigger = False
     run_sim_loop = False # this is a semaphore. it will wait for the clock to reach the next "simdt" and run the simulation
     calc_eng_trigger = True
+    datalog_trigger = True
     
     # time tracking
     sim_time_adder, fg_time_adder = 0, 0 # counts the time between integration steps to trigger next simulation frame and FG dispatch
     eng_time_adder = 0 # loop to calculate engine
+    datalog_time_adder = 0
     
     dt = 0 # actual integration time step
     prev_dt = dt
@@ -1314,10 +1318,14 @@ if __name__ == "__main__":
                         #print("[Main Process] Engine is still busy with a pending job, skipping this trigger.")
                         pass
                     calc_eng_trigger = False
+
+                
+                if datalog_trigger:
                     # -- Data Logging -> MOVED TO DECK LOOP
                     internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m) # get internal FDM states
                     data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man, internals)))
                     t_vector_collector.append(this_AC_int.t)
+                    datalog_trigger = False
 
                 
                 # -- Next frame setup
@@ -1355,6 +1363,11 @@ if __name__ == "__main__":
                 eng_time_adder = 0
                 calc_eng_trigger = True
 
+            # check/set datalog trigger
+            if datalog_time_adder >= datalogdt:
+                datalog_time_adder = 0
+                datalog_trigger = True
+
             # parking lot
             # it will keep off the simulation loop while time does not catch up with the desired "simdt".
             # continuously adds time until that point, then releases the semaphore to run the sim
@@ -1369,6 +1382,7 @@ if __name__ == "__main__":
             fg_time_adder += this_frame_dt
             sim_time_adder += this_frame_dt
             eng_time_adder += this_frame_dt
+            datalog_time_adder += this_frame_dt
 
 
     if OFFLINE == False:
