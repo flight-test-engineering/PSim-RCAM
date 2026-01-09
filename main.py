@@ -930,6 +930,7 @@ if __name__ == "__main__":
     USE_FG_AS_TERRAIN_DB = True # if False, use SRTM database instead
     DATA_LOGGING_HZ = 10 # frames per second to be logged
     RESULTS_FILE = 'test_data.csv' # name of log file
+    ENG_LOG_PARAMETERS = ['Fn', 'Fg', 'F_ram', 'TSFC', 'Wf', 'N1','N2']
 
 ###########################################################################
     # TERRAIN SHARED DATA
@@ -938,7 +939,11 @@ if __name__ == "__main__":
 ##########################################################################
     signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp', 'brake']
     internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz']
-    full_header = signals_header + internals_header
+    engine_header = []
+    for eng_prefix in ['E1', 'E2']:
+        for param in ENG_LOG_PARAMETERS:
+            engine_header.append(eng_prefix+param)
+    full_header = signals_header + internals_header + engine_header
 
     
 ###########################################################################
@@ -1156,6 +1161,12 @@ if __name__ == "__main__":
         print(f'this is the inverse deck response: E1:{U1[IDX_THR1]:.4f}; E2:{U1[IDX_THR2]:.4f} % power')
         print()
 
+        # run deck
+        new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), U_man[IDX_THR1], U_man[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
+        jobs_queue.put(new_job, block=False)
+        # need to give time for deck to run
+        time.sleep(.5)
+
         ##### SIMULATION LOOP #####
         while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
             # get clock
@@ -1250,15 +1261,9 @@ if __name__ == "__main__":
                 if send_frame_trigger:
                     # for efficiency, we will use this loop to 
                     # 1. send the datagram to FlightGear
-                    # 2. log the data ->>> MOVED TO DECK LOOP
-                    # 3. check/toggle ground spoilers
+                    # 2. check/toggle ground spoilers
                     # because we are not doing flexible structures sim, we do not need to log at full sim frame rate
                     # also, understood that altitude and rho will be "ahead" one step
-
-                    # -- Data Logging -> MOVED TO DECK LOOP
-                    #internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m) # get internal FDM states
-                    #data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man, internals)))
-                    #t_vector_collector.append(this_AC_int.t)
 
                     # -- Send data to FlightGear
                     # it is easier to calculate body accelerations instead of reaching into the RCAM function
@@ -1300,8 +1305,6 @@ if __name__ == "__main__":
                 # deck calculation is CPU intensive
                 # and engine dynamics are slow
                 # so we only trigger engine deck calc at a much slower frame rate
-                # for efficeincy, we also use this loop to:
-                # log data
                 if calc_eng_trigger:
                     # Trigger Engine Deck Calculation
                     on_ground = get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m))
@@ -1321,9 +1324,16 @@ if __name__ == "__main__":
 
                 
                 if datalog_trigger:
-                    # -- Data Logging -> MOVED TO DECK LOOP
+                    # -- Data Logging
                     internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m) # get internal FDM states
-                    data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man, internals)))
+                    # engine parameters:
+                    eng1_states = np.zeros(len(ENG_LOG_PARAMETERS))
+                    eng2_states = np.zeros(len(ENG_LOG_PARAMETERS))
+                    if eng_vals:
+                        for idx, p in enumerate(ENG_LOG_PARAMETERS):
+                            eng1_states[idx] = eng_vals[0][p]
+                            eng2_states[idx] = eng_vals[1][p]
+                    data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man, internals, eng1_states, eng2_states)))
                     t_vector_collector.append(this_AC_int.t)
                     datalog_trigger = False
 
