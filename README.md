@@ -39,8 +39,10 @@ Total simulation time: SIM_TOTAL_TIME_S
 Main simulation loop frame rate: SIM_LOOP_HZ  
 Data rate output to FlightGear: FG_OUTPUT_LOOP_HZ  
 Engine deck calculation rate: DECK_LOOP_HZ  
+Data logging rate: DATA_LOGGING_HZ  
 Use FlightGear as terrain database: USE_FG_AS_TERRAIN_DB (if set to false, it will use SRTM data instead)  
 Results file (CSV): RESULTS_FILE
+Engine parameters to be logged: ENG_LOG_PARAMETERS  
 ### FlightGear comms
 Main instance for visual: UDP_IP1  
 Second instance for visual: UDP_IP2  
