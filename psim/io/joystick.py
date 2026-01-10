@@ -36,7 +36,7 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     T1_fd = joystick.get_button(JOY_E1_THR_TRIM_FWD)
     T1_af = joystick.get_button(JOY_E1_THR_TRIM_AFT)
     flap_cmd_up = joystick.get_button(JOY_FLAP_CMD_UP)
-    flap_cmd_DN = joystick.get_button(JOY_FLAP_CMD_DN)
+    flap_cmd_dn = joystick.get_button(JOY_FLAP_CMD_DN)
     exit_signal = joystick.get_button(JOY_EXIT_SIGNAL)
     brake_applied = joystick.get_button(JOY_BRAKE)
     toggle_gnd_spoiler = joystick.get_button(JOY_ARM_DIS_GND_SPOILER)
@@ -62,6 +62,8 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     throttle_cmd = joystick.get_axis(3) * joy_factors['throttle_m'] + joy_factors['throttle_b'] # linearly map joystick inputs to RCAM
     U[IDX_THR1] = U_trim[IDX_THR1] + throttle_cmd
     U[IDX_THR2] = U_trim[IDX_THR2] + throttle_cmd
+    U[IDX_FLAP] = 0 #debug only
+    U[IDX_GEAR] = 0 #debug only
     U[IDX_BRAKE] = float(brake_applied)
     U[IDX_GNDSP] = float(toggle_gnd_spoiler)
 
