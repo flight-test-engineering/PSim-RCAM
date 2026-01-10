@@ -158,6 +158,8 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
                                   act_dyn["tau_rudder"],
                                   act_dyn["tau_engine"],
                                   act_dyn["tau_engine"],
+                                  act_dyn["tau_flaps"],
+                                  act_dyn["tau_gear"], 
                                   act_dyn["tau_gnd_spoiler"],
                                   act_dyn["tau_brakes"]])
 
@@ -175,12 +177,16 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
         consts['JOY_ARM_DIS_GND_SPOILER'] = joy_map["arm_disarm_gnd_spoiler"] # toggles ARM/DISARM of ground spoilers
         consts['JOY_PITCH_TRIM_DN'] = joy_map["pitch_dn"] # pitch trim nose down button
         consts['JOY_PITCH_TRIM_UP'] = joy_map["pitch_up"] # pitch trim nose up button
-        consts['JOY_ROLL_TRIM_RH'] = joy_map["roll_rt"] # roll trim right wing down button
-        consts['JOY_ROLL_TRIM_LH'] = joy_map["roll_lt"] # roll trim left wing down button
+        #consts['JOY_ROLL_TRIM_RH'] = joy_map["roll_rt"] # roll trim right wing down button
+        #consts['JOY_ROLL_TRIM_LH'] = joy_map["roll_lt"] # roll trim left wing down button
+        consts['JOY_E1_CYCLE_CUT'] = joy_map["E1_cycle_cut"] # cut/restart engine 1
+        consts['JOY_LDG_CYCLE'] = joy_map["ldg_cycle"] # cycle landing gear down/up (default is up)
         consts['JOY_E1_THR_TRIM_FWD'] = joy_map["T1_fd"] # E1 trim forward (adds incremental thrust)
         consts['JOY_E1_THR_TRIM_AFT'] = joy_map["T1_af"] # E1 trim aft (subtracts incremental thrust)
-        consts['JOY_E2_THR_TRIM_FWD'] = joy_map["T2_fd"] # same for E2
-        consts['JOY_E2_THR_TRIM_AFT'] = joy_map["T2_af"] # same for E2
+        #consts['JOY_E2_THR_TRIM_FWD'] = joy_map["T2_fd"] # same for E2
+        #consts['JOY_E2_THR_TRIM_AFT'] = joy_map["T2_af"] # same for E2
+        consts['JOY_FLAP_CMD_UP'] = joy_map['flaps_command_up'] # command flaps one notch up
+        consts['JOY_FLAP_CMD_DN'] = joy_map['flaps_command_dn'] # command flaps one notch down
         consts['JOY_EXIT_SIGNAL'] = joy_map["exit_signal"] # ends the simulation
         consts['JOY_BRAKE'] = joy_map["brake"] # ends the simulation
         consts['JOY_TRIM_PARAMS'] = joy_map["trim_params"]  # Trim rate adjustment (amount per second)

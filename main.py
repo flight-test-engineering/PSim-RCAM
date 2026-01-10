@@ -65,6 +65,7 @@ TODO:
 
 # imports
 import numpy as np
+from functools import partial
 from scipy import integrate
 from scipy.optimize import minimize # for trimming routine
 from numba import jit
@@ -423,8 +424,10 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
             2: rudder (rad)
             3: E1 THRUST (N) (original RCAM was throttle 1 in %)
             4: E2 THRUST (N)  (original RCAM was throttle 2 in %)
-            5: spoilers (%) (not included in original RCAM)
-            6: wheel brakes (%) (not included in original RCAM)
+            5: Flaps position
+            6: Landing gear position (0=up / 1=dn)
+            7: spoilers (%) (not included in original RCAM)
+            8: wheel brakes (%) (not included in original RCAM)
         rho: density for current altitude (kg/m3)
         h: height above ground (m)
     outputs:
@@ -437,7 +440,10 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     phi, theta, psi = X[IDX_PHI], X[IDX_THETA], X[IDX_PSI] # rad
 
     # ----------------------- controls ----------------------------------
-    da, de, dr, dt1, dt2, dgsp, brake = U[IDX_AIL], U[IDX_ELE], U[IDX_RUD], U[IDX_THR1], U[IDX_THR2], X[IDX_GNDSP], U[IDX_BRAKE]
+    da, de, dr = U[IDX_AIL], U[IDX_ELE], U[IDX_RUD]
+    dt1, dt2 = U[IDX_THR1], U[IDX_THR2]
+    flap_pos, gear_pos = U[IDX_FLAP], U[IDX_GEAR]
+    dgsp, brake = X[IDX_GNDSP], U[IDX_BRAKE]
 
     #----------------- intermediate variables ---------------------------
     # airspeed
@@ -601,8 +607,11 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     p, q, r = X[IDX_P], X[IDX_Q], X[IDX_R] # rad/s
     phi, theta, psi = X[IDX_PHI], X[IDX_THETA], X[IDX_PSI] # rad
 
-    # ----------------------- controls ----------------------------------
-    da, de, dr, dt1, dt2, dgsp, brake = U[IDX_AIL], U[IDX_ELE], U[IDX_RUD], U[IDX_THR1], U[IDX_THR2], X[IDX_GNDSP], U[IDX_BRAKE]
+       # ----------------------- controls ----------------------------------
+    da, de, dr = U[IDX_AIL], U[IDX_ELE], U[IDX_RUD]
+    dt1, dt2 = U[IDX_THR1], U[IDX_THR2]
+    flap_pos, gear_pos = U[IDX_FLAP], U[IDX_GEAR]
+    dgsp, brake = X[IDX_GNDSP], U[IDX_BRAKE]
 
     #----------------- intermediate variables ---------------------------
     # airspeed
@@ -719,7 +728,15 @@ def latlonh_int(t_ini:float, latlonh0:np.ndarray, V_NED):
 # Model Trimming Function
 # ############################################################################
 
-def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim) -> np.dtype('f8'):
+# define partial function with fixed flaps, gear position, ground spoilers and brake
+# this partial function leaves "floating" only the parameters that the optimizer can vary
+# the problem is that "partial" fixes the parameters from left to right
+# so there is no easy way to fix the last parameters (they'd have to be named)
+# because we trim only once, no big deal defining these special functions
+
+
+def trim_functional3(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim, 
+                     flap_pos, gear_pos, gnd_sp_pos, brakes_pos) -> np.dtype('f8'):
     """
     functional to calculate a cost for minimizer (used to find trim point)
     no constraints yet
@@ -744,12 +761,19 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
     """
 
     X = Z[:9]
-    U = Z[9:]
-    U = np.append(U, [0.0, 0.0]) # need to force zero into ground spoilers control to be able to call RCAM
+    #U = Z[9:]
+    U = np.zeros(Z.shape[0]-9+4)
+    for i in range (Z.shape[0]-9):
+        U[i] = Z[9+i]
+    U[Z.shape[0]-9+0] = flap_pos
+    U[Z.shape[0]-9+1] = gear_pos
+    U[Z.shape[0]-9+2] = gnd_sp_pos
+    U[Z.shape[0]-9+3] = brakes_pos
 
     
     # PASS h_trim to the model here:
     X_dot = RCAM_model(X, U, rho_trim, h_trim)
+
     
     VA_current = env.VA(X[:3])
     
@@ -763,15 +787,15 @@ def trim_functional2(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
 
 
 def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, psi_trim=0.0, rho_trim=1.225, 
-               h_trim=100.0, 
+               h_trim=100.0, flaps=0, gear=0, gnd_sp=0, brakes=0,
                X0=np.array([85.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), 
-               U0=np.array([1.0, 1.0, 1.0, 0.08, 0.08, 0.0, 0.0])) -> np.ndarray:
+               U0=np.array([1.0, 1.0, 1.0, 0.08, 0.08, 0.0, 0.0, 0.0, 0.0])) -> np.ndarray:
     """
     uses scipy minimize on functional to find trim point
     X0 states:
         u, v, w, p, q, r, phi, theta, psi
     U0 controls:
-        ail, ele, rud, thr1, thr2, gnd spoiler, brake
+        ail, ele, rud, thr1, thr2, gnd spoiler, brake, flaps position, gear position
     h_trim is passed on to check ground proximity
 
     """
@@ -781,6 +805,13 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     X0[IDX_PHI] = phi_trim
     X0[IDX_PSI] = psi_trim
 
+    # REMOVE MAGIC NUMBERS LATER
+    U0[5] = flaps
+    U0[6] = gear
+    U0[7] = gnd_sp
+    U0[8] = brakes
+
+
     MAX_ITER = 10 
     iter_counter = 0
     epsilon = 1E-9
@@ -788,21 +819,24 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
 
     # concatenate states and inputs into single vector
     # for trimming, ground spoilers and brakes are not a valid control
-    Z0 = np.concatenate((X0, U0[:-2])) # removing ground spoilers and brake from trim variables
+    Z0 = np.concatenate((X0, U0[:-4])) # removing ground spoilers and brake from trim variables
 
-    print(f'initial cost: {trim_functional2(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim):.3e}')
+    print(f'initial cost: {trim_functional3(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
+                             flaps, gear, gnd_sp, brakes):.3e}')
 
     # TODO: ONLY TRIM IF IN AIR
 
     while iter_counter <= MAX_ITER and not converge:
-
+        # AQUI EU TENHO QUE MANDAR ZO SEM OS 4 ULTIMOS
         # Updated args tuple to include h_trim
-        result = minimize(trim_functional2, Z0, args=(VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim),
+        result = minimize(trim_functional3, Z0, args=(VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
+                          flaps, gear, gnd_sp, brakes),
                 method='Nelder-Mead', options={'maxiter':50000,\
                                                'maxfev':40000})
         
         # Updated cost check with h_trim
-        current_cost = trim_functional2(result.x, env.VA(result.x[:3]), result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U]), result.x[IDX_V], result.x[IDX_PHI], result.x[IDX_PSI], rho_trim, h_trim)
+        current_cost = trim_functional3(result.x, env.VA(result.x[:3]), result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U]), result.x[IDX_V], result.x[IDX_PHI], result.x[IDX_PSI], rho_trim, h_trim,
+                                         flaps, gear, gnd_sp, brakes)
         print(f'iter: {iter_counter}, functional cost: {current_cost:.3e}')
 
         if current_cost < epsilon:
@@ -836,7 +870,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
 # Model Initialization
 # ############################################################################
 
-def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi_t=0.0, height=0.0):
+def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi_t=0.0, height=0.0, flaps=0, gear=0):
     """
     this initializes the integrators at a straight and level flight condition
     inputs:
@@ -846,6 +880,8 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         altitude: trim altitude (ft)
         psi_t: initial heading (rad)
         height: height above ground (m) for air/ground purposes
+        flap: flap position
+        gear: gear position (0=up, 1=dn)
     outputs:
         AC_integrator: aircraft integrator object
         X0: initial states found at trim point
@@ -865,19 +901,20 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         # we are flying
         # trim model
         res4, res4_status = trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
-                                    phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=height)
+                                    phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=height,
+                                    flaps=flaps, gear=gear)
         print()
         print('Trimming',res4_status)
         print()
         X0 = res4[:9] # separate states and controls
-        U0 = np.concatenate((res4[9:], np.array([0.0, 0.0]))) # add back ground spoiler and brakes to control vector
+        U0 = np.concatenate((res4[9:], np.array([flaps, gear, 0.0, 0.0]))) # add back ground spoiler and brakes to control vector
         print(f'initial states: {X0}')
         print(f'initial inputs: {U0}')
         print()
     else:
         # we are on the ground
         X0=np.array([VA_t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, INIT_HDG_DEG * DEG2RAD])
-        U0=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        U0=np.array([0.0, 0.0, 0.0, 0.0, 0.0, flaps, gear, 0.0, 0.0])
 
     # initialize integrators
     AC_integrator = ss_integrator(t0, X0, U0, rho_trim, height)
@@ -942,7 +979,7 @@ if __name__ == "__main__":
     terrain_shared_data = {'ground_alt': 0.0}
 
 ##########################################################################
-    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp', 'brake']
+    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'flap_pos', 'gear_pos', 'dgsp', 'brake']
     internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz']
     engine_header = []
     for eng_prefix in ['E1', 'E2']:
