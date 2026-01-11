@@ -944,12 +944,10 @@ if __name__ == "__main__":
         INIT_ALT_FT = 585.553 * M2FT #ft
         V_TRIM_MPS = 0 * KT2MS # m/s
         INIT_LATLON_DEG = np.array([.8248243303439*RAD2DEG, 0.1977872426444*RAD2DEG]) #LOWI, RWY 08
-        gnd_spoilers_armed = False
     else:
         INIT_ALT_FT = 2400 #ft
         V_TRIM_MPS = 160 * KT2MS # m/s
         INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
-        gnd_spoilers_armed = True
 
     
     GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
@@ -1241,12 +1239,13 @@ if __name__ == "__main__":
                         if U1[IDX_THR1] < 0 : U1[IDX_THR1] = 0 # ensure it is never less than zero
                         if U1[IDX_THR2] < 0 : U1[IDX_THR2] = 0
 
-                # toggle ground spoilers if button is pressed:
-                if U1[IDX_GNDSP] == 1: gnd_spoilers_armed = not(gnd_spoilers_armed)
-                # Ground spoiler logic
+                # toggle ground spoilers if button is pressed -> this is done in joystick submodule
+                # ground spoiler arm/disarm state is passaed through U1[IDX_GNDSP]
                 # if spoilers are armed and we are on ground, set ground spoilers to open
-                if (get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m)) and gnd_spoilers_armed):
+                if (get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m)) and (U1[IDX_GNDSP] == 1)):
                     U_man[IDX_GNDSP] = 0.4 # 40% lift dump
+                else:
+                    U_man[IDX_GNDSP] = 0.0 # close
                 
                 U_man = control_sat(U_man) # saturate commands
 
@@ -1342,14 +1341,7 @@ if __name__ == "__main__":
                         pass
                     send_frame_trigger = False
 
-                    # -- set/toggle ground spoilers
-                    #toggle_gnd_spoiler_debounce += 1
-                    #if U_man[IDX_GNDSP] > 0 and toggle_gnd_spoiler_debounce > 50:
-                    #    gnd_spoilers_armed = not(gnd_spoilers_armed)
-                    #    toggle_gnd_spoiler_debounce = 0
-
-                    
-
+                
 
                 # -- Engine Deck trigger
                 # deck calculation is CPU intensive
@@ -1399,7 +1391,7 @@ if __name__ == "__main__":
                     #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
                     #print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}ft, alt={current_alt_m*M2FT:0.1f}, gnd_sp_arm:{gnd_spoilers_armed}')
                     #print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, {open_gnd_spoiler=}, {gnd_spoilers_armed=}, {toggle_gnd_spoiler_debounce=}, {U_man[IDX_GNDSP]=}')
-                    print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, {gnd_spoilers_armed=}, U1GNDSP={U1[IDX_GNDSP]:0.4f}, UmanGNDSP={U_man[IDX_GNDSP]:0.4f}, UactualGNDSP={U_actual[IDX_GNDSP]}')
+                    print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GNDSP={U1[IDX_GNDSP]:0.4f}, UmanGNDSP={U_man[IDX_GNDSP]:0.4f}, UactualGNDSP={U_actual[IDX_GNDSP]}')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
 

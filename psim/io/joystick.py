@@ -39,7 +39,7 @@ def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors):
     #flap_cmd_dn = joystick.get_button(JOY_FLAP_CMD_DN)
     flap_cmd_dn = 0
     flap_cmd_up = 0
-    U_trim[IDX_GNDSP] = 0 # reset every time
+    #U_trim[IDX_GNDSP] = 0 # reset every time
     ldg_cycle = 0
     E1_cycle_cut = 0
     for event in joy_events:
