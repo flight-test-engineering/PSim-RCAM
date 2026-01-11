@@ -50,10 +50,10 @@ def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors):
                 else:
                     U_trim[IDX_GNDSP] = 1
             if event.button == JOY_LDG_CYCLE:
-                if U_trim[IDX_GEAR] > -0.5: 
-                    U_trim[IDX_GEAR] = -1
-                else:
+                if U_trim[IDX_GEAR] > 0.5: 
                     U_trim[IDX_GEAR] = 0
+                else:
+                    U_trim[IDX_GEAR] = 1
             if event.button == JOY_E1_CYCLE_CUT:
                 if U_trim[IDX_THR1] > -0.5: 
                     U_trim[IDX_THR1] = -1
