@@ -50,6 +50,11 @@ def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors):
                 else:
                     U_trim[IDX_GNDSP] = 1
             if event.button == JOY_LDG_CYCLE:
+                if U_trim[IDX_GEAR] > -0.5: 
+                    U_trim[IDX_GEAR] = -1
+                else:
+                    U_trim[IDX_GEAR] = 0
+            if event.button == JOY_E1_CYCLE_CUT:
                 if U_trim[IDX_THR1] > -0.5: 
                     U_trim[IDX_THR1] = -1
                     # because we have only one throttle lever,
@@ -57,8 +62,6 @@ def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors):
                     U_trim[IDX_THR2] = 0
                 else:
                     U_trim[IDX_THR1] = 0
-            if event.button == JOY_E1_CYCLE_CUT:
-                E1_cycle_cut = 1
     exit_signal = joystick.get_button(JOY_EXIT_SIGNAL)
     brake_applied = joystick.get_button(JOY_BRAKE)
 
