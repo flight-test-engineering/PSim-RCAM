@@ -39,8 +39,6 @@ def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors):
     #flap_cmd_dn = joystick.get_button(JOY_FLAP_CMD_DN)
     flap_cmd_dn = 0
     flap_cmd_up = 0
-    #U_trim[IDX_GNDSP] = 0 # reset every time
-    ldg_cycle = 0
     E1_cycle_cut = 0
     for event in joy_events:
         if event.type == pygame.JOYBUTTONDOWN:
@@ -54,7 +52,10 @@ def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors):
                 else:
                     U_trim[IDX_GNDSP] = 1
             if event.button == JOY_LDG_CYCLE:
-                ldg_cycle = 1
+                if U_trim[IDX_GEAR] > 0.5: 
+                    U_trim[IDX_GEAR] = 0
+                else:
+                    U_trim[IDX_GEAR] = 1
             if event.button == JOY_E1_CYCLE_CUT:
                 E1_cycle_cut = 1
     exit_signal = joystick.get_button(JOY_EXIT_SIGNAL)
@@ -83,10 +84,9 @@ def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors):
     U[IDX_THR1] = U_trim[IDX_THR1] + throttle_cmd
     U[IDX_THR2] = U_trim[IDX_THR2] + throttle_cmd
     U[IDX_FLAP] = U_trim[IDX_FLAP] + flap_cmd_dn - flap_cmd_up # DEBUG ONLY
-    U[IDX_GEAR] = ldg_cycle
     U[IDX_BRAKE] = float(brake_applied)
-    #U[IDX_GNDSP] = float(toggle_gnd_spoiler)
-    #U[IDX_GNDSP] = U_trim[IDX_GNDSP]# DEBUG ONLY
+    U[IDX_GEAR] = U_trim[IDX_GEAR] # gear command is lever state
+
 
 
     return U, U_trim, exit_signal
