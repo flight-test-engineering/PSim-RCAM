@@ -32,14 +32,12 @@ def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors):
     pitch_dn = joystick.get_button(JOY_PITCH_TRIM_DN)
     pitch_up = joystick.get_button(JOY_PITCH_TRIM_UP)
     E1_cycle_cut = joystick.get_button(JOY_E1_CYCLE_CUT)
-    #ldg_cycle = joystick.get_button(JOY_LDG_CYCLE)
     T1_fd = joystick.get_button(JOY_E1_THR_TRIM_FWD)
     T1_af = joystick.get_button(JOY_E1_THR_TRIM_AFT)
-    #flap_cmd_up = joystick.get_button(JOY_FLAP_CMD_UP)
-    #flap_cmd_dn = joystick.get_button(JOY_FLAP_CMD_DN)
+
     flap_cmd_dn = 0
     flap_cmd_up = 0
-    E1_cycle_cut = 0
+
     for event in joy_events:
         if event.type == pygame.JOYBUTTONDOWN:
             if event.button == JOY_FLAP_CMD_UP:
@@ -52,28 +50,29 @@ def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors):
                 else:
                     U_trim[IDX_GNDSP] = 1
             if event.button == JOY_LDG_CYCLE:
-                if U_trim[IDX_GEAR] > 0.5: 
-                    U_trim[IDX_GEAR] = 0
+                if U_trim[IDX_THR1] > -0.5: 
+                    U_trim[IDX_THR1] = -1
+                    # because we have only one throttle lever,
+                    # when we cut the engine, we need to zero out the trim on E2
+                    U_trim[IDX_THR2] = 0
                 else:
-                    U_trim[IDX_GEAR] = 1
+                    U_trim[IDX_THR1] = 0
             if event.button == JOY_E1_CYCLE_CUT:
                 E1_cycle_cut = 1
     exit_signal = joystick.get_button(JOY_EXIT_SIGNAL)
     brake_applied = joystick.get_button(JOY_BRAKE)
-    #toggle_gnd_spoiler = joystick.get_button(JOY_ARM_DIS_GND_SPOILER)
+
 
     # if trigger is pressed, then zero out aileron, rudder states and make thrust equal on both sides
     if zero_ail_rud_thr == 1:
         U_trim[IDX_AIL] = 0.0
         U_trim[IDX_RUD] = 0.0
-        U_trim[IDX_THR1] = U_trim[IDX_THR2]
+        U_trim[IDX_THR2] = U_trim[IDX_THR1]
     
 
-    #U_trim[IDX_AIL] += aileron_trim_step * roll_lt - aileron_trim_step * roll_rt
     U_trim[IDX_ELE] += pitch_trim_step * pitch_dn - pitch_trim_step * pitch_up
-    #U_trim[IDX_RUD] = U_trim[IDX_RUD] + rudder_trim_step *  - rudder_trim_step * roll_lt  # no rudder trim buttons available
     U_trim[IDX_THR1] += throttle_trim_step * T1_fd - throttle_trim_step * T1_af
-    #U_trim[IDX_THR2] += throttle_trim_step * T2_fd - throttle_trim_step * T2_af
+
 
     # # # JOYSTICK COMMAND
     # joystick constants/multipliers to adjust correct movement and amplitude

@@ -1228,6 +1228,7 @@ if __name__ == "__main__":
                 # U1 is the trim state, or the zero input values for each control.
                 
                 # for throtlle, initial trim state is always positive, so we washout if throttles move back
+                # if engine trim state is negative, it means engine is OFF
                 delta_throttle_1 = U_man[IDX_THR1] - current_throttle[0] #we look only at #1 engine for simplicity
                 if delta_throttle_1 < 0 and U1[IDX_THR1] > 0: # if we retard throttle and have positive trim bias
                     if delta_throttle_1 > U1[IDX_THR1]: # if we move the throttle a lot, limit washout to zero
@@ -1259,19 +1260,26 @@ if __name__ == "__main__":
 
 
 
+
+                # Update thrust values (Engine deck results)
+                U_actual[IDX_THR1] = e1_thrust
+                U_actual[IDX_THR2] = e2_thrust 
+
                 # -- Engines - multiprocessing
                 # if there are new deck values, fetch them,
                 # if not, keep what we have
                 try:
                     eng_vals = results_queue.get(block=False) # block=False is equivalent to get_nowait()
-                    e1_thrust = eng_vals[0]['Fn'] * LBF2N # deck returns lbf, need to convert to N
+                    if U1[IDX_THR1] < -0.5:
+                        # TODO: make time constants variable???
+                        e1_thrust = update_actuators(-eng_vals[0]['F_ram'] * LBF2N, U_actual[IDX_THR1], 0.1, 1.5) # FOR NOW, FIXED TIME CONSTANT AND DT
+                    else:
+                        e1_thrust = eng_vals[0]['Fn'] * LBF2N # deck returns lbf, need to convert to N
+                    U_actual[IDX_THR1] = e1_thrust
                     e2_thrust = eng_vals[1]['Fn'] * LBF2N
+                    U_actual[IDX_THR2] = e2_thrust
                 except mp.queues.Empty:
-                    pass
-
-                # Update thrust values (Engine deck results)
-                U_actual[IDX_THR1] = e1_thrust
-                U_actual[IDX_THR2] = e2_thrust                
+                    pass              
 
 
                 # -------------------------------------------------------
@@ -1392,7 +1400,8 @@ if __name__ == "__main__":
                     #print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}ft, alt={current_alt_m*M2FT:0.1f}, gnd_sp_arm:{gnd_spoilers_armed}')
                     #print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, {open_gnd_spoiler=}, {gnd_spoilers_armed=}, {toggle_gnd_spoiler_debounce=}, {U_man[IDX_GNDSP]=}')
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GNDSP={U1[IDX_GNDSP]:0.4f}, UmanGNDSP={U_man[IDX_GNDSP]:0.4f}, UactualGNDSP={U_actual[IDX_GNDSP]}')
-                    print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}')
+                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}')
+                    print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1THR1={U1[IDX_THR1]:0.4f}, UmanTHR1={U_man[IDX_THR1]:0.4f}, UactualTHR1={U_actual[IDX_THR1]}')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
 
