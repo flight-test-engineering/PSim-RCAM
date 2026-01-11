@@ -11,7 +11,7 @@ def initialize_constants(params: dict):
     """
     globals().update(params)
 
-def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
+def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors):
     '''
     function that will read joystick positions and adjust controls:
     1. joy will change controls on top of trim point
@@ -32,14 +32,34 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     pitch_dn = joystick.get_button(JOY_PITCH_TRIM_DN)
     pitch_up = joystick.get_button(JOY_PITCH_TRIM_UP)
     E1_cycle_cut = joystick.get_button(JOY_E1_CYCLE_CUT)
-    ldg_cycle = joystick.get_button(JOY_LDG_CYCLE)
+    #ldg_cycle = joystick.get_button(JOY_LDG_CYCLE)
     T1_fd = joystick.get_button(JOY_E1_THR_TRIM_FWD)
     T1_af = joystick.get_button(JOY_E1_THR_TRIM_AFT)
-    flap_cmd_up = joystick.get_button(JOY_FLAP_CMD_UP)
-    flap_cmd_dn = joystick.get_button(JOY_FLAP_CMD_DN)
+    #flap_cmd_up = joystick.get_button(JOY_FLAP_CMD_UP)
+    #flap_cmd_dn = joystick.get_button(JOY_FLAP_CMD_DN)
+    flap_cmd_dn = 0
+    flap_cmd_up = 0
+    U_trim[IDX_GNDSP] = 0 # reset every time
+    ldg_cycle = 0
+    E1_cycle_cut = 0
+    for event in joy_events:
+        if event.type == pygame.JOYBUTTONDOWN:
+            if event.button == JOY_FLAP_CMD_UP:
+                flap_cmd_up = 1
+            if event.button == JOY_FLAP_CMD_DN:
+                flap_cmd_dn = 1
+            if event.button == JOY_ARM_DIS_GND_SPOILER:
+                if U_trim[IDX_GNDSP] > 0.5: 
+                    U_trim[IDX_GNDSP] = 0
+                else:
+                    U_trim[IDX_GNDSP] = 1
+            if event.button == JOY_LDG_CYCLE:
+                ldg_cycle = 1
+            if event.button == JOY_E1_CYCLE_CUT:
+                E1_cycle_cut = 1
     exit_signal = joystick.get_button(JOY_EXIT_SIGNAL)
     brake_applied = joystick.get_button(JOY_BRAKE)
-    toggle_gnd_spoiler = joystick.get_button(JOY_ARM_DIS_GND_SPOILER)
+    #toggle_gnd_spoiler = joystick.get_button(JOY_ARM_DIS_GND_SPOILER)
 
     # if trigger is pressed, then zero out aileron, rudder states and make thrust equal on both sides
     if zero_ail_rud_thr == 1:
@@ -62,10 +82,11 @@ def get_joy_inputs(joystick, U_trim, fr, trim_params, joy_factors):
     throttle_cmd = joystick.get_axis(3) * joy_factors['throttle_m'] + joy_factors['throttle_b'] # linearly map joystick inputs to RCAM
     U[IDX_THR1] = U_trim[IDX_THR1] + throttle_cmd
     U[IDX_THR2] = U_trim[IDX_THR2] + throttle_cmd
-    U[IDX_FLAP] = 0 #debug only
-    U[IDX_GEAR] = 0 #debug only
+    U[IDX_FLAP] = U_trim[IDX_FLAP] + flap_cmd_dn - flap_cmd_up # DEBUG ONLY
+    U[IDX_GEAR] = ldg_cycle
     U[IDX_BRAKE] = float(brake_applied)
-    U[IDX_GNDSP] = float(toggle_gnd_spoiler)
+    #U[IDX_GNDSP] = float(toggle_gnd_spoiler)
+    #U[IDX_GNDSP] = U_trim[IDX_GNDSP]# DEBUG ONLY
 
 
     return U, U_trim, exit_signal

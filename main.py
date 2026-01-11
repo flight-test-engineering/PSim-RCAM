@@ -443,7 +443,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     da, de, dr = U[IDX_AIL], U[IDX_ELE], U[IDX_RUD]
     dt1, dt2 = U[IDX_THR1], U[IDX_THR2]
     flap_pos, gear_pos = U[IDX_FLAP], U[IDX_GEAR]
-    dgsp, brake = X[IDX_GNDSP], U[IDX_BRAKE]
+    dgsp, brake = U[IDX_GNDSP], U[IDX_BRAKE]
 
     #----------------- intermediate variables ---------------------------
     # airspeed
@@ -611,7 +611,7 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     da, de, dr = U[IDX_AIL], U[IDX_ELE], U[IDX_RUD]
     dt1, dt2 = U[IDX_THR1], U[IDX_THR2]
     flap_pos, gear_pos = U[IDX_FLAP], U[IDX_GEAR]
-    dgsp, brake = X[IDX_GNDSP], U[IDX_BRAKE]
+    dgsp, brake = U[IDX_GNDSP], U[IDX_BRAKE]
 
     #----------------- intermediate variables ---------------------------
     # airspeed
@@ -1094,9 +1094,12 @@ if __name__ == "__main__":
     e1_thrust = U1[3]
     e2_thrust = U1[4]
 
-    # ground spoiler variables
-    open_gnd_spoiler = False
-    toggle_gnd_spoiler_debounce = 0 # counter to debounce toggle ground spoiler button press
+
+    # flaps variables
+    toggle_flaps_debounce = 0
+
+    # landing gear variables
+    toggle_gear_debounce = 0
 
     # aircraft position variables
     current_alt_m = INIT_ALT_FT * FT2M # m
@@ -1216,11 +1219,13 @@ if __name__ == "__main__":
 
             if run_sim_loop:
 
-                pygame.event.pump() # More efficient than event.get() if just reading axes
+                #pygame.event.pump() # More efficient than event.get() if just reading axes
+                joy_events = pygame.event.get()
 
                 # -- Inputs & Actuators
                 current_throttle = [U_man[IDX_THR1], U_man[IDX_THR2]] # keep track of throttle to zero-out the trim bias
-                U_man, U1, exit_signal = joy.get_joy_inputs(this_joy, U1, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS)
+                U_man, U1, exit_signal = joy.get_joy_inputs(this_joy, joy_events, U1, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS)
+
                 # U_man is the manual control inputs (as the joystick is moved)
                 # U1 is the trim state, or the zero input values for each control.
                 
@@ -1236,6 +1241,13 @@ if __name__ == "__main__":
                         if U1[IDX_THR1] < 0 : U1[IDX_THR1] = 0 # ensure it is never less than zero
                         if U1[IDX_THR2] < 0 : U1[IDX_THR2] = 0
 
+                # toggle ground spoilers if button is pressed:
+                if U1[IDX_GNDSP] == 1: gnd_spoilers_armed = not(gnd_spoilers_armed)
+                # Ground spoiler logic
+                # if spoilers are armed and we are on ground, set ground spoilers to open
+                if (get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m)) and gnd_spoilers_armed):
+                    U_man[IDX_GNDSP] = 0.4 # 40% lift dump
+                
                 U_man = control_sat(U_man) # saturate commands
 
 
@@ -1246,11 +1258,6 @@ if __name__ == "__main__":
                 # Update the physical position of the surfaces with actuator dynamics
                 U_actual = update_actuators(U_man, U_actual, actuator_dt, ACT_TAU)
 
-
-                # -- Ground Spoiler Logic
-                if open_gnd_spoiler : 
-                    this_wind[2] = 0 # zero out wind because we do not have nose wheel steering
-                    U_actual[IDX_GNDSP] = 0.4 # 40% lift-dump spoiler
 
 
                 # -- Engines - multiprocessing
@@ -1336,11 +1343,12 @@ if __name__ == "__main__":
                     send_frame_trigger = False
 
                     # -- set/toggle ground spoilers
-                    toggle_gnd_spoiler_debounce += 1
-                    if U_man[IDX_GNDSP] > 0 and toggle_gnd_spoiler_debounce > 50:
-                        gnd_spoilers_armed = not(gnd_spoilers_armed)
-                        toggle_gnd_spoiler_debounce = 0
-                    open_gnd_spoiler = get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m)) and gnd_spoilers_armed
+                    #toggle_gnd_spoiler_debounce += 1
+                    #if U_man[IDX_GNDSP] > 0 and toggle_gnd_spoiler_debounce > 50:
+                    #    gnd_spoilers_armed = not(gnd_spoilers_armed)
+                    #    toggle_gnd_spoiler_debounce = 0
+
+                    
 
 
                 # -- Engine Deck trigger
@@ -1389,8 +1397,9 @@ if __name__ == "__main__":
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                     #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
-                    print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}ft, alt={current_alt_m*M2FT:0.1f}, gnd_sp_arm:{gnd_spoilers_armed}')
+                    #print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}ft, alt={current_alt_m*M2FT:0.1f}, gnd_sp_arm:{gnd_spoilers_armed}')
                     #print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, {open_gnd_spoiler=}, {gnd_spoilers_armed=}, {toggle_gnd_spoiler_debounce=}, {U_man[IDX_GNDSP]=}')
+                    print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, {gnd_spoilers_armed=}, U1GNDSP={U1[IDX_GNDSP]:0.4f}, UmanGNDSP={U_man[IDX_GNDSP]:0.4f}, UactualGNDSP={U_actual[IDX_GNDSP]}')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
 
