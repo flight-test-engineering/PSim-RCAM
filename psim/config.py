@@ -68,6 +68,11 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
     # adm multiplier for tail dynamic downwash response wrt pitch rate
     # (TP-088-3, p. 15, eq 2.28)
     consts['EPSILON_DOT'] = ac['htail_coeffs']['epsilon_dot'] 
+    # ... high lift coefficients ...
+    # key: delta_CD, delta_CD, delta_CM, delta_alpha
+    high_lift_dict = ac['high_lift_coeffs']
+    consts['HIGH_LIFT_COEFFS'] = np.array([high_lift_dict[str(i)] for i in range(6)])
+    consts['MAX_FLAP'] = int(consts['HIGH_LIFT_COEFFS'].shape[0] - 1)
     
 
     # .. aerodynamic properties - drag ..

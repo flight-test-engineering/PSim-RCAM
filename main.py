@@ -166,13 +166,25 @@ print(f"Landing Gear Model Loaded:")
 print(f"  Nose Rel Pos: {LG_NOSE_POS}")
 print(f"  Main Rel Pos: {LG_MAIN_L_POS}")
 
+# ############################################################################
+# High Lift Devices Interpolator
+# ############################################################################
+# note: numba does like np.clip if we pass in a single number float...it needs a numpy array
 
+@jit(nopython=True)
+def high_lift_interp(x:float) -> np.array:
+    x = max(0.0, min(float(MAX_FLAP), x))
+    idx = int(x)
+    frac = x - idx
+    if idx >= MAX_FLAP: return HIGH_LIFT_COEFFS[MAX_FLAP]
+    return HIGH_LIFT_COEFFS[idx] + (HIGH_LIFT_COEFFS[idx+1] - HIGH_LIFT_COEFFS[idx]) * frac
 
 
 # ############################################################################
 # Controls and Actuators
 # ############################################################################
 
+@jit(nopython=True)
 def control_norm(U:np.array) -> np.array:
     '''
     normalizes controls to be sent to FG
@@ -1248,14 +1260,6 @@ if __name__ == "__main__":
                 else:
                     U_man[IDX_GNDSP] = 0.0 # close
                 
-
-                # Landing Gear Logic
-                #if U1[IDX_GEAR] == 1:
-                #    U_man[IDX_GEAR] = 1
-                #else:
-                #    U_man[IDX_GEAR] = 0
-
-
 
                 U_man = control_sat(U_man) # saturate commands
 
