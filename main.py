@@ -1276,7 +1276,10 @@ if __name__ == "__main__":
 
                 # Update thrust values (Engine deck results)
                 U_actual[IDX_THR1] = e1_thrust
-                U_actual[IDX_THR2] = e2_thrust 
+                U_actual[IDX_THR2] = e2_thrust
+
+                # Interpolate for high lift devices influence
+                high_lift_deltas = high_lift_interp(U_actual[IDX_FLAP])
 
                 # -- Engines - multiprocessing
                 # if there are new deck values, fetch them,
@@ -1415,7 +1418,7 @@ if __name__ == "__main__":
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GNDSP={U1[IDX_GNDSP]:0.4f}, UmanGNDSP={U_man[IDX_GNDSP]:0.4f}, UactualGNDSP={U_actual[IDX_GNDSP]}')
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}')
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1THR1={U1[IDX_THR1]:0.4f}, UmanTHR1={U_man[IDX_THR1]:0.4f}, UactualTHR1={U_actual[IDX_THR1]}')
-                    print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={U_actual[IDX_THR1]:0.0f}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}')
+                    print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={U_actual[IDX_THR1]:0.0f}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}, U1FLAP={U1[IDX_FLAP]:0.4f}, UmanFLAP={U_man[IDX_FLAP]:0.4f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={high_lift_deltas}')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
 
