@@ -184,7 +184,8 @@ def high_lift_interp(x:float) -> np.array:
 # Controls and Actuators
 # ############################################################################
 
-@jit(nopython=True)
+# NUMBA DOES NOT LIKE THIS FUNCTION
+#@jit(nopython=True)
 def control_norm(U:np.array) -> np.array:
     '''
     normalizes controls to be sent to FG
@@ -407,7 +408,7 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float) -> np.ndarray
 # ############################################################################
 
 @jit(nopython=True)
-def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
+def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:float, dcm:float, dalpha:float) -> np.ndarray:
     """
     RCAM model implementation
     sources: RCAM docs and Christopher Lum
@@ -442,6 +443,10 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
             8: wheel brakes (%) (not included in original RCAM)
         rho: density for current altitude (kg/m3)
         h: height above ground (m)
+        dcl: Delta CL (High Lift / Ldg / Gnd Spoiler)
+        dcd: Delta CD (High Lift / Ldg / Gnd Spoiler)
+        dcm: Delta CM (High Lift / Ldg / Gnd Spoiler)
+        dalpha: Delta alpha (High Lift / Ldg / Gnd Spoiler)
     outputs:
         X_dot: derivatives of states (same order)
     """
@@ -481,8 +486,12 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
         # this is only available in the newer RCAM document (rev Feb 1997)
     # which is not availble to the public
     # CL - wing + body
-    # adding spoiler to kill lift
-    CL_wb = N * (alpha - ALPHA_L0) * (1 - dgsp) if alpha <= ALPHA_SWITCH else (A3 * alpha**3 + A2 * alpha**2 + A1 * alpha + A0) * (1 - dgsp)
+    # RCAM modified to include dalpha and dcl and dgsp
+    if (alpha + dalpha) <= ALPHA_SWITCH:
+        CL_wb = N * (alpha - ALPHA_L0 + dalpha) * (1 - dgsp)
+    else: 
+        (A3 * (alpha + dalpha)**3 + A2 * (alpha + dalpha)**2 + A1 * (alpha + dalpha) + A0) * (1 - dgsp) + dcl
+
 
     # CL thrust
     epsilon = DEPSDA * (alpha - ALPHA_L0)
@@ -495,7 +504,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     CL = CL_wb + CL_t
 
     # Total CD (in stability frame)
-    CD = CDMIN + D1 * (N * alpha + D0)**2
+    CD = CDMIN + D1 * (N * alpha + D0)**2 + dcd # RCAM modified to include dcd
 
     # Total side force CY (stability frame)
     CY = CY_BETA * beta + CY_DR * dr
@@ -514,7 +523,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     #------------------ aerodynamic moment coefficients about AC -----------
     # moments in F_b
     eta11 = C_l_BETA * beta
-    eta21 = C_m_ALPHA - (NT * (ST * LT) / (S * CBAR)) * (alpha - epsilon)
+    eta21 = C_m_ALPHA - (NT * (ST * LT) / (S * CBAR)) * (alpha - epsilon) + dcm # RCAM Modified
     eta31 = (1 - alpha * C_n_BETA) * beta
 
     eta = np.array([eta11, eta21, eta31])
@@ -530,7 +539,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
                       [C_n_DA, C_n_DE, C_n_DR]], dtype=np.dtype('f8'))
     
     # CM about AC in Fb
-    CMac_b = eta + np.dot(dCMdx, wbe_b) + np.dot(dCMdu, np.array([da, de, dr]))
+    CMac_b = eta + np.dot(dCMdx, wbe_b) + np.dot(dCMdu, np.array([da, de, dr])) # RCAM original
 
     #------------------- aerodynamic moment about AC -------------------------
     # normalize to aerodynamic moment
@@ -605,7 +614,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
 # for efficiency, we create a new function twin just to calculate the internal states and return them for logging. 
 # we do not need to log at full simulation frame rate.
 @jit(nopython=True)
-def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
+def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:float, dcm:float, dalpha:float) -> np.ndarray:
     """
     Performs the same calculations as RCAM_model but returns internal variables
     for logging purposes instead of state derivatives.
@@ -642,8 +651,11 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
         # this is only available in the newer RCAM document (rev Feb 1997)
     # which is not availble to the public
     # CL - wing + body
-    # adding spoiler to kill lift
-    CL_wb = N * (alpha - ALPHA_L0) * (1 - dgsp) if alpha <= ALPHA_SWITCH else (A3 * alpha**3 + A2 * alpha**2 + A1 * alpha + A0) * (1 - dgsp)
+    # RCAM modified to include dalpha and dcl and dgsp
+    if (alpha + dalpha) <= ALPHA_SWITCH:
+        CL_wb = N * (alpha - ALPHA_L0 + dalpha) * (1 - dgsp)
+    else: 
+        (A3 * (alpha + dalpha)**3 + A2 * (alpha + dalpha)**2 + A1 * (alpha + dalpha) + A0) * (1 - dgsp) + dcl
 
     # CL thrust
     epsilon = DEPSDA * (alpha - ALPHA_L0)
@@ -656,7 +668,7 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     CL = CL_wb + CL_t
 
     # Total CD (in stability frame)
-    CD = CDMIN + D1 * (N * alpha + D0)**2
+    CD = CDMIN + D1 * (N * alpha + D0)**2 + dcd
 
     # Total side force CY (stability frame)
     CY = CY_BETA * beta + CY_DR * dr
@@ -694,8 +706,8 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float) -> np.ndarray:
     # Scipy's "integrate.ode" does not accept a numba/@jit(nopython=True) compiled function
     # therefore, we need to create dummy wrappers
 
-def RCAM_model_wrapper(t, X, U, rho, h):
-    return RCAM_model(X, U, rho, h)
+def RCAM_model_wrapper(t, X, U, rho, h, dcl, dcd, dcm, dalpha):
+    return RCAM_model(X, U, rho, h, dcl, dcd, dcm, dalpha)
 
 def NED_wrapper(t, X, NED):
     return env.NED
@@ -705,7 +717,7 @@ def latlonh_dot_wrapper(t, X, V_NED, lat, h):
 
 
 # # # integrators
-def ss_integrator(t_ini:float, X0:np.ndarray, U:np.ndarray, rho:float, h:float):
+def ss_integrator(t_ini:float, X0:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:float, dcm:float, dalpha:float):
     """
     single step integrator for FDM
     returns scipy object, initialized
@@ -713,7 +725,7 @@ def ss_integrator(t_ini:float, X0:np.ndarray, U:np.ndarray, rho:float, h:float):
 
     RK_integrator = integrate.ode(RCAM_model_wrapper)
     RK_integrator.set_integrator('dopri5') 
-    RK_integrator.set_f_params(U, rho, h) # Pass initial h
+    RK_integrator.set_f_params(U, rho, h, dcl, dcd, dcm, dalpha)
 
     RK_integrator.set_initial_value(X0, t_ini)
     return RK_integrator
@@ -781,10 +793,10 @@ def trim_functional3(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
     U[Z.shape[0]-9+1] = gear_pos
     U[Z.shape[0]-9+2] = gnd_sp_pos
     U[Z.shape[0]-9+3] = brakes_pos
-
+    hi_lift = high_lift_interp(flap_pos)
     
     # PASS h_trim to the model here:
-    X_dot = RCAM_model(X, U, rho_trim, h_trim)
+    X_dot = RCAM_model(X, U, rho_trim, h_trim, hi_lift[0], hi_lift[1], hi_lift[2], hi_lift[3])
 
     
     VA_current = env.VA(X[:3])
@@ -824,6 +836,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     U0[8] = brakes
 
 
+
     MAX_ITER = 10 
     iter_counter = 0
     epsilon = 1E-9
@@ -836,10 +849,8 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     print(f'initial cost: {trim_functional3(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
                              flaps, gear, gnd_sp, brakes):.3e}')
 
-    # TODO: ONLY TRIM IF IN AIR
 
     while iter_counter <= MAX_ITER and not converge:
-        # AQUI EU TENHO QUE MANDAR ZO SEM OS 4 ULTIMOS
         # Updated args tuple to include h_trim
         result = minimize(trim_functional3, Z0, args=(VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
                           flaps, gear, gnd_sp, brakes),
@@ -862,10 +873,6 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
         print()
         print('Trim converged!')
         print(f'trimmed speed = {env.VA(Z0[:3]):.1f} m/s')
-        
-        # Updated X_dot check
-        #X_dot = RCAM_model(result.x[:9], result.x[9:], rho_trim, h_trim)
-
         print(f'check gamma {result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U])} RAD')
         print(f'check side vel {result.x[IDX_V]:.1f} m/s')
         print(f'check phi {result.x[IDX_PHI] * RAD2DEG:.1f} Deg')
@@ -904,7 +911,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     alt_m = altitude * FT2M
     rho_trim = env.get_rho(alt_m)
 
-    print(f'initializing model with altitude {altitude} ft, rho={rho_trim:.4f} kg/m3')
+    print(f'initializing model with altitude {altitude} ft, rho={rho_trim:.4f} kg/m3, flaps={flaps}')
     
 
     latlonh0 = np.array([latlon[0]*DEG2RAD, latlon[1]*DEG2RAD, alt_m])
@@ -928,8 +935,9 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         X0=np.array([VA_t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, INIT_HDG_DEG * DEG2RAD])
         U0=np.array([0.0, 0.0, 0.0, 0.0, 0.0, flaps, gear, 0.0, 0.0])
 
+    hi_lift = high_lift_interp(flaps)
     # initialize integrators
-    AC_integrator = ss_integrator(t0, X0, U0, rho_trim, height)
+    AC_integrator = ss_integrator(t0, X0, U0, rho_trim, height, hi_lift[0], hi_lift[1], hi_lift[2], hi_lift[3])
     
     NED0 = env.NED(X0[:3], X0[6:]) #uvw and phithetapsi
     
@@ -956,10 +964,12 @@ if __name__ == "__main__":
         INIT_ALT_FT = 585.553 * M2FT #ft
         V_TRIM_MPS = 0 * KT2MS # m/s
         INIT_LATLON_DEG = np.array([.8248243303439*RAD2DEG, 0.1977872426444*RAD2DEG]) #LOWI, RWY 08
+        FLAPS_INIT = 0
     else:
         INIT_ALT_FT = 2400 #ft
         V_TRIM_MPS = 160 * KT2MS # m/s
         INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
+        FLAPS_INIT = 0
 
     
     GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
@@ -1093,7 +1103,7 @@ if __name__ == "__main__":
     current_uvw = np.array([0,0,0])
 
     # aircraft initialization (includes trimming)
-    this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG, height=100.0)
+    this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG, height=100.0, flaps=FLAPS_INIT)
     # Vector U1 has the controls for the trimmed state
     U_man = U1.copy() # we set U_man (for manual controls) as a copy of the trimmed control states first.
 
@@ -1279,7 +1289,7 @@ if __name__ == "__main__":
                 U_actual[IDX_THR2] = e2_thrust
 
                 # Interpolate for high lift devices influence
-                high_lift_deltas = high_lift_interp(U_actual[IDX_FLAP])
+                hi_lift = high_lift_interp(U_actual[IDX_FLAP])
 
                 # -- Engines - multiprocessing
                 # if there are new deck values, fetch them,
@@ -1306,7 +1316,7 @@ if __name__ == "__main__":
 
 
                 # -- Integrate Physics
-                this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m)
+                this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m, hi_lift[0], hi_lift[1], hi_lift[2], hi_lift[3])
                 this_AC_int.integrate(this_AC_int.t + dt)
                 current_uvw = this_AC_int.y[0:3]
 
@@ -1391,7 +1401,7 @@ if __name__ == "__main__":
                 
                 if datalog_trigger:
                     # -- Data Logging
-                    internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m) # get internal FDM states
+                    internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m, hi_lift[0], hi_lift[1], hi_lift[2], hi_lift[3]) # get internal FDM states
                     # engine parameters:
                     eng1_states = np.zeros(len(ENG_LOG_PARAMETERS))
                     eng2_states = np.zeros(len(ENG_LOG_PARAMETERS))
@@ -1418,7 +1428,8 @@ if __name__ == "__main__":
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GNDSP={U1[IDX_GNDSP]:0.4f}, UmanGNDSP={U_man[IDX_GNDSP]:0.4f}, UactualGNDSP={U_actual[IDX_GNDSP]}')
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}')
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1THR1={U1[IDX_THR1]:0.4f}, UmanTHR1={U_man[IDX_THR1]:0.4f}, UactualTHR1={U_actual[IDX_THR1]}')
-                    print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={U_actual[IDX_THR1]:0.0f}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}, U1FLAP={U1[IDX_FLAP]:0.4f}, UmanFLAP={U_man[IDX_FLAP]:0.4f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={high_lift_deltas}')
+                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={U_actual[IDX_THR1]:0.0f}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}, U1FLAP={U1[IDX_FLAP]:0.4f}, UmanFLAP={U_man[IDX_FLAP]:0.4f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={hi_lift}')
+                    print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={hi_lift}, ALPHA={internals[1]}, CL={internals[3]}')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
 
