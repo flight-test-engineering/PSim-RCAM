@@ -179,13 +179,21 @@ def high_lift_interp(x:float) -> np.array:
     if idx >= MAX_FLAP: return HIGH_LIFT_COEFFS[MAX_FLAP]
     return HIGH_LIFT_COEFFS[idx] + (HIGH_LIFT_COEFFS[idx+1] - HIGH_LIFT_COEFFS[idx]) * frac
 
+def array_interp(x:float, data_array:np.array, data_array_len:int) -> np.array:
+    x = max(0.0, min(float(data_array_len), x))
+    idx = int(x)
+    frac = x - idx
+    if idx >= data_array_len: return data_array[data_array_len]
+    return data_array[idx] + (data_array[idx+1] - data_array[idx]) * frac 
+
 
 # ############################################################################
 # Controls and Actuators
 # ############################################################################
 
 # NUMBA DOES NOT LIKE THIS FUNCTION
-#@jit(nopython=True)
+# When Numba is enabled, trim function converges, but aircraft is not stable
+#@jit(nopython=True) # DO NOT ENABLE Numba FOR THIS FUNCTION
 def control_norm(U:np.array) -> np.array:
     '''
     normalizes controls to be sent to FG
@@ -1266,7 +1274,7 @@ if __name__ == "__main__":
                 # ground spoiler arm/disarm state is passaed through U1[IDX_GNDSP]
                 # if spoilers are armed and we are on ground, set ground spoilers to open
                 if (get_air_ground_state(calculate_gear_compression(this_AC_int.y[:9], current_AGL_m)) and (U1[IDX_GNDSP] == 1)):
-                    U_man[IDX_GNDSP] = 0.4 # 40% lift dump
+                    U_man[IDX_GNDSP] = GND_SPOILERS_DCL # 40% lift dump
                 else:
                     U_man[IDX_GNDSP] = 0.0 # close
                 
@@ -1289,7 +1297,14 @@ if __name__ == "__main__":
                 U_actual[IDX_THR2] = e2_thrust
 
                 # Interpolate for high lift devices influence
-                hi_lift = high_lift_interp(U_actual[IDX_FLAP])
+                #hi_lift = high_lift_interp(U_actual[IDX_FLAP])
+                hi_lift = array_interp(U_actual[IDX_FLAP], HIGH_LIFT_COEFFS, MAX_FLAP)
+
+
+                # interpolate for landing gear delta CD
+                ldg_dcd = array_interp(U_actual[IDX_GEAR], LDG_DCD, MAX_LDG)
+                hi_lift[1] += ldg_dcd[0] # add additional drag from landing gear
+
 
                 # -- Engines - multiprocessing
                 # if there are new deck values, fetch them,
@@ -1429,7 +1444,8 @@ if __name__ == "__main__":
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}')
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1THR1={U1[IDX_THR1]:0.4f}, UmanTHR1={U_man[IDX_THR1]:0.4f}, UactualTHR1={U_actual[IDX_THR1]}')
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={U_actual[IDX_THR1]:0.0f}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}, U1FLAP={U1[IDX_FLAP]:0.4f}, UmanFLAP={U_man[IDX_FLAP]:0.4f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={hi_lift}')
-                    print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={hi_lift}, ALPHA={internals[1]}, CL={internals[3]}')
+                    #print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={hi_lift}, ALPHA={internals[1]}, CL={internals[3]}')
+                    print(f'ldg_pos: {U_actual[IDX_GEAR]}, ldg dcd: {ldg_dcd}, gnd_sp_armed? {U1[IDX_GNDSP]}, gnd_spoilers_dcl: {U_actual[IDX_GNDSP]}')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
 

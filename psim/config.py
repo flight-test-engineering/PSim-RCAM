@@ -71,12 +71,16 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
     # ... high lift coefficients ...
     # key: delta_CD, delta_CD, delta_CM, delta_alpha
     high_lift_dict = ac['high_lift_coeffs']
-    consts['HIGH_LIFT_COEFFS'] = np.array([high_lift_dict[str(i)] for i in range(6)])
+    consts['HIGH_LIFT_COEFFS'] = np.array([high_lift_dict[str(i)] for i in range(len(high_lift_dict))])
     for i in range(consts['HIGH_LIFT_COEFFS'].shape[0]):
         consts['HIGH_LIFT_COEFFS'][i][3] = consts['HIGH_LIFT_COEFFS'][i][3] * DEG2RAD # RCAM model uses alpha in radians
     consts['MAX_FLAP'] = int(consts['HIGH_LIFT_COEFFS'].shape[0] - 1)
-    
-
+    # ... landing gear drag increase ...
+    ldg_drag_dict = ac['landing_gear_drag']
+    consts['LDG_DCD'] = np.array([ldg_drag_dict[str(i)] for i in range(len(ldg_drag_dict))])   
+    consts['MAX_LDG'] = int(consts['LDG_DCD'].shape[0] - 1)
+    # ... ground spoilers lift dump ...
+    consts['GND_SPOILERS_DCL'] = ac['gnd_spoilers_dcl']
     # .. aerodynamic properties - drag ..
     drag_coeffs = params['drag_coeffs']
     # (TP-088-3, p. 14, para 2.3.4, eq 2.31)
