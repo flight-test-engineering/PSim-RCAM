@@ -179,6 +179,7 @@ def high_lift_interp(x:float) -> np.array:
     if idx >= MAX_FLAP: return HIGH_LIFT_COEFFS[MAX_FLAP]
     return HIGH_LIFT_COEFFS[idx] + (HIGH_LIFT_COEFFS[idx+1] - HIGH_LIFT_COEFFS[idx]) * frac
 
+@jit(nopython=True)
 def array_interp(x:float, data_array:np.array, data_array_len:int) -> np.array:
     x = max(0.0, min(float(data_array_len), x))
     idx = int(x)
@@ -753,7 +754,44 @@ def latlonh_int(t_ini:float, latlonh0:np.ndarray, V_NED):
     return RK_integrator
 
 
+# NUMBA/JIT WARM-UP
+def compile_numba_functions():
+        """
+        Runs Numba functions with dummy data to force JIT compilation 
+        before the real-time loop begins.
+        """
+        print("Compiling Numba functions (Warm-up)...", end="")
+        
+        # Dummy Data
+        X = np.zeros(9)
+        U = np.zeros(9)
+        rho = 1.225
+        h = 0.0
+        dcl = 0.0
+        dcd = 0.0
+        dcm = 0.0
+        dalpha = 0.0
 
+        
+        # 1. Physics Core
+        _ = array_interp(0, HIGH_LIFT_COEFFS, MAX_FLAP)
+        _ = control_sat(U)
+        _ = update_actuators(U, U, 0.01, np.ones(9))
+        _ = calculate_gear_compression(X, h)
+        _ = get_air_ground_state(np.ones(3))
+        _ = calculate_ground_forces(X, h, 0.0)
+        _ = RCAM_model(X, U, rho, h, dcl, dcd, dcm, dalpha)
+        _ = RCAM_observe(X, U, rho, h, dcl, dcd, dcm, dalpha)
+
+
+        # 2. Environment
+        _ = env.VA(np.array([10.,0.,0.]))
+        _ = env.fpa(np.ones(3))
+        _ = env.add_wind(np.ones(3), np.ones(3))
+        _ = env.NED(np.array([10.,0.,0.]), np.array([0.,0.,0.]))
+        _ = env.latlonh_dot(np.array([10.,0.,0.]), 0.0, 0.0)
+        
+        print(" Done.")
 
 
 # ############################################################################
@@ -1015,6 +1053,9 @@ if __name__ == "__main__":
             engine_header.append(eng_prefix+param)
     full_header = signals_header + internals_header + engine_header
 
+    ###########################################################################
+    # Numba/JIT warm-up
+    _ = compile_numba_functions()
     
 ###########################################################################
     # FlightGear Threads and Engine Deck Process Initialization
@@ -1480,6 +1521,8 @@ if __name__ == "__main__":
             # continuously adds time until that point, then releases the semaphore to run the sim
             if sim_time_adder >= simdt:
                 dt = sim_time_adder
+                # clamp dt if the OS hangs
+                if dt > 0.05: dt = 0.05
                 sim_time_adder = 0
                 run_sim_loop = True
 

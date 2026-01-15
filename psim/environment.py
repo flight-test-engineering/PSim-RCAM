@@ -8,7 +8,8 @@ import srtm
 # Initialize the DEM data handler
 elevation_data = srtm.get_data()
 
-
+# This function does not accept JIT/Numba
+#@jit(nopython=True)
 def get_rho(altitude:float)->float:
     '''
     calculate the air density given an altitude in meters
