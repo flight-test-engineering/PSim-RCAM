@@ -155,29 +155,12 @@ else:
     print(f'found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
 
 
-# ############################################################################
-# Landing Gear Model Initialization
-# ############################################################################
-# Define contact points relative to the Center of Gravity (CG)
-# Frame: Body Axis (X=Forward, Y=Right, Z=Down)
-# Units: Meters
-
-print(f"Landing Gear Model Loaded:")
-print(f"  Nose Rel Pos: {LG_NOSE_POS}")
-print(f"  Main Rel Pos: {LG_MAIN_L_POS}")
 
 # ############################################################################
 # High Lift Devices Interpolator
 # ############################################################################
 # note: numba does like np.clip if we pass in a single number float...it needs a numpy array
 
-@jit(nopython=True)
-def high_lift_interp(x:float) -> np.array:
-    x = max(0.0, min(float(MAX_FLAP), x))
-    idx = int(x)
-    frac = x - idx
-    if idx >= MAX_FLAP: return HIGH_LIFT_COEFFS[MAX_FLAP]
-    return HIGH_LIFT_COEFFS[idx] + (HIGH_LIFT_COEFFS[idx+1] - HIGH_LIFT_COEFFS[idx]) * frac
 
 @jit(nopython=True)
 def array_interp(x:float, data_array:np.array, data_array_len:int) -> np.array:
@@ -839,10 +822,10 @@ def trim_functional3(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
     U[Z.shape[0]-9+1] = gear_pos
     U[Z.shape[0]-9+2] = gnd_sp_pos
     U[Z.shape[0]-9+3] = brakes_pos
-    hi_lift = high_lift_interp(flap_pos)
+    dcl_dcd_dcm_dalpha = array_interp(flap_pos, HIGH_LIFT_COEFFS, MAX_FLAP)
     
     # PASS h_trim to the model here:
-    X_dot = RCAM_model(X, U, rho_trim, h_trim, hi_lift[0], hi_lift[1], hi_lift[2], hi_lift[3])
+    X_dot = RCAM_model(X, U, rho_trim, h_trim, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA])
 
     
     VA_current = env.VA(X[:3])
@@ -892,7 +875,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     # for trimming, ground spoilers and brakes are not a valid control
     Z0 = np.concatenate((X0, U0[:-4])) # removing ground spoilers and brake from trim variables
 
-    print(f'initial cost: {trim_functional3(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
+    print(f'initial functional cost: {trim_functional3(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
                              flaps, gear, gnd_sp, brakes):.3e}')
 
 
@@ -957,6 +940,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     alt_m = altitude * FT2M
     rho_trim = env.get_rho(alt_m)
 
+    print()
     print(f'initializing model with altitude {altitude} ft, rho={rho_trim:.4f} kg/m3, flaps={flaps}')
     
 
@@ -981,9 +965,9 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         X0=np.array([VA_t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, INIT_HDG_DEG * DEG2RAD])
         U0=np.array([0.0, 0.0, 0.0, 0.0, 0.0, flaps, gear, 0.0, 0.0])
 
-    hi_lift = high_lift_interp(flaps)
+    dcl_dcd_dcm_dalpha = array_interp(flaps, HIGH_LIFT_COEFFS, MAX_FLAP)
     # initialize integrators
-    AC_integrator = ss_integrator(t0, X0, U0, rho_trim, height, hi_lift[0], hi_lift[1], hi_lift[2], hi_lift[3])
+    AC_integrator = ss_integrator(t0, X0, U0, rho_trim, height, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA])
     
     NED0 = env.NED(X0[:3], X0[6:]) #uvw and phithetapsi
     
@@ -1055,7 +1039,7 @@ if __name__ == "__main__":
 
     ###########################################################################
     # Numba/JIT warm-up
-    _ = compile_numba_functions()
+    compile_numba_functions()
     
 ###########################################################################
     # FlightGear Threads and Engine Deck Process Initialization
@@ -1091,7 +1075,7 @@ if __name__ == "__main__":
             network_thread.start()
             print("... started!")
         except Exception as e:
-            print(f"Error in network thread: {e}")
+            print(f"...Error in network thread: {e}")
             exit()
 
         # INCOMING DATA (from FG to Python)
@@ -1276,6 +1260,7 @@ if __name__ == "__main__":
         print()
 
         # run deck
+        print("Adding engine deck initial job...")
         new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), U_man[IDX_THR1], U_man[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
         jobs_queue.put(new_job, block=False)
         # need to give time for deck to run
@@ -1339,12 +1324,12 @@ if __name__ == "__main__":
 
                 # Interpolate for high lift devices influence
                 #hi_lift = high_lift_interp(U_actual[IDX_FLAP])
-                hi_lift = array_interp(U_actual[IDX_FLAP], HIGH_LIFT_COEFFS, MAX_FLAP)
+                dcl_dcd_dcm_dalpha = array_interp(U_actual[IDX_FLAP], HIGH_LIFT_COEFFS, MAX_FLAP)
 
 
                 # interpolate for landing gear delta CD
                 ldg_dcd = array_interp(U_actual[IDX_GEAR], LDG_DCD, MAX_LDG)
-                hi_lift[1] += ldg_dcd[0] # add additional drag from landing gear
+                dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
 
 
                 # -- Engines - multiprocessing
@@ -1372,7 +1357,7 @@ if __name__ == "__main__":
 
 
                 # -- Integrate Physics
-                this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m, hi_lift[0], hi_lift[1], hi_lift[2], hi_lift[3])
+                this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA])
                 this_AC_int.integrate(this_AC_int.t + dt)
                 current_uvw = this_AC_int.y[0:3]
 
@@ -1457,7 +1442,7 @@ if __name__ == "__main__":
                 
                 if datalog_trigger:
                     # -- Data Logging
-                    internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m, hi_lift[0], hi_lift[1], hi_lift[2], hi_lift[3]) # get internal FDM states
+                    internals = RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA]) # get internal FDM states
                     # engine parameters:
                     eng1_states = np.zeros(len(ENG_LOG_PARAMETERS))
                     eng2_states = np.zeros(len(ENG_LOG_PARAMETERS))
@@ -1485,8 +1470,8 @@ if __name__ == "__main__":
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}')
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1THR1={U1[IDX_THR1]:0.4f}, UmanTHR1={U_man[IDX_THR1]:0.4f}, UactualTHR1={U_actual[IDX_THR1]}')
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={U_actual[IDX_THR1]:0.0f}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}, U1FLAP={U1[IDX_FLAP]:0.4f}, UmanFLAP={U_man[IDX_FLAP]:0.4f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={hi_lift}')
-                    #print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={hi_lift}, ALPHA={internals[1]}, CL={internals[3]}')
-                    print(f'ldg_pos: {U_actual[IDX_GEAR]}, ldg dcd: {ldg_dcd}, gnd_sp_armed? {U1[IDX_GNDSP]}, gnd_spoilers_dcl: {U_actual[IDX_GNDSP]}')
+                    print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={dcl_dcd_dcm_dalpha}, ALPHA={internals[1]}, CL={internals[3]}')
+                    #print(f'ldg_pos: {U_actual[IDX_GEAR]}, ldg dcd: {ldg_dcd}, gnd_sp_armed? {U1[IDX_GNDSP]}, gnd_spoilers_dcl: {U_actual[IDX_GNDSP]}')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
 

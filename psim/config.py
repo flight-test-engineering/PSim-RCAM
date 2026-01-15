@@ -179,7 +179,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
     # - Logitech Extreme 3D
     joystick_library = params['joystick_maps']
     if joy_name in joystick_library.keys():
-        print('yes')
+        print(f'joystick {joy_name} in database/JSON config file...will run online loop.')
         joy_map = joystick_library[joy_name]
         consts['JOY_ROLL_AXIS'] = joy_map["roll_axis"] # axis number that controls roll
         consts['JOY_PITCH_AXIS'] = joy_map["pitch_axis"] # axis number tht controls pitch
@@ -213,7 +213,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
 
 
     else:
-        print('no')
+        print('no joystick or joystick model not in databas/JSON config file...will run offline loop.')
         consts['OFFLINE'] = True
 
     return consts

@@ -22,7 +22,7 @@ def network_worker(socks, packet_queue, fg_addresses):
         packet_queue: a Python multithread queue that received the packets to be sent
         fg_addresses: list of tuples with IP address and port
     """
-    print("Starting network thread", end="")
+    print("Starting FlightGear output network thread", end="")
     while True:
         try:
             # Block until a packet is available in the queue.
