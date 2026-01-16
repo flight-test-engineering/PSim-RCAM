@@ -125,10 +125,15 @@ def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels):
     this_fgFDM.set('longitude', latlon[1], units='radians')
     this_fgFDM.set('altitude', alt, units='meters')
 
-    this_fgFDM.set('left_aileron', -U_norm[0])
-    this_fgFDM.set('right_aileron', +U_norm[0])
-    this_fgFDM.set('elevator', U_norm[1])
-    this_fgFDM.set('rudder', -U_norm[2])
+    this_fgFDM.set('left_aileron', -U_norm[IDX_AIL])
+    this_fgFDM.set('right_aileron', +U_norm[IDX_AIL])
+    this_fgFDM.set('elevator', U_norm[IDX_ELE])
+    this_fgFDM.set('rudder', -U_norm[IDX_RUD])
+    this_fgFDM.set('left_flap', U_norm[IDX_FLAP])
+    this_fgFDM.set('right_flap', U_norm[IDX_FLAP])
+    this_fgFDM.set('spoilers', U_norm[IDX_GNDSP])
+    this_fgFDM.set('gear_pos', U_norm[IDX_GEAR])
+
 
     this_fgFDM.set('A_X_pilot', body_accels[0], units='mpss')
     this_fgFDM.set('A_Y_pilot', body_accels[1], units='mpss')

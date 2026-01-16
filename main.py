@@ -188,22 +188,23 @@ def control_norm(U:np.array) -> np.array:
         vector with control positions normalized between 1 and -1
     '''
     # Extract limits for first 3 channels
-    mins = U_LIMITS_MIN[:3]
-    maxs = U_LIMITS_MAX[:3]
+    mins = U_LIMITS_MIN
+    maxs = U_LIMITS_MAX
     
     # Avoid divide by zero
     mins = np.where(mins == 0, 1.0, mins)
     maxs = np.where(maxs == 0, 1.0, maxs)
 
     # Slice input
-    u_subset = U[:3]
+    #u_subset = U[:3]
+
     
     # Vectorized normalization
     # If U < 0: U / abs(min)
     # If U >= 0: U / max
-    U_norm = np.where(u_subset < 0, 
-                      u_subset / np.abs(mins), 
-                      u_subset / maxs)
+    U_norm = np.where(U < 0, 
+                      U / np.abs(mins), 
+                      U / maxs)
     
     return U_norm
 
@@ -1470,8 +1471,9 @@ if __name__ == "__main__":
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}')
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1THR1={U1[IDX_THR1]:0.4f}, UmanTHR1={U_man[IDX_THR1]:0.4f}, UactualTHR1={U_actual[IDX_THR1]}')
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={U_actual[IDX_THR1]:0.0f}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}, U1FLAP={U1[IDX_FLAP]:0.4f}, UmanFLAP={U_man[IDX_FLAP]:0.4f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={hi_lift}')
-                    print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={dcl_dcd_dcm_dalpha}, ALPHA={internals[1]}, CL={internals[3]}')
+                    #print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={dcl_dcd_dcm_dalpha}, ALPHA={internals[1]}, CL={internals[3]}')
                     #print(f'ldg_pos: {U_actual[IDX_GEAR]}, ldg dcd: {ldg_dcd}, gnd_sp_armed? {U1[IDX_GNDSP]}, gnd_spoilers_dcl: {U_actual[IDX_GNDSP]}')
+                    print(f'U_norm: {control_norm(U_actual)}')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
 
