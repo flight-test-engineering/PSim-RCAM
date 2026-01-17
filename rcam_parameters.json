@@ -113,12 +113,12 @@
     "brake": [0, 57.32]
   },
   "landing_gear_geometry": {
-    "nose_pos": [11.0, 0.0, 2.25],
-    "left_mains_pos": [-4.5, -4.7, 2.35],
-    "right_mains_pos": [-4.5, 4.7, 2.35]
+    "nose_pos": [11.0, 0.0, 3.05],
+    "left_mains_pos": [-5.5, -4.7, 3.15],
+    "right_mains_pos": [-5.5, 4.7, 3.15]
   },
   "landing_gear_dynamics":{
-    "lg_spring_k": 3.5E7,
+    "lg_spring_k": 5.5E7,
     "lg_damp_compression": 6.0E5,
     "lg_damp_rebound": 7.0E6,
     "lg_friction_stiffness": 1.0E4,

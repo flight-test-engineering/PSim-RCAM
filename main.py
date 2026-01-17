@@ -80,7 +80,7 @@ import sys
 
 sys.path.insert(1, '../')
 
-from psim.io.fgDFM import * # FlightGear comm class
+from psim.io.fgFDM import * # FlightGear comm class
 import socket
 
 # threading for FG comms
@@ -987,7 +987,7 @@ if __name__ == "__main__":
 
 ############################################################################
     # SELECT STARTING POINT: ON GROUND OR IN AIR
-    TRIM_ON_GROUND = False
+    TRIM_ON_GROUND = True
 
     # INITIAL CONDITIONS (for trim)
     if TRIM_ON_GROUND:
@@ -996,11 +996,13 @@ if __name__ == "__main__":
         V_TRIM_MPS = 0 * KT2MS # m/s
         INIT_LATLON_DEG = np.array([.8248243303439*RAD2DEG, 0.1977872426444*RAD2DEG]) #LOWI, RWY 08
         FLAPS_INIT = 0
+        INIT_GEAR = 1
     else:
         INIT_ALT_FT = 2400 #ft
         V_TRIM_MPS = 160 * KT2MS # m/s
         INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
         FLAPS_INIT = 0
+        INIT_GEAR = 1
 
     
     GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
@@ -1139,7 +1141,9 @@ if __name__ == "__main__":
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG, height=100.0, flaps=FLAPS_INIT)
     # Vector U1 has the controls for the trimmed state
+    U1[IDX_GEAR] = INIT_GEAR
     U_man = U1.copy() # we set U_man (for manual controls) as a copy of the trimmed control states first.
+
 
     # Initialize Actual Surface Positions
     # We start with actual = commanded (assuming stable trim)
@@ -1148,12 +1152,6 @@ if __name__ == "__main__":
     e1_thrust = U1[3]
     e2_thrust = U1[4]
 
-
-    # flaps variables
-    toggle_flaps_debounce = 0
-
-    # landing gear variables
-    toggle_gear_debounce = 0
 
     # aircraft position variables
     current_alt_m = INIT_ALT_FT * FT2M # m
@@ -1473,7 +1471,8 @@ if __name__ == "__main__":
                     #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={U_actual[IDX_THR1]:0.0f}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}, U1FLAP={U1[IDX_FLAP]:0.4f}, UmanFLAP={U_man[IDX_FLAP]:0.4f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={hi_lift}')
                     #print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={dcl_dcd_dcm_dalpha}, ALPHA={internals[1]}, CL={internals[3]}')
                     #print(f'ldg_pos: {U_actual[IDX_GEAR]}, ldg dcd: {ldg_dcd}, gnd_sp_armed? {U1[IDX_GNDSP]}, gnd_spoilers_dcl: {U_actual[IDX_GNDSP]}')
-                    print(f'U_norm: {control_norm(U_actual)}')
+                    #print(f'U_norm: {control_norm(U_actual)}')
+                    print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpoilerArmed={int(U1[IDX_GNDSP])}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
 

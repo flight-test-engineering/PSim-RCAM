@@ -132,7 +132,9 @@ def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels):
     this_fgFDM.set('left_flap', U_norm[IDX_FLAP])
     this_fgFDM.set('right_flap', U_norm[IDX_FLAP])
     this_fgFDM.set('spoilers', U_norm[IDX_GNDSP])
-    this_fgFDM.set('gear_pos', U_norm[IDX_GEAR])
+    this_fgFDM.set('gear_pos', U_norm[IDX_GEAR], idx=0)
+    this_fgFDM.set('gear_pos', U_norm[IDX_GEAR], idx=1)
+    this_fgFDM.set('gear_pos', U_norm[IDX_GEAR], idx=2)
 
 
     this_fgFDM.set('A_X_pilot', body_accels[0], units='mpss')
