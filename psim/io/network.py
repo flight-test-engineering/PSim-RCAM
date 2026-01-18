@@ -157,9 +157,13 @@ def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels, agl_m=0.0):
 
     # Gear (Assuming IDX_GEAR exists, otherwise default to 1.0 down)
     gear_val = U_norm[IDX_GEAR]
+    gear_compression = max(0, 10 - agl_m) * gear_val / abs(10 - agl_m) / 10
     this_fgFDM.set('gear_pos', gear_val, idx=0)
     this_fgFDM.set('gear_pos', gear_val, idx=1)
     this_fgFDM.set('gear_pos', gear_val, idx=2)
+    this_fgFDM.set('gear_comp', gear_compression, idx=0)
+    this_fgFDM.set('gear_comp', gear_compression, idx=1)
+    this_fgFDM.set('gear_comp', gear_compression, idx=2)
 
     # --- ACCELS ---
     this_fgFDM.set('A_X_pilot', body_accels[0])

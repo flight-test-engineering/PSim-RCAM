@@ -114,8 +114,8 @@
   },
   "landing_gear_geometry": {
     "nose_pos": [11.0, 0.0, 3.05],
-    "left_mains_pos": [-5.5, -4.7, 3.15],
-    "right_mains_pos": [-5.5, 4.7, 3.15]
+    "left_mains_pos": [-5.5, -4.7, 3.25],
+    "right_mains_pos": [-5.5, 4.7, 3.25]
   },
   "landing_gear_dynamics":{
     "lg_spring_k": 5.5E7,

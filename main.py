@@ -990,12 +990,12 @@ if __name__ == "__main__":
 
 ############################################################################
     # SELECT STARTING POINT: ON GROUND OR IN AIR
-    TRIM_ON_GROUND = False
+    TRIM_ON_GROUND = True
 
     # INITIAL CONDITIONS (for trim)
     if TRIM_ON_GROUND:
         # ON GROUND  
-        INIT_ALT_FT = 585.553 * M2FT #ft
+        INIT_ALT_FT = 586.0 * M2FT #ft
         V_TRIM_MPS = 0 * KT2MS # m/s
         INIT_LATLON_DEG = np.array([.8248243303439*RAD2DEG, 0.1977872426444*RAD2DEG]) #LOWI, RWY 08
         FLAPS_INIT = 0
