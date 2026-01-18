@@ -29,3 +29,6 @@ IDX_GNDSP, IDX_BRAKE = 7, 8
 
 # DELTA CL, CD, CM & ALPHA
 IDX_DCL, IDX_DCD, IDX_DCM, IDX_DALPHA = 0, 1, 2, 3
+
+# Epsilon for controls first order clamping to 0.0 and 1.0
+FIRST_ORDER_EPSILON = 1E-3

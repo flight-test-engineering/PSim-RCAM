@@ -214,25 +214,30 @@ def control_sat(U:np.ndarray) -> np.ndarray:
     return np.clip(U, U_LIMITS_MIN, U_LIMITS_MAX)
 
 
+
 @jit(nopython=True)
 def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.ndarray) -> np.ndarray:
     """
     Simulates first order lag for control surfaces.
     y_dot = (u_cmd - y_current) / tau
     y_new = y_current + y_dot * dt
+    Includes a 'snap-to-target' threshold to ensure values reach exactly 0.0 or 1.0.
     """
-    U_new = np.zeros_like(U_actual)
-
-    # 1. Aerodynamic Surfaces (First Order Lag)
+    
+    # 1. Standard First Order Lag Calculation
+    # y_dot = (u_cmd - y_current) / tau
     rate = (U_cmd - U_actual) / tau 
     U_new = U_actual + rate * dt
-             
-    # 2. Engines (Pass through - The engine deck handles spool up dynamics)
-    # testing fast time constant for engine, which should have no effect
-    #U_new[3:5] = U_cmd[3:5]
     
-    return U_new
-
+    # 2. Snap-to-target Logic
+    # Calculate the distance between the new calculated position and the commanded target
+    dist_to_target = np.abs(U_new - U_cmd)
+    
+    # If the distance is smaller than epsilon, force the value to be exactly U_cmd.
+    # Otherwise, use the calculated U_new.
+    U_final = np.where(dist_to_target < FIRST_ORDER_EPSILON, U_cmd, U_new)
+             
+    return U_final
 
 # ############################################################################
 # Ground Reactions and Detection Logic
@@ -985,7 +990,7 @@ if __name__ == "__main__":
 
 ############################################################################
     # SELECT STARTING POINT: ON GROUND OR IN AIR
-    TRIM_ON_GROUND = True
+    TRIM_ON_GROUND = False
 
     # INITIAL CONDITIONS (for trim)
     if TRIM_ON_GROUND:
@@ -1000,7 +1005,7 @@ if __name__ == "__main__":
         V_TRIM_MPS = 160 * KT2MS # m/s
         INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
         FLAPS_INIT = 0
-        INIT_GEAR = 1
+        INIT_GEAR = 0
 
     
     GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
@@ -1099,14 +1104,13 @@ if __name__ == "__main__":
 
         # instantiate FG comms object and initialize it
         my_fgFDM = fgFDM()
-        my_fgFDM.set('latitude', INIT_LATLON_DEG[0], units='degrees')
-        my_fgFDM.set('longitude', INIT_LATLON_DEG[1], units='degrees')
-        my_fgFDM.set('altitude', INIT_ALT_FT, units='feet')
-        #my_fgFDM.set('agl', INIT_ALT_FT, units='meters')
+        my_fgFDM.set('latitude', INIT_LATLON_DEG[0] * DEG2RAD) # in rad
+        my_fgFDM.set('longitude', INIT_LATLON_DEG[1] * DEG2RAD) # in rad
+        my_fgFDM.set('altitude', INIT_ALT_FT * FT2M) # in m
         my_fgFDM.set('num_engines', 2)
         my_fgFDM.set('num_tanks', 1)
         my_fgFDM.set('num_wheels', 3)
-        my_fgFDM.set('cur_time', int(time.perf_counter()), units='seconds')
+        my_fgFDM.set('cur_time', int(time.perf_counter())) # in seconds
 
 
 
@@ -1398,7 +1402,8 @@ if __name__ == "__main__":
                             control_norm(U_actual), 
                             current_latlon_rad, 
                             current_alt_m,
-                            body_accels)
+                            body_accels,
+                            current_AGL_m)
                     my_pack = my_fgFDM.pack()
                     try:
                         fdm_packet_queue.put_nowait(my_pack)

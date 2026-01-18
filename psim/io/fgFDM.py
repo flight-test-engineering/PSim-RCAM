@@ -1,215 +1,163 @@
-#!/usr/bin/env python3
-# parse and construct FlightGear NET FDM packets
-# Andrew Tridgell, November 2011
-# released under GNU GPL version 2 or later
-# https://github.com/ArduPilot/pymavlink/blob/master/fgFDM.py
+import struct
+import time
+
+import struct
+import time
 
 
-import struct, math
 
-class fgFDMError(Exception):
-    '''fgFDM error class'''
-    def __init__(self, msg):
-        Exception.__init__(self, msg)
-        self.message = 'fgFDMError: ' + msg
 
-class fgFDMVariable(object):
-    '''represent a single fgFDM variable'''
-    def __init__(self, index, arraylength, units):
-        self.index   = index
-        self.arraylength = arraylength
-        self.units = units
-
-class fgFDMVariableList(object):
-    '''represent a list of fgFDM variable'''
+class fgFDM:
+    """
+    FlightGear NetFDM Protocol (v24) implementation.
+    """
     def __init__(self):
-        self.vars = {}
-        self._nextidx = 0
+        self.values = {}
         
-    def add(self, varname, arraylength=1, units=None):
-        self.vars[varname] = fgFDMVariable(self._nextidx, arraylength, units=units)
-        self._nextidx += arraylength
-
-class fgFDM(object):
-    '''a flightgear native FDM parser/generator'''
-    def __init__(self):
-        '''init a fgFDM object'''
-        self.FG_NET_FDM_VERSION = 24
-        self.pack_string = '>I 4x 3d 6f 11f 3f 2f I 4I 4f 4f 4f 4f 4f 4f 4f 4f 4f I 4f I 3I 3f 3f 3f I i f 10f'
-        self.values = [0]*98
-
-        self.FG_MAX_ENGINES = 4
-        self.FG_MAX_WHEELS  = 3
-        self.FG_MAX_TANKS   = 4
-
-        # supported unit mappings
-        self.unitmap = {
-            ('radians', 'degrees') : math.degrees(1),
-            ('rps',     'dps')     : math.degrees(1),
-            ('feet',    'meters')  : 0.3048,
-            ('fps',     'mps')     : 0.3048,
-            ('knots',   'mps')     : 0.514444444,
-            ('knots',   'fps')     : 0.514444444/0.3048,
-            ('fpss',    'mpss')    : 0.3048,
-            ('seconds', 'minutes') : 60,
-            ('seconds', 'hours')   : 3600,
-            }
-
-        # build a mapping between variable name and index in the values array
-        # note that the order of this initialisation is critical - it must
-        # match the wire structure
-        self.mapping = fgFDMVariableList()
-        self.mapping.add('version')
-
-        # position
-        self.mapping.add('longitude', units='radians')      # geodetic (radians)
-        self.mapping.add('latitude', units='radians')       # geodetic (radians)
-        self.mapping.add('altitude', units='meters')        # above sea level (meters)
-        self.mapping.add('agl', units='meters')             # above ground level (meters)
-
-        # attitude
-        self.mapping.add('phi', units='radians')            # roll (radians)
-        self.mapping.add('theta', units='radians')          # pitch (radians)
-        self.mapping.add('psi', units='radians')            # yaw or true heading (radians)
-        self.mapping.add('alpha', units='radians')          # angle of attack (radians)
-        self.mapping.add('beta', units='radians')           # side slip angle (radians)
-
-        # Velocities
-        self.mapping.add('phidot', units='rps')             # roll rate (radians/sec)
-        self.mapping.add('thetadot', units='rps')           # pitch rate (radians/sec)
-        self.mapping.add('psidot', units='rps')             # yaw rate (radians/sec)
-        self.mapping.add('vcas', units='fps')               # calibrated airspeed
-        self.mapping.add('climb_rate', units='fps')         # feet per second
-        self.mapping.add('v_north', units='fps')            # north velocity in local/body frame, fps
-        self.mapping.add('v_east', units='fps')             # east velocity in local/body frame, fps
-        self.mapping.add('v_down', units='fps')             # down/vertical velocity in local/body frame, fps
-        self.mapping.add('v_wind_body_north', units='fps')  # north velocity in local/body frame
-        self.mapping.add('v_wind_body_east', units='fps')   # east velocity in local/body frame
-        self.mapping.add('v_wind_body_down', units='fps')   # down/vertical velocity in local/body
-
-        # Accelerations
-        self.mapping.add('A_X_pilot', units='fpss')         # X accel in body frame ft/sec^2
-        self.mapping.add('A_Y_pilot', units='fpss')         # Y accel in body frame ft/sec^2
-        self.mapping.add('A_Z_pilot', units='fpss')         # Z accel in body frame ft/sec^2
-
-        # Stall
-        self.mapping.add('stall_warning')                   # 0.0 - 1.0 indicating the amount of stall
-        self.mapping.add('slip_deg', units='degrees')       # slip ball deflection
-
-        # Engine status
-        self.mapping.add('num_engines')                     # Number of valid engines
-        self.mapping.add('eng_state', self.FG_MAX_ENGINES)  # Engine state (off, cranking, running)
-        self.mapping.add('rpm',       self.FG_MAX_ENGINES)  # Engine RPM rev/min
-        self.mapping.add('fuel_flow', self.FG_MAX_ENGINES)  # Fuel flow gallons/hr
-        self.mapping.add('fuel_px',   self.FG_MAX_ENGINES)  # Fuel pressure psi
-        self.mapping.add('egt',       self.FG_MAX_ENGINES)  # Exhuast gas temp deg F
-        self.mapping.add('cht',       self.FG_MAX_ENGINES)  # Cylinder head temp deg F
-        self.mapping.add('mp_osi',    self.FG_MAX_ENGINES)  # Manifold pressure
-        self.mapping.add('tit',       self.FG_MAX_ENGINES)  # Turbine Inlet Temperature
-        self.mapping.add('oil_temp',  self.FG_MAX_ENGINES)  # Oil temp deg F
-        self.mapping.add('oil_px',    self.FG_MAX_ENGINES)  # Oil pressure psi
+        # ---------------------------------------------------------
+        # Build the Packet Format String (Big Endian '>')
+        # ---------------------------------------------------------
+        self.pack_str = (
+            '> '            # Big Endian
+            'I I '          # Header (Version, Padding)
+            'd d d '        # Position (Lon, Lat, Alt)
+            'f '            # AGL (Above Ground Level)
+            'f f f '        # Attitude (Phi, Theta, Psi)
+            'f f '          # Aero (Alpha, Beta)
+            'f f f '        # Rates (PhiDot, ThetaDot, PsiDot)
+            'f f '          # Velocities (Vcas, ClimbRate)
+            'f f f '        # Velocities NED (N, E, D)
+            'f f f '        # Velocities Body (U, V, W)
+            'f f f '        # Accels (Ax, Ay, Az)
+            'f f '          # Stall, Slip
             
-        # Consumables
-        self.mapping.add('num_tanks')                       # Max number of fuel tanks
-        self.mapping.add('fuel_quantity', self.FG_MAX_TANKS)
+            # --- Engines (45 items) ---
+            'I '            # Num Engines
+            'I I I I '      # Engine State [4]
+            'f f f f '      # RPM [4]
+            'f f f f '      # Fuel Flow [4]
+            'f f f f '      # Fuel PX [4]
+            'f f f f '      # EGT [4]
+            'f f f f '      # CHT [4]
+            'f f f f '      # MP [4]
+            'f f f f '      # TIT [4]
+            'f f f f '      # Oil Temp [4]
+            'f f f f '      # Oil PX [4]
+            
+            # --- Consumables (5 items) ---
+            'I '            # Num Tanks
+            'f f f f '      # Fuel Qty [4]
+            
+            # --- Gear (13 items) ---
+            'I '            # Num Wheels
+            'I I I '        # WoW [3]
+            'f f f '        # Gear Pos [3]
+            'f f f '        # Gear Steer [3]
+            'f f f '        # Gear Comp [3]
+            
+            # --- Environment (3 items) ---
+            'I i f '        # CurTime, Warp, Visibility
+            
+            # --- Controls (10 items) ---
+            'f f f f f f f f f f' # Elev, Trim, Flaps(2), Ail(2), Rud, Nose, Brk, Spoil
+        )
 
-        # Gear status
-        self.mapping.add('num_wheels')
-        self.mapping.add('wow',              self.FG_MAX_WHEELS)
-        self.mapping.add('gear_pos',         self.FG_MAX_WHEELS)
-        self.mapping.add('gear_steer',       self.FG_MAX_WHEELS)
-        self.mapping.add('gear_compression', self.FG_MAX_WHEELS)
+    # --- UPDATED SET METHOD ---
+    def set(self, name, value, idx=None):
+        """
+        Set a value. 
+        idx: Appends suffix to name (e.g. gear_pos + 0 -> gear_pos_0)
+        units: Ignored (compatibility)
+        """
+        if idx is not None:
+            key = f"{name}_{idx}"
+        else:
+            key = name
+        self.values[key] = value
 
-        # Environment
-        self.mapping.add('cur_time', units='seconds')       # current unix time
-        self.mapping.add('warp',     units='seconds')       # offset in seconds to unix time
-        self.mapping.add('visibility', units='meters')      # visibility in meters (for env. effects)
-
-        # Control surface positions (normalized values)
-        self.mapping.add('elevator')
-        self.mapping.add('elevator_trim_tab')
-        self.mapping.add('left_flap')
-        self.mapping.add('right_flap')
-        self.mapping.add('left_aileron')
-        self.mapping.add('right_aileron')
-        self.mapping.add('rudder')
-        self.mapping.add('nose_wheel')
-        self.mapping.add('speedbrake')
-        self.mapping.add('spoilers')
-
-        self._packet_size = struct.calcsize(self.pack_string)
-
-        self.set('version', self.FG_NET_FDM_VERSION)
-
-        if len(self.values) != self.mapping._nextidx:
-            raise fgFDMError('Invalid variable list in initialisation')
-
-    def packet_size(self):
-        '''return expected size of FG FDM packets'''
-        return self._packet_size
-
-    def convert(self, value, fromunits, tounits):
-        '''convert a value from one set of units to another'''
-        if fromunits == tounits:
-            return value
-        if (fromunits,tounits) in self.unitmap:
-            return value * self.unitmap[(fromunits,tounits)]
-        if (tounits,fromunits) in self.unitmap:
-            return value / self.unitmap[(tounits,fromunits)]
-        raise fgFDMError("unknown unit mapping (%s,%s)" % (fromunits, tounits))
-
-
-    def units(self, varname):
-        '''return the default units of a variable'''
-        if not varname in self.mapping.vars:
-            raise fgFDMError('Unknown variable %s' % varname)
-        return self.mapping.vars[varname].units
-
-
-    def variables(self):
-        '''return a list of available variables'''
-        return sorted(list(self.mapping.vars.keys()),
-                      key = lambda v : self.mapping.vars[v].index)
-
-
-    def get(self, varname, idx=0, units=None):
-        '''get a variable value'''
-        if not varname in self.mapping.vars:
-            raise fgFDMError('Unknown variable %s' % varname)
-        if idx >= self.mapping.vars[varname].arraylength:
-            raise fgFDMError('index of %s beyond end of array idx=%u arraylength=%u' % (
-                varname, idx, self.mapping.vars[varname].arraylength))
-        value = self.values[self.mapping.vars[varname].index + idx]
-        if units:
-            value = self.convert(value, self.mapping.vars[varname].units, units)
-        return value
-
-    def set(self, varname, value, idx=0, units=None):
-        '''set a variable value'''
-        if not varname in self.mapping.vars:
-            raise fgFDMError('Unknown variable %s' % varname)
-        if idx >= self.mapping.vars[varname].arraylength:
-            raise fgFDMError('index of %s beyond end of array idx=%u arraylength=%u' % (
-                varname, idx, self.mapping.vars[varname].arraylength))
-        if units:
-            value = self.convert(value, units, self.mapping.vars[varname].units)
-        # avoid range errors when packing into 4 byte floats
-        if math.isinf(value) or math.isnan(value) or math.fabs(value) > 3.4e38:
-            value = 0
-        self.values[self.mapping.vars[varname].index + idx] = value
-
-    def parse(self, buf):
-        '''parse a FD FDM buffer'''
-        try:
-            t = struct.unpack(self.pack_string, buf)
-        except struct.error as msg:
-            raise fgFDMError('unable to parse - %s' % msg)
-        self.values = list(t)
+    def get(self, name, default=0):
+        return self.values.get(name, default)
 
     def pack(self):
-        '''pack a FD FDM buffer from current values'''
-        for i in range(len(self.values)):
-            if math.isnan(self.values[i]):
-                self.values[i] = 0
-        return struct.pack(self.pack_string, *self.values)
-
+        """
+        Populate the list of 99 arguments and pack into binary.
+        """
+        cur_time = int(self.get('cur_time', time.time()))
+        
+        args = [
+            # 1. Header (2)
+            24, 0,
+            
+            # 2. Position (3)
+            self.get('longitude'), self.get('latitude'), self.get('altitude'),
+            
+            # 2b. AGL (1)
+            self.get('agl', 0),
+            
+            # 3. Attitude (3)
+            self.get('phi'), self.get('theta'), self.get('psi'),
+            
+            # 4. Aero (2)
+            self.get('alpha'), self.get('beta'),
+            
+            # 5. Rates (3)
+            self.get('phidot'), self.get('thetadot'), self.get('psidot'),
+            
+            # 6. Velocities Nav (2)
+            self.get('vcas'), self.get('climb_rate'),
+            
+            # 7. Velocities NED (3)
+            self.get('v_north'), self.get('v_east'), self.get('v_down'),
+            
+            # 8. Velocities Body (3)
+            self.get('u_body'), self.get('v_body'), self.get('w_body'),
+            
+            # 9. Accels (3)
+            self.get('A_X_pilot'), self.get('A_Y_pilot'), self.get('A_Z_pilot'),
+            
+            # 10. Stall/Slip (2)
+            self.get('stall_warning'), self.get('slip_deg'),
+            
+            # --- ENGINES (45) ---
+            self.get('num_engines', 2),
+            self.get('eng_state_0', 2), self.get('eng_state_1', 2), 0, 0,
+            self.get('rpm_0'), self.get('rpm_1'), 0, 0,
+            # Unused
+            0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
+            0,0,0,0,  0,0,0,0,  0,0,0,0,  0,0,0,0,
+            
+            # --- TANKS (5) ---
+            self.get('num_tanks', 1),
+            self.get('fuel_qty_0'), 0, 0, 0,
+            
+            # --- GEAR (13) ---
+            self.get('num_wheels', 3),
+            # WoW
+            self.get('wow_0'), self.get('wow_1'), self.get('wow_2'),
+            # Position (0=Up, 1=Down)
+            # The 'set' method with idx=0 maps to 'gear_pos_0', which matches these calls:
+            self.get('gear_pos_0', 1.0), self.get('gear_pos_1', 1.0), self.get('gear_pos_2', 1.0),
+            # Steer
+            self.get('gear_steer_0'), 0, 0,
+            # Compression
+            self.get('gear_comp_0'), self.get('gear_comp_1'), self.get('gear_comp_2'),
+            
+            # --- ENV (3) ---
+            cur_time,
+            self.get('warp', 0),
+            self.get('visibility', 5000.0),
+            
+            # --- CONTROLS (10) ---
+            self.get('elevator'),
+            self.get('elevator_trim_tab'),
+            self.get('left_flap'), 
+            self.get('right_flap'),
+            self.get('left_aileron'), 
+            self.get('right_aileron'),
+            self.get('rudder'),
+            self.get('nose_wheel'),
+            self.get('speedbrake'),
+            self.get('spoilers')
+        ]
+        
+        return struct.pack(self.pack_str, *args)

@@ -99,53 +99,73 @@ def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
 
 
 
-def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels):
+
+def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels, agl_m=0.0):
     '''
     function to set the current time step data to be sent to FlightGear
     inputs are:
+    this_fgFDM - network comms object
     X - states
-    U - controls
+    U_norm - normalized controls
     latlon - in radians
     alt - in meters
-    NED - velocities in m/s
+    body_accels - m/s2
+    agl_m -  in m
     '''
-    this_fgFDM.set('phi', X[IDX_PHI])
-    this_fgFDM.set('theta', X[IDX_THETA])
-    this_fgFDM.set('psi', X[IDX_PSI])
-
-    this_fgFDM.set('phidot', X[IDX_P])
-    this_fgFDM.set('thetadot', X[IDX_Q])
-    this_fgFDM.set('psidot', X[IDX_R])
+    # Unpack State
+    phi, theta, psi = X[IDX_PHI], X[IDX_THETA], X[IDX_PSI]
+    p, q, r = X[IDX_P], X[IDX_Q], X[IDX_R]
+    uvw = X[IDX_U : IDX_W+1]
     
-    # this sets units to kts because the HUD does not apply any conversions to the speed
-    # if we send speed in fps as the API requires, the HUD displays wrong value
-    this_fgFDM.set('vcas', ISA.Vt2Vc(env.VA(X[:3]), alt*M2FT) * MS2KT) 
-    this_fgFDM.set('cur_time', int(time.perf_counter() ), units='seconds')
-    this_fgFDM.set('latitude', latlon[0], units='radians')
-    this_fgFDM.set('longitude', latlon[1], units='radians')
-    this_fgFDM.set('altitude', alt, units='meters')
-
+    # --- SPEEDS ---
+    # FlightGear needs body velocities in Feet Per Second (FPS) for instruments
+    this_fgFDM.set('u_body', uvw[0] * M2FT)
+    this_fgFDM.set('v_body', uvw[1] * M2FT)
+    this_fgFDM.set('w_body', uvw[2] * M2FT)
+    
+    # Vcas for HUD
+    Va = env.VA(uvw)
+    this_fgFDM.set('vcas', ISA.Vt2Vc(Va, alt*M2FT) * MS2KT)
+    
+    # --- ATTITUDE & RATES ---
+    this_fgFDM.set('phi', phi)
+    this_fgFDM.set('theta', theta)
+    this_fgFDM.set('psi', psi)
+    this_fgFDM.set('phidot', p)
+    this_fgFDM.set('thetadot', q)
+    this_fgFDM.set('psidot', r)
+    
+    # --- POSITION ---
+    this_fgFDM.set('latitude', latlon[0])   # radians
+    this_fgFDM.set('longitude', latlon[1])  # radians
+    this_fgFDM.set('altitude', alt)         # meters
+    this_fgFDM.set('agl', agl_m)            # meters 
+    
+    # --- CONTROLS ---
     this_fgFDM.set('left_aileron', -U_norm[IDX_AIL])
     this_fgFDM.set('right_aileron', +U_norm[IDX_AIL])
     this_fgFDM.set('elevator', U_norm[IDX_ELE])
     this_fgFDM.set('rudder', -U_norm[IDX_RUD])
+    
+    # Check if these indices exist in your constants.py; if not, remove or define them
+    
     this_fgFDM.set('left_flap', U_norm[IDX_FLAP])
     this_fgFDM.set('right_flap', U_norm[IDX_FLAP])
+        
     this_fgFDM.set('spoilers', U_norm[IDX_GNDSP])
-    this_fgFDM.set('gear_pos', U_norm[IDX_GEAR], idx=0)
-    this_fgFDM.set('gear_pos', U_norm[IDX_GEAR], idx=1)
-    this_fgFDM.set('gear_pos', U_norm[IDX_GEAR], idx=2)
 
 
-    this_fgFDM.set('A_X_pilot', body_accels[0], units='mpss')
-    this_fgFDM.set('A_Y_pilot', body_accels[1], units='mpss')
-    this_fgFDM.set('A_Z_pilot', body_accels[2], units='mpss')
+    # Gear (Assuming IDX_GEAR exists, otherwise default to 1.0 down)
+    gear_val = U_norm[IDX_GEAR]
+    this_fgFDM.set('gear_pos', gear_val, idx=0)
+    this_fgFDM.set('gear_pos', gear_val, idx=1)
+    this_fgFDM.set('gear_pos', gear_val, idx=2)
 
-
-
-
-
-
-
-
-
+    # --- ACCELS ---
+    this_fgFDM.set('A_X_pilot', body_accels[0])
+    this_fgFDM.set('A_Y_pilot', body_accels[1])
+    this_fgFDM.set('A_Z_pilot', body_accels[2])
+    
+    # --- TIME ---
+    # Use time.time() for Unix Epoch, likely preferred by FG over perf_counter
+    this_fgFDM.set('cur_time', int(time.time()))
