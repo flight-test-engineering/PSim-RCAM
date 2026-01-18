@@ -668,12 +668,9 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:
     # Total side force CY (stability frame)
     CY = CY_BETA * beta + CY_DR * dr
 
+    #---------------------- gravity effects ----------------------------------
+    g_b = np.array([-G * np.sin(theta), G * np.cos(theta) * np.sin(phi), G * np.cos(theta) * np.cos(phi)])
     
-    #---------------------- engine force and moment --------------------------
-    # thrust
-    F1 = dt1
-    F2 = dt2
-
 
     #---------------------- GROUND REACTION ----------------------------------
     # This is the new part for Step 3
@@ -831,6 +828,10 @@ def trim_functional3(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
 
     # add CL, CD, CM and delta Alpha modifiers due to gear and flaps
     dcl_dcd_dcm_dalpha = array_interp(flap_pos, HIGH_LIFT_COEFFS, MAX_FLAP)
+
+    # interpolate for landing gear delta CD
+    ldg_dcd = array_interp(gear_pos, LDG_DCD, MAX_LDG)
+    dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
     
     # calculate model
     X_dot = RCAM_model(X, U, rho_trim, h_trim, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA])
@@ -927,9 +928,9 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
 # Model Initialization
 # ############################################################################
 
-def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi_t=0.0, height=0.0, flaps=0, gear=0):
+def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi_t=0.0, height=0.0, flap_pos=0, gear=0):
     '''
-    this initializes the integrators at a straight and level flight condition
+    this initializes the integrators
     inputs:
         VA_t: true airspeed at trim (m/s)
         gamma_t: flight path angle at trim (rad)
@@ -940,9 +941,9 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         flap: flap position
         gear: gear position (0=up, 1=dn)
     outputs:
-        AC_integrator: aircraft integrator object
-        X0: initial states found at trim point
-        U0: initial commands found at trim point
+        AC_integrator: scipy aircraft integrator object
+        X0: initial states at trim point
+        U0: initial commands at trim point
         latlonh_integrator: navigation equation scipy object integrator
     '''
     t0 = 0.0 #intial time for integrators
@@ -950,7 +951,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     rho_trim = env.get_rho(alt_m)
 
     print()
-    print(f'initializing model with altitude {altitude} ft, rho={rho_trim:.4f} kg/m3, flaps={flaps}')
+    print(f'initializing model with {VA_t*MS2KT:.0f} KIAS, {altitude} ft, rho={rho_trim:.4f} kg/m3, flaps={flap_pos}')
     
 
     latlonh0 = np.array([latlon[0]*DEG2RAD, latlon[1]*DEG2RAD, alt_m])
@@ -960,21 +961,26 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         # trim model
         res4, res4_status = trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
                                     phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=height,
-                                    flaps=flaps, gear=gear)
+                                    flap_pos=flap_pos, gear=gear)
         print()
         print('Trimming',res4_status)
         print()
         X0 = res4[:9] # separate states and controls
-        U0 = np.concatenate((res4[9:], np.array([flaps, gear, 0.0, 0.0]))) # add back ground spoiler and brakes to control vector
+        U0 = np.concatenate((res4[9:], np.array([flap_pos, gear, 0.0, 0.0]))) # add back ground spoiler and brakes to control vector
         print(f'initial states: {X0}')
         print(f'initial inputs: {U0}')
         print()
     else:
         # we are on the ground
         X0=np.array([VA_t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, INIT_HDG_DEG * DEG2RAD])
-        U0=np.array([0.0, 0.0, 0.0, 0.0, 0.0, flaps, gear, 0.0, 0.0])
+        U0=np.array([0.0, 0.0, 0.0, 0.0, 0.0, flap_pos, gear, 0.0, 0.0])
 
-    dcl_dcd_dcm_dalpha = array_interp(flaps, HIGH_LIFT_COEFFS, MAX_FLAP)
+    # interpolate high lift devices effect
+    dcl_dcd_dcm_dalpha = array_interp(flap_pos, HIGH_LIFT_COEFFS, MAX_FLAP)
+    # interpolate for landing gear delta CD
+    ldg_dcd = array_interp(gear, LDG_DCD, MAX_LDG)
+    dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
+
     # initialize integrators
     AC_integrator = ss_integrator(t0, X0, U0, rho_trim, height, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA])
     
@@ -995,7 +1001,7 @@ if __name__ == "__main__":
 
 ############################################################################
     # SELECT STARTING POINT: ON GROUND OR IN AIR
-    TRIM_ON_GROUND = True
+    TRIM_ON_GROUND = False
 
     # INITIAL CONDITIONS (for trim)
     if TRIM_ON_GROUND:
@@ -1077,13 +1083,13 @@ if __name__ == "__main__":
 
         # THREADING: Create and start the network worker thread.
         # It's a daemon thread, so it will exit automatically if the main program exits.
-        network_thread = threading.Thread(
+        tx_thread = threading.Thread(
             target=net.network_worker,
             args=(socks, fdm_packet_queue, fg_addresses),
             daemon=True
         )
         try:
-            network_thread.start()
+            tx_thread.start()
             print("... started!")
         except Exception as e:
             print(f"...Error in network thread: {e}")
@@ -1098,12 +1104,12 @@ if __name__ == "__main__":
          # Queue used only for shutdown signal
         terrain_shutdown_queue = queue.Queue()
         
-        terrain_thread = threading.Thread(
+        rx_thread = threading.Thread(
             target=net.terrain_udp_worker,
             args=(TERRAIN_RX_IP, TERRAIN_RX_PORT, terrain_shared_data, terrain_shutdown_queue),
             daemon=True
         )
-        terrain_thread.start()
+        rx_thread.start()
 
 
 
@@ -1146,7 +1152,8 @@ if __name__ == "__main__":
     current_uvw = np.array([0,0,0])
 
     # aircraft initialization (includes trimming)
-    this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG, height=100.0, flaps=FLAPS_INIT)
+    this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, 
+                                                            psi_t=INIT_HDG_DEG, height=100.0, flap_pos=FLAPS_INIT)
     # Vector U1 has the controls for the trimmed state
     U1[IDX_GEAR] = INIT_GEAR
     U_man = U1.copy() # we set U_man (for manual controls) as a copy of the trimmed control states first.
@@ -1255,22 +1262,23 @@ if __name__ == "__main__":
         # what comes out of the trimming function is thrust directly
         # for online sim, we can't use it
         # let's run the reverse deck to get the thrust lever angle:
-        print(f'running inverse deck with alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]*N2LBF:.0f} lbf')
+        print(f'running inverse deck with alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]:.0f} N')
 
-        U1[IDX_THR1] = prop.E1_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC']
+        U1[IDX_THR1] = prop.E1_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC'] # deck takes lbf
         U1[IDX_THR2] = prop.E2_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
-        U_man[IDX_THR1] = U1[IDX_THR1]
+        U_man[IDX_THR1] = U1[IDX_THR1] # percent power
         U_man[IDX_THR2] = U1[IDX_THR2]
 
         print(f'this is the inverse deck response: E1:{U1[IDX_THR1]:.4f}; E2:{U1[IDX_THR2]:.4f} % power')
         print()
 
-        # run deck
-        print("Adding engine deck initial job...")
+        # run deck preemptively
+        print("Adding engine deck initial job...", end="")
         new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), U_man[IDX_THR1], U_man[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
         jobs_queue.put(new_job, block=False)
         # need to give time for deck to run
-        time.sleep(.5)
+        time.sleep(.2)
+        print(' done.')
 
         ##### SIMULATION LOOP #####
         while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
@@ -1387,8 +1395,6 @@ if __name__ == "__main__":
                 # -- FlightGear Output
                 if send_frame_trigger:
                     # for efficiency, we will use this loop to 
-                    # 1. send the datagram to FlightGear
-
                     # -- Send data to FlightGear
                     # it is easier to calculate body accelerations instead of reaching into the RCAM function
                     if dt == 0:
@@ -1475,7 +1481,7 @@ if __name__ == "__main__":
                     #print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={dcl_dcd_dcm_dalpha}, ALPHA={internals[1]}, CL={internals[3]}')
                     #print(f'ldg_pos: {U_actual[IDX_GEAR]}, ldg dcd: {ldg_dcd}, gnd_sp_armed? {U1[IDX_GNDSP]}, gnd_spoilers_dcl: {U_actual[IDX_GNDSP]}')
                     #print(f'U_norm: {control_norm(U_actual)}')
-                    print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpoilerArmed={int(U1[IDX_GNDSP])}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}')
+                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {U_man[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpoilerArmed={int(U1[IDX_GNDSP])}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={-body_accels[2]/G:.2f}')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
 
@@ -1530,13 +1536,13 @@ if __name__ == "__main__":
         print()
         print("Shutting down network threads...")
         fdm_packet_queue.put(None)  # Send the shutdown signal
-        network_thread.join(timeout=1.0) # Wait for the thread to finish
+        tx_thread.join(timeout=1.0) # Wait for the thread to finish
         for s in socks:
             s.close()
                 
         # -- Stop RX thread
         terrain_shutdown_queue.put(True)
-        terrain_thread.join(timeout=1.0)
+        rx_thread.join(timeout=1.0)
 
         # close engine process
         jobs_queue.put(None)
