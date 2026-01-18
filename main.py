@@ -217,12 +217,12 @@ def control_sat(U:np.ndarray) -> np.ndarray:
 
 @jit(nopython=True)
 def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.ndarray) -> np.ndarray:
-    """
+    '''
     Simulates first order lag for control surfaces.
     y_dot = (u_cmd - y_current) / tau
     y_new = y_current + y_dot * dt
     Includes a 'snap-to-target' threshold to ensure values reach exactly 0.0 or 1.0.
-    """
+    '''
     
     # 1. Standard First Order Lag Calculation
     # y_dot = (u_cmd - y_current) / tau
@@ -245,7 +245,7 @@ def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.nda
 
 @jit(nopython=True)
 def calculate_gear_compression(X:np.ndarray, h_cg:float) -> np.ndarray:
-    """
+    '''
     Calculates the vertical compression of each landing gear strut.
     Positive value = Gear is in contact with ground (compressed).
     Negative value = Gear is in the air.
@@ -257,7 +257,7 @@ def calculate_gear_compression(X:np.ndarray, h_cg:float) -> np.ndarray:
         
     Returns:
         compressions: np.array([nose_comp, main_l_comp, main_r_comp])
-    """
+    '''
     phi = X[IDX_PHI]
     theta = X[IDX_THETA]
     
@@ -296,10 +296,10 @@ def calculate_gear_compression(X:np.ndarray, h_cg:float) -> np.ndarray:
 
 @jit(nopython=True)
 def get_air_ground_state(compressions:np.ndarray) -> bool:
-    """
+    '''
     Returns True (Ground) if ANY gear is compressed, False (Air) otherwise.
     This acts as the requested 'air_ground' variable.
-    """
+    '''
     if compressions[0] > 0 or compressions[1] > 0 or compressions[2] > 0:
         return True
     else:
@@ -308,13 +308,13 @@ def get_air_ground_state(compressions:np.ndarray) -> bool:
 
 @jit(nopython=True)
 def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float) -> np.ndarray:
-    """
+    '''
     Calculates total Forces and Moments (Body Frame) from all 3 landing gears.
     h_cg is height AGL (RADALT) in (m)
     brake is a float between 0 and 1 - represents brake percent
     Returns: 6-element array [Fx, Fy, Fz, Mx, My, Mz]
 
-    """
+    '''
     
     # Get current compressions
     compressions = calculate_gear_compression(X, h_cg)
@@ -374,7 +374,7 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float) -> np.ndarray
             raw_fx = -V_gear[0] * LG_FRICTION_STIFFNESS
 
             
-            # Optional: Cap friction so it doesn't exceed mu * Normal Force (Coulomb friction)
+            # Cap friction so it doesn't exceed mu * Normal Force (Coulomb friction)
             # This prevents numerical instability if sliding sideways fast
             max_fx = abs(F_normal * (LG_MU_BRAKE + LG_ROLLING_FRICTION_MU))
             max_fy = abs(F_normal * LG_SIDE_FRICTION_MU)
@@ -404,8 +404,8 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float) -> np.ndarray
 
 @jit(nopython=True)
 def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:float, dcm:float, dalpha:float) -> np.ndarray:
-    """
-    RCAM model implementation
+    '''
+    Modified RCAM model implementation
     sources: RCAM docs and Christopher Lum
     Group for Aeronautical Research and Technology Europe (GARTEUR) - Research Civil Aircraft Model (RCAM)
     http://garteur.org/wp-content/reports/FM/FM_AG-08_TP-088-3.pdf
@@ -444,7 +444,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
         dalpha: Delta alpha (High Lift / Ldg / Gnd Spoiler)
     outputs:
         X_dot: derivatives of states (same order)
-    """
+    '''
    
     # ------------------------- states ----------------------------------
     u, v, w = X[IDX_U], X[IDX_V], X[IDX_W] # m/s
@@ -490,7 +490,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
 
     # CL thrust
     epsilon = DEPSDA * (alpha - ALPHA_L0)
-    # Prevent divide by zero in epsilon_dot term
+    # Prevent divide by zero in q_term, if speed is too low
     q_term = (EPSILON_DOT * q * LT / Va) if Va > 0.1 else 0.0
     alpha_t = alpha - epsilon + de + q_term
     CL_t = NT * (ST / S) * alpha_t
@@ -550,7 +550,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
     # thrust
     #F1 = dt1 * M * G # orginal RCAM
     #F2 = dt2 * M * G
-    F1 = dt1
+    F1 = dt1 # modified RCAM, now we have thrust from cycle deck
     F2 = dt2
 
     # thrust vectors (assuming aligned with x axis)
@@ -574,14 +574,13 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
     Fg_b = M * g_b
 
     #---------------------- GROUND REACTION ----------------------------------
-    # This is the new part for Step 3
+    # This is extra to RCAM model
     Gnd_Reac = calculate_ground_forces(X, h, brake)
     F_gnd_b = Gnd_Reac[:3]
     M_gnd_b = Gnd_Reac[3:]
     
     #---------------------- state derivatives --------------------------------
-    
-    # form F_b and calculate u, v, w dot
+        # form F_b and calculate u, v, w dot
     # Added F_gnd_b to the sum
     F_b = Fg_b + FE_b + FA_b + F_gnd_b
     
@@ -610,13 +609,14 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
 # we do not need to log at full simulation frame rate.
 @jit(nopython=True)
 def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:float, dcm:float, dalpha:float) -> np.ndarray:
-    """
+    '''
     Performs the same calculations as RCAM_model but returns internal variables
     for logging purposes instead of state derivatives.
     
     Returns array:
     [0:Va, 1:alpha, 2:beta, 3:CL, 4:CD, 5:CY, 6:Gnd_Fx, 7:Gnd_Fy, 8:Gnd_Fz]
-    """
+    -> you can add more variables if required
+    '''
    
     # ------------------------- states ----------------------------------
     u, v, w = X[IDX_U], X[IDX_V], X[IDX_W] # m/s
@@ -654,7 +654,7 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:
 
     # CL thrust
     epsilon = DEPSDA * (alpha - ALPHA_L0)
-    # Prevent divide by zero in epsilon_dot term
+    # Prevent divide by zero
     q_term = (EPSILON_DOT * q * LT / Va) if Va > 0.1 else 0.0
     alpha_t = alpha - epsilon + de + q_term
     CL_t = NT * (ST / S) * alpha_t
@@ -673,7 +673,6 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:
     # thrust
     F1 = dt1
     F2 = dt2
-
 
 
     #---------------------- GROUND REACTION ----------------------------------
@@ -711,10 +710,10 @@ def latlonh_dot_wrapper(t, X, V_NED, lat, h):
 
 # # # integrators
 def ss_integrator(t_ini:float, X0:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:float, dcm:float, dalpha:float):
-    """
+    '''
     single step integrator for FDM
     returns scipy object, initialized
-    """
+    '''
 
     RK_integrator = integrate.ode(RCAM_model_wrapper)
     RK_integrator.set_integrator('dopri5') 
@@ -740,11 +739,11 @@ def latlonh_int(t_ini:float, latlonh0:np.ndarray, V_NED):
 
 # NUMBA/JIT WARM-UP
 def compile_numba_functions():
-        """
+        '''
         Runs Numba functions with dummy data to force JIT compilation 
         before the real-time loop begins.
-        """
-        print("Compiling Numba functions (Warm-up)...", end="")
+        '''
+        print('Compiling Numba functions (Warm-up)...', end="")
         
         # Dummy Data
         X = np.zeros(9)
@@ -775,7 +774,7 @@ def compile_numba_functions():
         _ = env.NED(np.array([10.,0.,0.]), np.array([0.,0.,0.]))
         _ = env.latlonh_dot(np.array([10.,0.,0.]), 0.0, 0.0)
         
-        print(" Done.")
+        print(' Done.')
 
 
 # ############################################################################
@@ -784,16 +783,13 @@ def compile_numba_functions():
 
 # define partial function with fixed flaps, gear position, ground spoilers and brake
 # this partial function leaves "floating" only the parameters that the optimizer can vary
-# the problem is that "partial" fixes the parameters from left to right
-# so there is no easy way to fix the last parameters (they'd have to be named)
 # because we trim only once, no big deal defining these special functions
 
 
 def trim_functional3(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim, 
                      flap_pos, gear_pos, gnd_sp_pos, brakes_pos) -> np.dtype('f8'):
-    """
+    '''
     functional to calculate a cost for minimizer (used to find trim point)
-    no constraints yet
     inputs:
         Z: lumped vector of X (states) and U (control)
         trim targets:
@@ -802,7 +798,12 @@ def trim_functional3(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
         side_speed_trim: lateral (v) speed [m/s]
         phi_trim: roll angle [rad]
         psi_trim: course angle [rad]
-        h_trim: height above the ground (m) - for ground proximity checks
+        rho_trim: density of air at trim condition [kg/m3]
+        h_trim: height above the ground (m) - for ground proximity checks,
+        flap_pos: number between 0 and MAX_FLAP
+        gear_pos: 0 for gear up, 1 for down
+        gnd_sp_pos: 0 for closed, 1 for open
+        brakes_pos: 0 for not applied, 1 applied
 
     ****
     method
@@ -812,22 +813,23 @@ def trim_functional3(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
     
     returns:
         cost [float]
-    """
+    '''
 
     X = Z[:9] # extract states
     
-    U = np.zeros(Z.shape[0] - 9 + 4) # create controls vector with size of Z, minus 9 states, plus 4 extra controls
+    # create controls vector with size of Z, minus 9 states, plus 4 extra controls
+    U = np.zeros(Z.shape[0] - 9 + 4) 
 
     for i in range (Z.shape[0] - 9):
         U[i] = Z[9+i]
 
-    # add extra control values
+    # .. add extra control values
     U[Z.shape[0] -9 + 0] = flap_pos
     U[Z.shape[0] -9 + 1] = gear_pos
     U[Z.shape[0] -9 + 2] = gnd_sp_pos
     U[Z.shape[0] -9 + 3] = brakes_pos
 
-    # add additional CL, CD, CM and delta Alpha due to gear and flaps
+    # add CL, CD, CM and delta Alpha modifiers due to gear and flaps
     dcl_dcd_dcm_dalpha = array_interp(flap_pos, HIGH_LIFT_COEFFS, MAX_FLAP)
     
     # calculate model
@@ -845,31 +847,31 @@ def trim_functional3(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
 
 
 def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, psi_trim=0.0, rho_trim=1.225, 
-               h_trim=100.0, flaps=0, gear=0, gnd_sp=0, brakes=0,
+               h_trim=100.0, flap_pos=0, gear=0, gnd_sp=0, brakes=0,
                X0=np.array([85.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), 
                U0=np.array([1.0, 1.0, 1.0, 0.08, 0.08, 0.0, 0.0, 0.0, 0.0])) -> np.ndarray:
-    """
+    '''
     uses scipy minimize on functional to find trim point
     X0 states:
         u, v, w, p, q, r, phi, theta, psi
     U0 controls:
-        ail, ele, rud, thr1, thr2, gnd spoiler, brake, flaps position, gear position
+        ail, ele, rud, thr1, thr2, flaps position, gear position, gnd spoiler, brake
     h_trim is passed on to check ground proximity
 
-    """
+    '''
 
     # add target trim values to X0 vector, as a better initial guess for the states
     X0[IDX_U] = VA_trim
     X0[IDX_PHI] = phi_trim
     X0[IDX_PSI] = psi_trim
 
-    # REMOVE MAGIC NUMBERS LATER
-    U0[5] = flaps
-    U0[6] = gear
-    U0[7] = gnd_sp
-    U0[8] = brakes
+    # Add additional control values
+    U0[IDX_FLAP] = flap_pos
+    U0[IDX_GEAR] = gear
+    U0[IDX_GNDSP] = gnd_sp
+    U0[IDX_BRAKE] = brakes
 
-    # control variables
+    # loop control variables
     MAX_ITER = 10 
     iter_counter = 0
     epsilon = 1E-9
@@ -877,22 +879,25 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
 
     # concatenate states and inputs into single vector
     # for trimming, ground spoilers and brakes are not a valid control
-    Z0 = np.concatenate((X0, U0[:-4])) # removing ground spoilers and brake from trim variables
+    # removing additional control values from trim variables
+    # because we do not want the optimizer to play with them,
+    # we add them separately:
+    Z0 = np.concatenate((X0, U0[:-4])) 
 
     print(f'initial functional cost: {trim_functional3(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
-                             flaps, gear, gnd_sp, brakes):.3e}')
+                             flap_pos, gear, gnd_sp, brakes):.3e}')
 
 
     while iter_counter <= MAX_ITER and not converge:
         # Updated args tuple to include h_trim
         result = minimize(trim_functional3, Z0, args=(VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
-                          flaps, gear, gnd_sp, brakes),
+                          flap_pos, gear, gnd_sp, brakes),
                 method='Nelder-Mead', options={'maxiter':50000,\
                                                'maxfev':40000})
         
         # Updated cost check with h_trim
         current_cost = trim_functional3(result.x, env.VA(result.x[:3]), result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U]), result.x[IDX_V], result.x[IDX_PHI], result.x[IDX_PSI], rho_trim, h_trim,
-                                         flaps, gear, gnd_sp, brakes)
+                                         flap_pos, gear, gnd_sp, brakes)
         print(f'iter: {iter_counter}, functional cost: {current_cost:.3e}')
 
         if current_cost < epsilon:
@@ -923,7 +928,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
 # ############################################################################
 
 def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi_t=0.0, height=0.0, flaps=0, gear=0):
-    """
+    '''
     this initializes the integrators at a straight and level flight condition
     inputs:
         VA_t: true airspeed at trim (m/s)
@@ -939,7 +944,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         X0: initial states found at trim point
         U0: initial commands found at trim point
         latlonh_integrator: navigation equation scipy object integrator
-    """
+    '''
     t0 = 0.0 #intial time for integrators
     alt_m = altitude * FT2M
     rho_trim = env.get_rho(alt_m)
