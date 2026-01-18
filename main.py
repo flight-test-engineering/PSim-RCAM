@@ -159,11 +159,14 @@ else:
 # ############################################################################
 # High Lift Devices Interpolator
 # ############################################################################
-# note: numba does like np.clip if we pass in a single number float...it needs a numpy array
-
 
 @jit(nopython=True)
 def array_interp(x:float, data_array:np.array, data_array_len:int) -> np.array:
+    '''
+    interpolator for flaps, gear
+    interpolates between the two closest data points
+    returns the interpolated array
+    '''
     x = max(0.0, min(float(data_array_len), x))
     idx = int(x)
     frac = x - idx
@@ -187,21 +190,15 @@ def control_norm(U:np.array) -> np.array:
     returns:
         vector with control positions normalized between 1 and -1
     '''
-    # Extract limits for first 3 channels
+    # Create local copy
     mins = U_LIMITS_MIN
     maxs = U_LIMITS_MAX
     
     # Avoid divide by zero
-    mins = np.where(mins == 0, 1.0, mins)
-    maxs = np.where(maxs == 0, 1.0, maxs)
-
-    # Slice input
-    #u_subset = U[:3]
-
+    mins = np.where(mins == 0, 1.0, U_LIMITS_MIN)
+    maxs = np.where(maxs == 0, 1.0, U_LIMITS_MAX)
     
     # Vectorized normalization
-    # If U < 0: U / abs(min)
-    # If U >= 0: U / max
     U_norm = np.where(U < 0, 
                       U / np.abs(mins), 
                       U / maxs)
@@ -682,8 +679,6 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:
     F_gnd_y = Gnd_Reac[1]
     F_gnd_z = Gnd_Reac[2]
 
-
-
     
     return np.array([Va, alpha*RAD2DEG, beta*RAD2DEG, CL, CD, CY, F_gnd_x, F_gnd_y, F_gnd_z])
 
@@ -814,23 +809,27 @@ def trim_functional3(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_tri
         cost [float]
     """
 
-    X = Z[:9]
-    #U = Z[9:]
-    U = np.zeros(Z.shape[0]-9+4)
-    for i in range (Z.shape[0]-9):
+    X = Z[:9] # extract states
+    
+    U = np.zeros(Z.shape[0] - 9 + 4) # create controls vector with size of Z, minus 9 states, plus 4 extra controls
+
+    for i in range (Z.shape[0] - 9):
         U[i] = Z[9+i]
-    U[Z.shape[0]-9+0] = flap_pos
-    U[Z.shape[0]-9+1] = gear_pos
-    U[Z.shape[0]-9+2] = gnd_sp_pos
-    U[Z.shape[0]-9+3] = brakes_pos
+
+    # add extra control values
+    U[Z.shape[0] -9 + 0] = flap_pos
+    U[Z.shape[0] -9 + 1] = gear_pos
+    U[Z.shape[0] -9 + 2] = gnd_sp_pos
+    U[Z.shape[0] -9 + 3] = brakes_pos
+
+    # add additional CL, CD, CM and delta Alpha due to gear and flaps
     dcl_dcd_dcm_dalpha = array_interp(flap_pos, HIGH_LIFT_COEFFS, MAX_FLAP)
     
-    # PASS h_trim to the model here:
+    # calculate model
     X_dot = RCAM_model(X, U, rho_trim, h_trim, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA])
-
     
+    # calculate speed and gamma
     VA_current = env.VA(X[:3])
-    
     gamma_current = X[IDX_THETA] - np.arctan2(X[IDX_W], X[IDX_U]) 
      
     Q = np.concatenate((X_dot, [VA_current - VA_trim], [gamma_current - gamma_trim], [X[IDX_V] - side_speed_trim], [X[IDX_PHI] - phi_trim], [X[IDX_PSI] - psi_trim]))
@@ -865,8 +864,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     U0[7] = gnd_sp
     U0[8] = brakes
 
-
-
+    # control variables
     MAX_ITER = 10 
     iter_counter = 0
     epsilon = 1E-9
@@ -1040,7 +1038,7 @@ if __name__ == "__main__":
             engine_header.append(eng_prefix+param)
     full_header = signals_header + internals_header + engine_header
 
-    ###########################################################################
+##############################################################################
     # Numba/JIT warm-up
     compile_numba_functions()
     
@@ -1315,8 +1313,6 @@ if __name__ == "__main__":
                 U_actual = update_actuators(U_man, U_actual, actuator_dt, ACT_TAU)
 
 
-
-
                 # Update thrust values (Engine deck results)
                 U_actual[IDX_THR1] = e1_thrust
                 U_actual[IDX_THR2] = e2_thrust
@@ -1383,9 +1379,6 @@ if __name__ == "__main__":
                 if send_frame_trigger:
                     # for efficiency, we will use this loop to 
                     # 1. send the datagram to FlightGear
-                    # 2. check/toggle ground spoilers
-                    # because we are not doing flexible structures sim, we do not need to log at full sim frame rate
-                    # also, understood that altitude and rho will be "ahead" one step
 
                     # -- Send data to FlightGear
                     # it is easier to calculate body accelerations instead of reaching into the RCAM function
