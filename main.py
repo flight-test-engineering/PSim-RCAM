@@ -50,38 +50,34 @@ Otherwise, offline simulation is run
 
 TODO:
     1) add engine dynamics (spool up/down) [DONE]
-    2) add atmospheric disturbances/turbulence [DONE - wind]
+    2) add atmospheric wind [DONE - wind]
     3) add other actuator dynamics [DONE]
     4) save/read trim point
     5) fuel detot / inertia update
-    6) add engine cut logic with dynamics per RCAM and controls from joystick
+    6) add engine cut logic with dynamics per RCAM and controls from joystick [DONE]
     7) update wind/turbulence per RCAM
-    8) add flaps (delta CL, CM, CD) with controls from joystick
-    9) add landing ger (delta CM, CD) with controls from joystick
+    8) add flaps (delta CL, CM, CD) with controls from joystick [DONE]
+    9) add landing ger (delta CM, CD) with controls from joystick [DONE]
     10) add ground effect (delta CL) with radalt/height
 
 
 '''
 
 # imports
+import time
 import numpy as np
-from functools import partial
 from scipy import integrate
 from scipy.optimize import minimize # for trimming routine
 from numba import jit
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('TkAgg')
+import pygame #joystick interface
 
 import ISA_module as ISA # International Standard Atmosphere library
 
-import time
 import sys
-
 sys.path.insert(1, '../')
-
-from psim.io.fgFDM import * # FlightGear comm class
-import socket
 
 # threading for FG comms
 import threading
@@ -89,10 +85,6 @@ import queue
 
 # multiprocessing for engine deck
 import multiprocessing as mp
-
-import pygame #joystick interface
-
-
 
 
 from psim.constants import *
@@ -102,58 +94,10 @@ import psim.propulsion as prop
 import psim.helpers as helpers
 import psim.io.joystick as joy
 import psim.io.network as net
+from psim.io.fgFDM import * # FlightGear comm class
+import socket
 
   
-
-
-
-# ############################################################################
-# Load Aircraft Parameters into Global Scope
-#
-# Numba's JIT compiler captures global variables when a function is first
-# compiled. By loading our parameters into the global scope, we make them
-# available to the performance-critical `RCAM_model` and `control_sat`
-# functions without needing to pass them as arguments on every call.
-# ############################################################################
-
-############################################################################
-# we first need the joystick name, to load the correct parameters...
-# JOYSTICK INIT AND CHECK
-pygame.init() # automatically initializes joystick also
-
-# check if joystick is connected
-joystick_count = pygame.joystick.get_count()
-if joystick_count == 0:
-    joy_name = None
-else:
-    this_joy = pygame.joystick.Joystick(0)
-    joy_name = this_joy.get_name()
-
-
-try:
-    # Unpack the dictionary into global variables
-    consts = load_aircraft_parameters('rcam_parameters.json', joy_name)
-    globals().update(consts)
-    joy.initialize_constants(consts)
-except FileNotFoundError:
-    print("ERROR: `rcam_parameters.json` not found. Please create it.")
-    sys.exit(1)
-except (KeyError, json.JSONDecodeError) as e:
-    print(f"ERROR: Invalid format in `rcam_parameters.json`: {e}")
-    sys.exit(1)
-
-
-if OFFLINE:
-    if joy_name == None:
-        print()
-        print('Will run OFFLINE simulation, no joystick detected!')
-    else:
-        print()
-        print(f'Will run OFFLINE simulation, joystick model {joy_name} not in JSON config file!')
-else:
-    print()
-    print(f'found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
-
 
 
 # ############################################################################
@@ -238,6 +182,7 @@ def update_actuators(U_cmd:np.ndarray, U_actual:np.ndarray, dt:float, tau:np.nda
     U_final = np.where(dist_to_target < FIRST_ORDER_EPSILON, U_cmd, U_new)
              
     return U_final
+
 
 # ############################################################################
 # Ground Reactions and Detection Logic
@@ -685,8 +630,6 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:
 
 
 
-
-
 # ############################################################################
 # Model Integration
 # ############################################################################
@@ -781,7 +724,6 @@ def compile_numba_functions():
 # define partial function with fixed flaps, gear position, ground spoilers and brake
 # this partial function leaves "floating" only the parameters that the optimizer can vary
 # because we trim only once, no big deal defining these special functions
-
 
 def trim_functional3(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim, 
                      flap_pos, gear_pos, gnd_sp_pos, brakes_pos) -> np.dtype('f8'):
@@ -999,7 +941,12 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
 if __name__ == "__main__":
 
 
+
+
 ############################################################################
+    # SELECT AIRCRAFT CONFIGURATION FILE
+    AIRCRAFT_CONFIG_FILE = 'rcam_parameters.json'
+    
     # SELECT STARTING POINT: ON GROUND OR IN AIR
     TRIM_ON_GROUND = False
 
@@ -1042,6 +989,51 @@ if __name__ == "__main__":
     ENG_LOG_PARAMETERS = ['Fn', 'Fg', 'F_ram', 'TSFC', 'Wf', 'N1','N2']
 
 ###########################################################################
+    # Load Aircraft Parameters into Global Scope
+    #
+    # Numba's JIT compiler captures global variables when a function is first
+    # compiled. By loading our parameters into the global scope, we make them
+    # available to the performance-critical functions without needing to pass 
+    # them as arguments on every call.
+
+    # we first need the joystick name, to load the correct parameters...
+    # JOYSTICK INIT AND CHECK
+    pygame.init() # automatically initializes joystick also
+    joystick_count = pygame.joystick.get_count()
+    if joystick_count == 0:
+        joy_name = None
+    else:
+        this_joy = pygame.joystick.Joystick(0)
+        joy_name = this_joy.get_name()
+
+
+    try:
+        # Unpack the dictionary into global variables
+        consts = load_aircraft_parameters(AIRCRAFT_CONFIG_FILE, joy_name)
+        globals().update(consts)
+        joy.initialize_constants(consts) # send constants to joystick function as well
+    except FileNotFoundError:
+        print("ERROR: `rcam_parameters.json` not found. Please provide a valid config file.")
+        sys.exit(1)
+    except (KeyError, json.JSONDecodeError) as e:
+        print(f"ERROR: Invalid format in {AIRCRAFT_CONFIG_FILE}: {e}")
+        sys.exit(1)
+
+
+    if OFFLINE:
+        if joy_name == None:
+            print()
+            print('Will run OFFLINE simulation, no joystick detected!')
+        else:
+            print()
+            print(f'Will run OFFLINE simulation, joystick model {joy_name} not in JSON config file!')
+    else:
+        print()
+        print(f'found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
+
+
+
+###########################################################################
     # TERRAIN SHARED DATA
     terrain_shared_data = {'ground_alt': 0.0}
 
@@ -1069,7 +1061,7 @@ if __name__ == "__main__":
         UDP_IP1 = "127.0.0.1" # set to localhost
         UDP_PORT1 = 5500
         
-        UDP_IP2 = "192.168.0.163" # set to a remote computer on the same network
+        UDP_IP2 = "192.168.0.26" # set to a remote computer on the same network
         UDP_PORT2 = 5501
 
         sock1 = socket.socket(socket.AF_INET, # Internet
