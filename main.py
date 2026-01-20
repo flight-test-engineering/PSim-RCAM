@@ -533,7 +533,7 @@ if __name__ == "__main__":
                                                             psi_t=INIT_HDG_DEG, height=100.0, flap_pos=FLAPS_INIT)
     # Vector U1 has the controls for the trimmed state
     U1[IDX_GEAR] = INIT_GEAR
-    U_man = U1.copy() # we set U_man (for manual controls) as a copy of the trimmed control states first.
+    U_trim = U1.copy() # we set U_trim (for trim state, or steady state of the controls) as a copy of the trimmed control states first.
 
 
     # Initialize Actual Surface Positions
@@ -584,9 +584,9 @@ if __name__ == "__main__":
         print(f'Offline sim time vector: {t_vector[0]:.2f}s to {t_vector[-1]:.2f}s')
 
         # create control inputs and set equal to trim
-        sim_U = np.zeros((U_man.shape[0],t_vector.shape[0]))
+        sim_U = np.zeros((U_trim.shape[0],t_vector.shape[0]))
         for i in range(sim_U.shape[0]):
-            sim_U[i,:] = sim_U[i,:] + U_man[i]
+            sim_U[i,:] = sim_U[i,:] + U_trim[i]
         
         # all doublets have zero as starting amplitude
         pitch_doublet = helpers.get_doublet(t_vector,t=5, duration=2, amplitude=0.2)
@@ -605,9 +605,12 @@ if __name__ == "__main__":
 
             # add actuator dynamics to control inputs:
             U_actual = physics.update_actuators(sim_U[:,idx], U_actual, simdt, ACT_TAU)
+
+            # set highlift deltas (setting to zero for now)
+            dcl_dcd_dcm_dalpha = np.zeros(4)
             
             # integrate 6-DOF
-            this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m)
+            this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA])
             this_AC_int.integrate(this_AC_int.t + simdt)
 
             # integrate navigation equations
@@ -643,15 +646,15 @@ if __name__ == "__main__":
 
         U1[IDX_THR1] = prop.E1_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC'] # deck takes lbf
         U1[IDX_THR2] = prop.E2_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
-        U_man[IDX_THR1] = U1[IDX_THR1] # percent power
-        U_man[IDX_THR2] = U1[IDX_THR2]
+        U_trim[IDX_THR1] = U1[IDX_THR1] # percent power
+        U_trim[IDX_THR2] = U1[IDX_THR2]
 
         print(f'this is the inverse deck response: E1:{U1[IDX_THR1]:.4f}; E2:{U1[IDX_THR2]:.4f} % power')
         print()
 
         # run deck preemptively
         print("Adding engine deck initial job...", end="")
-        new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), U_man[IDX_THR1], U_man[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
+        new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), U_trim[IDX_THR1], U_trim[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
         jobs_queue.put(new_job, block=False)
         # need to give time for deck to run
         time.sleep(.2)
@@ -668,15 +671,15 @@ if __name__ == "__main__":
                 joy_events = pygame.event.get()
 
                 # -- Inputs & Actuators
-                current_throttle = [U_man[IDX_THR1], U_man[IDX_THR2]] # keep track of throttle to zero-out the trim bias
-                U_man, U1, exit_signal = joy.get_joy_inputs(this_joy, joy_events, U1, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS)
+                current_throttle = [U_trim[IDX_THR1], U_trim[IDX_THR2]] # keep track of throttle to zero-out the trim bias
+                U_trim, U1, exit_signal = joy.get_joy_inputs(this_joy, joy_events, U1, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS)
 
-                # U_man is the manual control inputs (as the joystick is moved)
+                # U_trim is the manual control inputs (as the joystick is moved)
                 # U1 is the trim state, or the zero input values for each control.
                 
                 # for throtlle, initial trim state is always positive, so we washout if throttles move back
                 # if engine trim state is negative, it means engine is OFF
-                delta_throttle_1 = U_man[IDX_THR1] - current_throttle[0] #we look only at #1 engine for simplicity
+                delta_throttle_1 = U_trim[IDX_THR1] - current_throttle[0] #we look only at #1 engine for simplicity
                 if delta_throttle_1 < 0 and U1[IDX_THR1] > 0: # if we retard throttle and have positive trim bias
                     if delta_throttle_1 > U1[IDX_THR1]: # if we move the throttle a lot, limit washout to zero
                         U1[IDX_THR1] = 0
@@ -691,12 +694,12 @@ if __name__ == "__main__":
                 # ground spoiler arm/disarm state is passaed through U1[IDX_GNDSP]
                 # if spoilers are armed and we are on ground, set ground spoilers to open
                 if (physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m)) and (U1[IDX_GNDSP] == 1)):
-                    U_man[IDX_GNDSP] = GND_SPOILERS_DCL # 40% lift dump
+                    U_trim[IDX_GNDSP] = GND_SPOILERS_DCL # 40% lift dump
                 else:
-                    U_man[IDX_GNDSP] = 0.0 # close
+                    U_trim[IDX_GNDSP] = 0.0 # close
                 
 
-                U_man = physics.control_sat(U_man) # saturate commands
+                U_trim = physics.control_sat(U_trim) # saturate commands
 
 
                 # Calculate the time step for this specific loop iteration
@@ -704,7 +707,7 @@ if __name__ == "__main__":
                 actuator_dt = dt if dt > 0 else simdt 
                 
                 # Update the physical position of the surfaces with actuator dynamics
-                U_actual = physics.update_actuators(U_man, U_actual, actuator_dt, ACT_TAU)
+                U_actual = physics.update_actuators(U_trim, U_actual, actuator_dt, ACT_TAU)
 
 
                 # Update thrust values (Engine deck results)
@@ -812,7 +815,7 @@ if __name__ == "__main__":
                     on_ground = physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m))
                     if jobs_queue.empty():
                         #print(f"[Main Process] Triggering new engine calculation...{VA(current_uvw)*MS2KT:.2f}, {current_alt_m*M2FT:.1f}")
-                        new_job = (current_alt_m*M2FT, ISA.Vt2M(env.VA(current_uvw)*MS2KT, current_alt_m*M2FT), U_man[IDX_THR1], U_man[IDX_THR2], on_ground, time.perf_counter())
+                        new_job = (current_alt_m*M2FT, ISA.Vt2M(env.VA(current_uvw)*MS2KT, current_alt_m*M2FT), U_trim[IDX_THR1], U_trim[IDX_THR2], on_ground, time.perf_counter())
                         try:
                             jobs_queue.put(new_job, block=False)
                             eng_time_adder = 0
@@ -835,7 +838,7 @@ if __name__ == "__main__":
                         for idx, p in enumerate(ENG_LOG_PARAMETERS):
                             eng1_states[idx] = eng_vals[0][p]
                             eng2_states[idx] = eng_vals[1][p]
-                    data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_man, internals, eng1_states, eng2_states)))
+                    data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_trim, internals, eng1_states, eng2_states)))
                     t_vector_collector.append(this_AC_int.t)
                     datalog_trigger = False
 
@@ -849,16 +852,16 @@ if __name__ == "__main__":
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
                     #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
-                    #print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}ft, alt={current_alt_m*M2FT:0.1f}, gnd_sp_arm:{gnd_spoilers_armed}')
-                    #print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, {open_gnd_spoiler=}, {gnd_spoilers_armed=}, {toggle_gnd_spoiler_debounce=}, {U_man[IDX_GNDSP]=}')
-                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GNDSP={U1[IDX_GNDSP]:0.4f}, UmanGNDSP={U_man[IDX_GNDSP]:0.4f}, UactualGNDSP={U_actual[IDX_GNDSP]}')
-                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}')
-                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_man={U_man[3]:0.3f},{U_man[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1THR1={U1[IDX_THR1]:0.4f}, UmanTHR1={U_man[IDX_THR1]:0.4f}, UactualTHR1={U_actual[IDX_THR1]}')
-                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={U_actual[IDX_THR1]:0.0f}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_man[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}, U1FLAP={U1[IDX_FLAP]:0.4f}, UmanFLAP={U_man[IDX_FLAP]:0.4f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={hi_lift}')
+                    #print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, U_trim={U_trim[3]:0.3f},{U_trim[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}ft, alt={current_alt_m*M2FT:0.1f}, gnd_sp_arm:{gnd_spoilers_armed}')
+                    #print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, {open_gnd_spoiler=}, {gnd_spoilers_armed=}, {toggle_gnd_spoiler_debounce=}, {U_trim[IDX_GNDSP]=}')
+                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_trim={U_trim[3]:0.3f},{U_trim[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GNDSP={U1[IDX_GNDSP]:0.4f}, UmanGNDSP={U_trim[IDX_GNDSP]:0.4f}, UactualGNDSP={U_actual[IDX_GNDSP]}')
+                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_trim={U_trim[3]:0.3f},{U_trim[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_trim[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}')
+                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_trim={U_trim[3]:0.3f},{U_trim[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1THR1={U1[IDX_THR1]:0.4f}, UmanTHR1={U_trim[IDX_THR1]:0.4f}, UactualTHR1={U_actual[IDX_THR1]}')
+                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={U_actual[IDX_THR1]:0.0f}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_trim[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}, U1FLAP={U1[IDX_FLAP]:0.4f}, UmanFLAP={U_trim[IDX_FLAP]:0.4f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={hi_lift}')
                     #print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={dcl_dcd_dcm_dalpha}, ALPHA={internals[1]}, CL={internals[3]}')
                     #print(f'ldg_pos: {U_actual[IDX_GEAR]}, ldg dcd: {ldg_dcd}, gnd_sp_armed? {U1[IDX_GNDSP]}, gnd_spoilers_dcl: {U_actual[IDX_GNDSP]}')
                     #print(f'U_norm: {control_norm(U_actual)}')
-                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {U_man[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpoilerArmed={int(U1[IDX_GNDSP])}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={-body_accels[2]/G:.2f}')
+                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {U_trim[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpoilerArmed={int(U1[IDX_GNDSP])}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={-body_accels[2]/G:.2f}')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
 
