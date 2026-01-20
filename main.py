@@ -67,8 +67,7 @@ TODO:
 import time
 import numpy as np
 
-from scipy.optimize import minimize # for trimming routine
-from numba import jit
+
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('TkAgg')
@@ -99,155 +98,6 @@ from psim.io.fgFDM import * # FlightGear comm class
 import psim.physics as physics
 
   
-
-
-# ############################################################################
-# Model Trimming Function
-# ############################################################################
-
-# define partial function with fixed flaps, gear position, ground spoilers and brake
-# this partial function leaves "floating" only the parameters that the optimizer can vary
-# because we trim only once, no big deal defining these special functions
-
-def trim_functional3(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim, 
-                     flap_pos, gear_pos, gnd_sp_pos, brakes_pos) -> np.dtype('f8'):
-    '''
-    functional to calculate a cost for minimizer (used to find trim point)
-    inputs:
-        Z: lumped vector of X (states) and U (control)
-        trim targets:
-        VA_trim: airspeed [m/s]
-        gamma_trim: climb gradient [rad]
-        side_speed_trim: lateral (v) speed [m/s]
-        phi_trim: roll angle [rad]
-        psi_trim: course angle [rad]
-        rho_trim: density of air at trim condition [kg/m3]
-        h_trim: height above the ground (m) - for ground proximity checks,
-        flap_pos: number between 0 and MAX_FLAP
-        gear_pos: 0 for gear up, 1 for down
-        gnd_sp_pos: 0 for closed, 1 for open
-        brakes_pos: 0 for not applied, 1 applied
-
-    ****
-    method
-    Q.T*H*Q
-    with H = diagonal matrix of "1"s (equal weights for all states)
-    this returns the squares of the elements in Q
-    
-    returns:
-        cost [float]
-    '''
-
-    X = Z[:9] # extract states
-    
-    # create controls vector with size of Z, minus 9 states, plus 4 extra controls
-    U = np.zeros(Z.shape[0] - 9 + 4) 
-
-    for i in range (Z.shape[0] - 9):
-        U[i] = Z[9+i]
-
-    # .. add extra control values
-    U[Z.shape[0] -9 + 0] = flap_pos
-    U[Z.shape[0] -9 + 1] = gear_pos
-    U[Z.shape[0] -9 + 2] = gnd_sp_pos
-    U[Z.shape[0] -9 + 3] = brakes_pos
-
-    # add CL, CD, CM and delta Alpha modifiers due to gear and flaps
-    dcl_dcd_dcm_dalpha = physics.array_interp(flap_pos, HIGH_LIFT_COEFFS, MAX_FLAP)
-
-    # interpolate for landing gear delta CD
-    ldg_dcd = physics.array_interp(gear_pos, LDG_DCD, MAX_LDG)
-    dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
-    
-    # calculate model
-    X_dot = physics.RCAM_model(X, U, rho_trim, h_trim, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA])
-    
-    # calculate speed and gamma
-    VA_current = env.VA(X[:3])
-    gamma_current = X[IDX_THETA] - np.arctan2(X[IDX_W], X[IDX_U]) 
-     
-    Q = np.concatenate((X_dot, [VA_current - VA_trim], [gamma_current - gamma_trim], [X[IDX_V] - side_speed_trim], [X[IDX_PHI] - phi_trim], [X[IDX_PSI] - psi_trim]))
-    square_ones = np.ones(Q.shape[0])
-    H = np.diag(square_ones)
-    
-    return np.dot(np.dot(Q.T, H), Q)
-
-
-def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, psi_trim=0.0, rho_trim=1.225, 
-               h_trim=100.0, flap_pos=0, gear=0, gnd_sp=0, brakes=0,
-               X0=np.array([85.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), 
-               U0=np.array([1.0, 1.0, 1.0, 0.08, 0.08, 0.0, 0.0, 0.0, 0.0])) -> np.ndarray:
-    '''
-    uses scipy minimize on functional to find trim point
-    X0 states:
-        u, v, w, p, q, r, phi, theta, psi
-    U0 controls:
-        ail, ele, rud, thr1, thr2, flaps position, gear position, gnd spoiler, brake
-    h_trim is passed on to check ground proximity
-
-    '''
-
-    # add target trim values to X0 vector, as a better initial guess for the states
-    X0[IDX_U] = VA_trim
-    X0[IDX_PHI] = phi_trim
-    X0[IDX_PSI] = psi_trim
-
-    # Add additional control values
-    U0[IDX_FLAP] = flap_pos
-    U0[IDX_GEAR] = gear
-    U0[IDX_GNDSP] = gnd_sp
-    U0[IDX_BRAKE] = brakes
-
-    # loop control variables
-    MAX_ITER = 10 
-    iter_counter = 0
-    epsilon = 1E-9
-    converge = False
-
-    # concatenate states and inputs into single vector
-    # for trimming, ground spoilers and brakes are not a valid control
-    # removing additional control values from trim variables
-    # because we do not want the optimizer to play with them,
-    # we add them separately:
-    Z0 = np.concatenate((X0, U0[:-4])) 
-
-    print(f'initial functional cost: {trim_functional3(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
-                             flap_pos, gear, gnd_sp, brakes):.3e}')
-
-
-    while iter_counter <= MAX_ITER and not converge:
-        # Updated args tuple to include h_trim
-        result = minimize(trim_functional3, Z0, args=(VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
-                          flap_pos, gear, gnd_sp, brakes),
-                method='Nelder-Mead', options={'maxiter':50000,\
-                                               'maxfev':40000})
-        
-        # Updated cost check with h_trim
-        current_cost = trim_functional3(result.x, env.VA(result.x[:3]), result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U]), result.x[IDX_V], result.x[IDX_PHI], result.x[IDX_PSI], rho_trim, h_trim,
-                                         flap_pos, gear, gnd_sp, brakes)
-        print(f'iter: {iter_counter}, functional cost: {current_cost:.3e}')
-
-        if current_cost < epsilon:
-            converge = True
-        else:
-            iter_counter += 1
-            Z0 = result.x.copy()
-
-
-    if converge:
-        print()
-        print('Trim converged!')
-        print(f'trimmed speed = {env.VA(Z0[:3]):.1f} m/s')
-        print(f'check gamma {result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U])} RAD')
-        print(f'check side vel {result.x[IDX_V]:.1f} m/s')
-        print(f'check phi {result.x[IDX_PHI] * RAD2DEG:.1f} Deg')
-        print(f'check psi {result.x[IDX_PSI]* RAD2DEG:.1f} Deg')
-    else:
-        print('FAILED TO CONVERGE')
-
-
-    return result.x, result.message #remember that the control vector is missing ground spoilers now
-
 
 
 # ############################################################################
@@ -285,7 +135,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     if VA_t > 15:
         # we are flying
         # trim model
-        res4, res4_status = trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
+        res4, res4_status = physics.trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
                                     phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=height,
                                     flap_pos=flap_pos, gear=gear)
         print()
