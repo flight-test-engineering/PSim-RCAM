@@ -4,7 +4,7 @@ import csv
 
 # auxiliary function for plotting results
 def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
-                header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp', 'brake'], skip=0):
+                header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp', 'brake'], skip=0)->plt.plot:
 
     '''
     Function to plot results.
@@ -30,8 +30,8 @@ def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
     return myfig
 
 
-def save2disk(filename, x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
-                header=['u', 'v', 'w'], skip=0):
+def save2disk(filename:str, x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
+                header=['u', 'v', 'w'], skip=0)->None:
     '''
     saves data to disk
     '''
@@ -51,7 +51,7 @@ def save2disk(filename, x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
 
 
 # OFFLINE control inputs creation
-def get_doublet(t_vector, t=0, duration=1, amplitude=0.1):
+def get_doublet(t_vector:np.ndarray, t:float=0, duration:float=1, amplitude:float=0.1)->np.ndarray:
     '''
     calculates a doublet input
     inputs:
@@ -71,7 +71,7 @@ def get_doublet(t_vector, t=0, duration=1, amplitude=0.1):
     return res
 
 
-def get_step(t_vector, t=0, amplitude=0.1):
+def get_step(t_vector:np.ndarray, t:float=0, amplitude:float=0.1)->np.ndarray:
     '''
     calculates a step input
     inputs:
@@ -87,7 +87,7 @@ def get_step(t_vector, t=0, amplitude=0.1):
     return res
 
 
-def create_cmd(t_vector=np.zeros(5), input_channel='ail', cmd_type='doublet', at_time=0.0, duration=1.0, amplitude=0.0):
+def create_cmd(t_vector=np.zeros(5), input_channel:str='ail', cmd_type:str='doublet', at_time:float=0.0, duration:float=1.0, amplitude:float=0.0)->np.ndarray:
     '''
     helper function to create a doublet or step in a channel
     inputs:

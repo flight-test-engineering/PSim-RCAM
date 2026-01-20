@@ -8,7 +8,7 @@ from numba import jit
 from .constants import *
 import psim.environment as env
 
-def initialize_constants(params: dict):
+def initialize_constants(params: dict)->None:
     """
     Injects aircraft parameters into this module's global namespace 
     """
@@ -578,7 +578,7 @@ def ss_integrator(t_ini:float, X0:np.ndarray, U:np.ndarray, rho:float, h:float, 
     return RK_integrator
 
 
-def latlonh_int(t_ini:float, latlonh0:np.ndarray, V_NED):
+def latlonh_int(t_ini:float, latlonh0:np.ndarray, V_NED:np.ndarray):
         
     '''
     single step integrator for lat/long/height
@@ -642,8 +642,9 @@ def compile_numba_functions():
 # this partial function leaves "floating" only the parameters that the optimizer can vary
 # because we trim only once, no big deal defining these special functions
 
-def trim_functional3(Z:np.ndarray, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim, 
-                     flap_pos, gear_pos, gnd_sp_pos, brakes_pos) -> np.dtype('f8'):
+def trim_functional3(Z:np.ndarray, VA_trim:float, gamma_trim:float, side_speed_trim:float,
+                     phi_trim:float, psi_trim:float, rho_trim:float, h_trim:float, 
+                     flap_pos:float, gear_pos:float, gnd_sp_pos:float, brakes_pos:float) -> np.dtype('f8'):
     '''
     functional to calculate a cost for minimizer (used to find trim point)
     inputs:

@@ -13,7 +13,7 @@ import psim.environment as env
 
 
 # Threads for communication with FlightGear
-def network_worker(socks, packet_queue, fg_addresses):
+def network_worker(socks:list[socket.socket], packet_queue:queue.Queue, fg_addresses:list[str]):
     """
     This function runs in a separate thread. It waits for FDM packets to appear
     in the queue and sends them over UDP.
@@ -107,7 +107,7 @@ def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
 
 
 
-def set_FDM(this_fgFDM, X, U_norm, latlon, alt, body_accels, agl_m=0.0):
+def set_FDM(this_fgFDM, X:np.ndarray, U_norm:np.ndarray, latlon:np.ndarray, alt:float, body_accels:np.ndarray, agl_m:float=0.0)->None:
     '''
     function to set the current time step data to be sent to FlightGear
     inputs are:

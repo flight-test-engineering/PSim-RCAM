@@ -31,14 +31,14 @@ def VA(uvw:np.ndarray) -> float:
 
 
 @jit(nopython=True)
-def fpa(V_NED)->float:
+def fpa(V_NED:np.ndarray)->float:
     '''
     returns flight path angle
     input is a vector with North, East and Down velocities
     '''
     return np.arctan2(-V_NED[2], np.sqrt(V_NED[0]**2 + V_NED[1]**2))
 
-def get_AGL(current_latlon_deg, current_alt_m, sim_visual_offset):
+def get_AGL(current_latlon_deg: np.ndarray, current_alt_m: float, sim_visual_offset: float)->float:
     '''
     this function fetches the current AGL n meters from the SRTM database
     needs lat/lon in degrees
@@ -55,7 +55,7 @@ def get_AGL(current_latlon_deg, current_alt_m, sim_visual_offset):
     return current_alt_m - ground_alt - sim_visual_offset
 
 
-def course(V_NED)->float:
+def course(V_NED:np.ndarray)->float:
     '''
     returns the course, given NED velocities
     '''
@@ -78,7 +78,7 @@ def add_wind(NED:np.ndarray, std_dev:np.ndarray)->np.ndarray:
 # geodsy
 # https://www.youtube.com/watch?v=4BJ-GpYbZlU
 @jit(nopython=True)
-def WGS84_MN(lat:float):
+def WGS84_MN(lat:float)->float:
     '''
     Meridian Radius of Curvature
     Prime Vertical Radius of Curvature
@@ -94,7 +94,7 @@ def WGS84_MN(lat:float):
 
 
 @jit(nopython=True)
-def latlonh_dot(V_NED, lat, h):
+def latlonh_dot(V_NED:np.ndarray, lat:float, h:float)->np.ndarray:
     '''
     V_NED: m/s
     lat: latitude in degrees (decimal)
@@ -116,7 +116,7 @@ def latlonh_dot(V_NED, lat, h):
 
 
 @jit(nopython=True)
-def NED(uvw, phithetapsi):
+def NED(uvw:np.ndarray, phithetapsi:np.ndarray)->np.ndarray:
     '''
     compute the NED velocities from:
     inputs
