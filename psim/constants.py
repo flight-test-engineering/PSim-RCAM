@@ -32,3 +32,10 @@ IDX_DCL, IDX_DCD, IDX_DCM, IDX_DALPHA = 0, 1, 2, 3
 
 # Epsilon for controls first order clamping to 0.0 and 1.0
 FIRST_ORDER_EPSILON = 1E-3
+
+# Integration limits
+MAX_INTEG_TIMESTEP_S = 0.05 # if the OS hangs, this is the max time step we will allow
+MIN_AIRSPEED_FOR_ALPHA_BETA_M_S = 0.1 # below this airspeed, we set alpha and beta to zero
+
+# Network timing
+TERRAIN_POLL_INTERVAL_S = 0.01 # sleep time to prevent CPU hogging when polling for terrain packets

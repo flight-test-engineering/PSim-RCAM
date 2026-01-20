@@ -747,7 +747,7 @@ if __name__ == "__main__":
             if sim_time_adder >= simdt:
                 dt = sim_time_adder
                 # clamp dt if the OS hangs
-                if dt > 0.05: dt = 0.05
+                if dt > MAX_INTEG_TIMESTEP_S: dt = MAX_INTEG_TIMESTEP_S
                 sim_time_adder = 0
                 run_sim_loop = True
 

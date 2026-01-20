@@ -57,43 +57,50 @@ def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # Bind to the interface/port we expect FG to send TO
-    sock.bind((ip, port))
-    
-    # Set a timeout so the loop can check the shutdown queue periodically
-    sock.settimeout(0.5) 
-    sock.setblocking(0) # Non-blocking mode
-    
-    print(" Listening.")
-    
-    while True:
-        # Check for kill signal
-        if not shutdown_queue.empty():
-            break
-            
-        try:
-            # Loop to drain buffer and get the absolutely latest packet
-            data = None
-            while True:
-                try:
-                    chunk, _ = sock.recvfrom(1024)
-                    data = chunk
-                except BlockingIOError:
-                    # Buffer empty, we have the latest 'data' (if any)
-                    break
-            
-            if data:
-                decoded_str = data.decode('utf-8').strip()
-                if decoded_str:
-                    val_ft = float(decoded_str)
-                    shared_data['ground_alt'] = val_ft * FT2M
-                    
-            time.sleep(0.01) # Slight rest to prevent CPU hogging
-            
-        except Exception:
-            pass
-            
-    sock.close()
-    print("Terrain RX Worker finished.")
+    try:
+        sock.bind((ip, port))
+        
+        # Set a timeout so the loop can check the shutdown queue periodically
+        sock.settimeout(0.5) 
+        sock.setblocking(0) # Non-blocking mode
+        
+        print(" Listening.")
+        
+        while True:
+            # Check for kill signal
+            if not shutdown_queue.empty():
+                break
+                
+            try:
+                # Loop to drain buffer and get the absolutely latest packet
+                data = None
+                while True:
+                    try:
+                        chunk, _ = sock.recvfrom(1024)
+                        data = chunk
+                    except BlockingIOError:
+                        # Buffer empty, we have the latest 'data' (if any)
+                        break
+                
+                if data:
+                    decoded_str = data.decode('utf-8').strip()
+                    if decoded_str:
+                        val_ft = float(decoded_str)
+                        shared_data['ground_alt'] = val_ft * FT2M
+                        
+                time.sleep(TERRAIN_POLL_INTERVAL_S) # Slight rest to prevent CPU hogging
+                
+            except socket.timeout:
+                continue  # Expected, keep going
+            except (ConnectionError, OSError) as e:
+                print(f"Fatal network error: {e}")
+                break
+            except Exception as e:
+                print(f"Unexpected error: {e}")
+                continue
+    finally:
+        sock.close()
+        print("Terrain RX Worker finished.")
 
 
 

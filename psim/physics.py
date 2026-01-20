@@ -495,7 +495,7 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:
     
     # alpha and beta
     # Protect against divide by zero if Va is very small (on ground)
-    if Va < 0.1:
+    if Va < MIN_AIRSPEED_FOR_ALPHA_BETA_M_S:
         alpha = 0.0
         beta = 0.0
     else:
@@ -510,7 +510,7 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:
     if (alpha + dalpha) <= ALPHA_SWITCH:
         CL_wb = N * (alpha - ALPHA_L0 + dalpha) * (1 - dgsp)
     else: 
-        (A3 * (alpha + dalpha)**3 + A2 * (alpha + dalpha)**2 + A1 * (alpha + dalpha) + A0) * (1 - dgsp) + dcl
+        CL_wb = (A3 * (alpha + dalpha)**3 + A2 * (alpha + dalpha)**2 + A1 * (alpha + dalpha) + A0) * (1 - dgsp) + dcl
 
     # CL thrust
     epsilon = DEPSDA * (alpha - ALPHA_L0)
