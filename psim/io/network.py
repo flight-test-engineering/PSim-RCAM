@@ -7,6 +7,7 @@ import numpy as np
 import ISA_module as ISA
 from psim.constants import *
 import psim.environment as env
+from psim.helpers import logger
 
 
 
@@ -33,6 +34,7 @@ def network_worker(socks:list[socket.socket], packet_queue:queue.Queue, fg_addre
             # THREADING: Check for the sentinel value (None) to signal shutdown.
             if packet is None:
                 print("Network thread received shutdown signal.")
+                logger.info("Network thread received shutdown signal.")
                 break
 
             # Send the packet to FlightGear.
@@ -44,8 +46,10 @@ def network_worker(socks:list[socket.socket], packet_queue:queue.Queue, fg_addre
             continue
         except Exception as e:
             print(f"Error in network thread: {e}")
+            logger.error(f"Error in network thread: {e}")
             break
     print("Network thread finished.")
+    logger.info("Network thread finished.")
 
 
 def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
@@ -54,6 +58,7 @@ def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
     Updates shared_data['ground_alt'] with the latest received value.
     """
     print(f"Starting Terrain RX Worker on {ip}:{port}...", end="")
+    logger.info(f"Starting Terrain RX Worker on {ip}:{port}...")
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # Bind to the interface/port we expect FG to send TO
@@ -80,6 +85,7 @@ def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
                         data = chunk
                     except BlockingIOError:
                         # Buffer empty, we have the latest 'data' (if any)
+                        # this is not an error...
                         break
                 
                 if data:
@@ -94,13 +100,16 @@ def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
                 continue  # Expected, keep going
             except (ConnectionError, OSError) as e:
                 print(f"Fatal network error: {e}")
+                logger.error(f"[TERRAIN WORKER] Fatal network error: {e}")
                 break
             except Exception as e:
                 print(f"Unexpected error: {e}")
+                logger.error(f"[TERRAIN WORKER] Unexpected error: {e}")
                 continue
     finally:
         sock.close()
         print("Terrain RX Worker finished.")
+        logger.info("Terrain RX Worker finished.")
 
 
 

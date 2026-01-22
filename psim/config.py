@@ -1,7 +1,8 @@
 import json
 import sys
 import numpy as np
-from .constants import DEG2RAD, RAD2DEG
+from psim.constants import DEG2RAD, RAD2DEG
+from psim.helpers import logger
 
 
 
@@ -18,6 +19,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
         params = json.load(f)
 
     print(f"Loading aircraft model: {params['aircraft_name']}")
+    logger.info(f"Loading aircraft model: {params['aircraft_name']}")
 
     consts = {}
 
@@ -214,6 +216,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
 
     else:
         print('no joystick or joystick model not in databas/JSON config file...will run offline loop.')
+        logger.info('no joystick or joystick model not in databas/JSON config file...will run offline loop.')
         consts['OFFLINE'] = True
 
     return consts

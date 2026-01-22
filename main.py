@@ -92,10 +92,12 @@ from psim.config import load_aircraft_parameters
 import psim.environment as env
 import psim.propulsion as prop
 import psim.helpers as helpers
+from psim.helpers import logger # use the logger without the helper namespace across all modules
 import psim.io.joystick as joy
 import psim.io.network as net
 from psim.io.fgFDM import * # FlightGear comm class
 import psim.physics as physics
+
 
   
 
@@ -130,7 +132,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     print(f'initializing model with {VA_t*MS2KT:.0f} KIAS, {altitude} ft, rho={rho_trim:.4f} kg/m3, flaps={flap_pos}')
     
 
-    latlonh0 = np.array([latlon[0]*DEG2RAD, latlon[1]*DEG2RAD, alt_m])
+    latlonh0 = np.array([latlon[0] * DEG2RAD, latlon[1] * DEG2RAD, alt_m])
 
     if VA_t > 15:
         # we are flying
@@ -175,7 +177,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
 if __name__ == "__main__":
 
 
-
+    logger.info('Starting')
 
 ############################################################################
     # SELECT AIRCRAFT CONFIGURATION FILE
@@ -222,6 +224,8 @@ if __name__ == "__main__":
     RESULTS_FILE = 'test_data.csv' # name of log file
     ENG_LOG_PARAMETERS = ['Fn', 'Fg', 'F_ram', 'TSFC', 'Wf', 'N1','N2']
 
+    
+
 ###########################################################################
     # Load Aircraft Parameters into Global Scope
     #
@@ -248,10 +252,11 @@ if __name__ == "__main__":
         joy.initialize_constants(consts) # send constants to joystick function as well
         physics.initialize_constants(consts) # send to physics module as well
     except FileNotFoundError:
-        print("ERROR: `rcam_parameters.json` not found. Please provide a valid config file.")
+        logger.error("ERROR: `rcam_parameters.json` not found. Please provide a valid config file.")
+        #print("ERROR: `rcam_parameters.json` not found. Please provide a valid config file.")
         sys.exit(1)
     except (KeyError, json.JSONDecodeError) as e:
-        print(f"ERROR: Invalid format in {AIRCRAFT_CONFIG_FILE}: {e}")
+        logger.error(f"ERROR: Invalid format in {AIRCRAFT_CONFIG_FILE}: {e}")
         sys.exit(1)
 
 
@@ -262,6 +267,7 @@ if __name__ == "__main__":
         else:
             print()
             print(f'Will run OFFLINE simulation, joystick model {joy_name} not in JSON config file!')
+            logger.warning(f'Will run OFFLINE simulation, joystick model {joy_name} not in JSON config file!')
     else:
         print()
         print(f'found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
@@ -281,9 +287,6 @@ if __name__ == "__main__":
             engine_header.append(eng_prefix+param)
     full_header = signals_header + internals_header + engine_header
 
-##############################################################################
-    # Numba/JIT warm-up
-    physics.compile_numba_functions()
     
 ###########################################################################
     # FlightGear Threads and Engine Deck Process Initialization
@@ -319,6 +322,7 @@ if __name__ == "__main__":
             tx_thread.start()
             print("... started!")
         except Exception as e:
+            logging.error(f"...Error in network thread: {e}")
             print(f"...Error in network thread: {e}")
             exit()
 
@@ -370,6 +374,9 @@ if __name__ == "__main__":
         engine_process.start()
 
 
+##############################################################################
+    # Numba/JIT warm-up
+    physics.compile_numba_functions()
 
 ###########################################################################
     # SIMULATION VARIABLES INITIALIZATION
@@ -670,10 +677,12 @@ if __name__ == "__main__":
                             jobs_queue.put(new_job, block=False)
                             eng_time_adder = 0
                         except mp.queues.Full:
-                            #print("[Main Process] Engine is busy, skipping this trigger.")
+                            #print("[Main Process] Engine Worker is busy, skipping this trigger.")
+                            logger.warning("[Main Process] Engine Worker is busy, skipping this trigger.")
                             pass
                     else:
-                        #print("[Main Process] Engine is still busy with a pending job, skipping this trigger.")
+                        #print("[Main Process] Engine Worker is still busy with a pending job, skipping this trigger.")
+                        logger.warning("[Main Process] Engine Worker is still busy with a pending job, skipping this trigger.")
                         pass
                     calc_eng_trigger = False
 
@@ -696,7 +705,6 @@ if __name__ == "__main__":
                 # -- Next frame setup
                 frame_count += 1
 
-                # DEBUG ONLY - ################################################################################################################################################
                 # print out stuff every so often
                 if (frame_count % 100) == 0:
                     #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
@@ -765,6 +773,7 @@ if __name__ == "__main__":
         # -- Stop TX threads
         print()
         print("Shutting down network threads...")
+        logger.info("Shutting down network threads...")
         fdm_packet_queue.put(None)  # Send the shutdown signal
         tx_thread.join(timeout=1.0) # Wait for the thread to finish
         for s in socks:
@@ -780,6 +789,7 @@ if __name__ == "__main__":
         # It's good practice to terminate if it doesn't join cleanly
         if engine_process.is_alive():
             print("[Main Process] Worker did not shut down cleanly. Terminating.")
+            logger.warning("[Main Process] Worker did not shut down cleanly. Terminating.")
             engine_process.terminate()
         
     # save data to disk

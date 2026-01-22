@@ -1,4 +1,7 @@
 import multiprocessing as mp
+import pandas as pd
+import numpy as np
+from psim.helpers import logger
 
 
 # ############################################################################
@@ -6,8 +9,7 @@ import multiprocessing as mp
 # ############################################################################
 # Uses data and code from https://youtu.be/95Gy2wg3olE
 
-import pandas as pd
-import numpy as np
+
 
 class Turbofan_Deck():
     """
@@ -48,6 +50,7 @@ class Turbofan_Deck():
 
         # define logistic function parameters
         print(f'I got this input file for the engine: {input_file}')
+        logger.info(f'I got this input file for the engine: {input_file}')
         self.window_start_TLA = 0.0 # initial TLA value when change is triggered
         self.window_target_TLA = 1.0 
         self.window_start_time = 0.0 # time when TLA change was triggered
@@ -75,12 +78,16 @@ class Turbofan_Deck():
             #self.deck_df = self.deck_df[(self.deck_df.alt<18500) | (self.deck_df.alt>19999)]
         except FileNotFoundError:
             print(f"Error: The file '{input_file}' was not found.")
+            logger.error(f"Error: The file '{input_file}' was not found.")
         except pd.errors.EmptyDataError:
             print(f"Error: The file '{input_file}' is empty.")
+            logger.error(f"Error: The file '{input_file}' is empty.")
         except pd.errors.ParserError:
             print(f"Error: The file '{input_file}' could not be parsed.")
+            logger.error(f"Error: The file '{input_file}' could not be parsed.")
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
+            logger.error(f"An unexpected error occurred: {e}")
 
 
         # extract key values from deck
@@ -316,6 +323,7 @@ class Turbofan_Deck():
             interp_pts.append(self.deck_df.query(f"alt == {pt_bracket['low']['alt']} and (MN == {pt_bracket['low']['M_high']})").to_numpy())
             interp_pts.append(self.deck_df.query(f"alt == {pt_bracket['low']['alt']} and (MN == {pt_bracket['low']['M_low']})").to_numpy())
         else:
+            logger.warning("[ENGINE DECK]: error finding brackets")
             print('error finding brackets!')
         
         #interpolation - tri linear
@@ -412,6 +420,7 @@ class Turbofan_Deck():
             interp_pts.append(self.deck_df.query(f"alt == {pt_bracket['low']['alt']} and (MN == {pt_bracket['low']['M_low']})").to_numpy())
         else:
             print('error finding brackets!')
+            logger.warning("[ENGINE DECK]: error finding brackets")
         
         #interpolation - tri linear
         # typically, there will be many lines, one for each power setting, for each of the interp_pts entries
@@ -497,6 +506,7 @@ def initialize_deck(deck_name='./psim/PW2000_similar_deck.csv'):
         return (E1_deck, E2_deck)
     except Exception as e:
         print(f"[Engine Process] Failed to load deck: {e}")
+        logger.error(f"[Engine Process] Failed to load deck: {e}")
         return
 
 E1_deck, E2_deck = initialize_deck(deck_name='./psim/PW2000_similar_deck.csv')
@@ -538,5 +548,7 @@ def engine_worker(jobs_queue, results_queue):
 
         except Exception as e:
             print(f"[Engine Process] Error: {e}")
+            logger.warning(f"[Engine Process] Error: {e}")
             break
     print("[Engine Process] Worker finished.")
+    logger.info("[Engine Process] Worker finished.")

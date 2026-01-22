@@ -7,6 +7,7 @@ from scipy.optimize import minimize # for trimming routine
 from numba import jit
 from .constants import *
 import psim.environment as env
+from psim.helpers import logger
 
 def initialize_constants(params: dict)->None:
     """
@@ -601,25 +602,36 @@ def compile_numba_functions():
         print('Compiling Numba functions (Warm-up)...', end="")
         
         # Dummy Data
+        t = 0.0
         X = np.zeros(9)
         U = np.zeros(9)
+        NED = np.zeros(3)
         rho = 1.225
         h = 0.0
         dcl = 0.0
         dcd = 0.0
         dcm = 0.0
         dalpha = 0.0
+        lat = 0.59
+        lon = 0.59
+        latlonh0 = np.array([lat, lon, h])
 
         
         # 1. Physics Core
         _ = array_interp(0, HIGH_LIFT_COEFFS, MAX_FLAP)
         _ = control_sat(U)
+        _ = control_norm(U)
         _ = update_actuators(U, U, 0.01, np.ones(9))
         _ = calculate_gear_compression(X, h)
         _ = get_air_ground_state(np.ones(3))
         _ = calculate_ground_forces(X, h, 0.0)
         _ = RCAM_model(X, U, rho, h, dcl, dcd, dcm, dalpha)
         _ = RCAM_observe(X, U, rho, h, dcl, dcd, dcm, dalpha)
+        _ = RCAM_model_wrapper(t, X, U, rho, h, dcl, dcd, dcm, dalpha)
+        _ = NED_wrapper(t, X, NED)
+        _ = latlonh_dot_wrapper(t, X, NED, lat, h)
+        _ = ss_integrator(t, X, U, rho, h, dcl, dcd, dcm, dalpha)
+        _ = latlonh_int(t, latlonh0, NED)
 
 
         # 2. Environment
@@ -628,6 +640,9 @@ def compile_numba_functions():
         _ = env.add_wind(np.ones(3), np.ones(3))
         _ = env.NED(np.array([10.,0.,0.]), np.array([0.,0.,0.]))
         _ = env.latlonh_dot(np.array([10.,0.,0.]), 0.0, 0.0)
+        _ = env.WGS84_MN(lat)
+        _ = env.get_rho(h)
+        _ = env.get_AGL(latlonh0, h, 0.0)
         
         print(' Done.')
 
@@ -776,8 +791,10 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
         print(f'check side vel {result.x[IDX_V]:.1f} m/s')
         print(f'check phi {result.x[IDX_PHI] * RAD2DEG:.1f} Deg')
         print(f'check psi {result.x[IDX_PSI]* RAD2DEG:.1f} Deg')
+        logger.info("Trim converged")
     else:
         print('FAILED TO CONVERGE')
+        logger.warning('Trim FAILED to converge')
 
 
     return result.x, result.message #remember that the control vector is missing ground spoilers now

@@ -1,6 +1,25 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import csv
+import logging
+
+# create logger
+logger = logging.getLogger('psim_logger')
+logger.setLevel(logging.DEBUG)  # Log everything (DEBUG level or higher)
+
+# one handler for all loggers
+if not logger.handlers:
+    # create a file handler to log to a file
+    file_handler = logging.FileHandler('psim_log_file.log')
+    file_handler.setLevel(logging.DEBUG)
+
+    # define log format
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+
+    # add file handler to logger
+    logger.addHandler(file_handler)
+    
 
 # auxiliary function for plotting results
 def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
