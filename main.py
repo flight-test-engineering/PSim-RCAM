@@ -73,6 +73,7 @@ import matplotlib
 matplotlib.use('TkAgg')
 import pygame #joystick interface
 import socket
+import os
 
 import ISA_module as ISA # International Standard Atmosphere library
 
@@ -289,7 +290,8 @@ if __name__ == "__main__":
             engine_header.append(eng_prefix+param)
     full_header = signals_header + internals_header + engine_header
 
-    
+
+#### MULTI THREADING / MULTI PROCESSING ####
 ###########################################################################
     # FlightGear Threads and Engine Deck Process Initialization
     # we only start the network and multiprocessing if doing online sim, at least for now
@@ -359,7 +361,7 @@ if __name__ == "__main__":
 
 
     #######################################################################################
-        # engine
+        # Engine Deck Multiprocessing
         # --- Multiprocessing Setup ---
         # MULTIPROCESSING: Use Queues from the multiprocessing module.
         # These queues handle the necessary serialization (pickling) to pass
@@ -374,7 +376,17 @@ if __name__ == "__main__":
             daemon=True  # Daemon processes are terminated when the parent exits
         )
         engine_process.start()
-
+    
+    
+    ########################################################################################
+    # Save to disk thread
+    disk_log_queue = queue.Queue()
+    disk_log_thread = threading.Thread(
+        target=helpers.disk_logging_worker,
+        args=(disk_log_queue, RESULTS_FILE, full_header),
+        daemon=True
+    )
+    disk_log_thread.start()
 
 ##############################################################################
     # Numba/JIT warm-up
@@ -755,12 +767,13 @@ if __name__ == "__main__":
 
             # check/set log2disk trigger
             if log2disk_time_adder >= LOG2DISK_INTERVAL_S:
-                helpers.log_chunk_to_disk(RESULTS_FILE,
-                np.array(t_vector_collector),
-                np.array(data_collector),
-                full_header,
-                is_new_file=is_first_data_write
-                )
+                #helpers.log_chunk_to_disk(RESULTS_FILE,
+                #np.array(t_vector_collector),
+                #np.array(data_collector),
+                #full_header,
+                #is_new_file=is_first_data_write
+                #)
+                disk_log_queue.put((np.array(t_vector_collector), np.array(data_collector)))
                 t_vector_collector = []
                 data_collector = []
                 log2disk_time_adder = 0.0
@@ -812,14 +825,27 @@ if __name__ == "__main__":
             engine_process.terminate()
         
     # save data to disk
-    helpers.save2disk(RESULTS_FILE+"2", x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=full_header, skip=0)
     if len(t_vector_collector) > 0: # flush rest of data still in memory:
-        helpers.log_chunk_to_disk(RESULTS_FILE,
-                np.array(t_vector_collector),
-                np.array(data_collector),
-                full_header,
-                is_new_file=is_first_data_write
-                )
+        disk_log_queue.put((np.array(t_vector_collector), np.array(data_collector)))
+        print("Waiting for Disk Logger to finish...", end="")
+        disk_log_queue.put(None) # Sentinel
+        disk_log_thread.join()   # Wait for writing to complete
+        print("finished")
 
-    fig1 = helpers.make_plots(x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=full_header, skip=0)
-    plt.show();
+
+    try:
+        print(f"Reloading {RESULTS_FILE} for plotting...")
+        t_full, data_full = helpers.load_from_disk(RESULTS_FILE)
+        
+        if len(t_full) > 0:
+            print("Generating Plots...", end="")
+            helpers.make_plots(t_full, data_full, header=full_header, skip=0)
+            plt.show();
+            print("done")
+        else:
+            print("No data found to plot.")
+            
+    except MemoryError:
+        print("Log file too large for RAM plotting.")
+    except Exception as e:
+        print(f"Plotting error: {e}")
