@@ -17,32 +17,61 @@ The excellent tutorials by Christopher Lum (for Matlab/Simulink) were used as a 
 In addition to what prof. Lum implements, the following features are added here:  
 1 - Ground reactions (landing gear), to allow for takeoff and landing  
 2 - Actuator dynamics  
-3 - Turbofan engine deck (parallel processing/multi-core), based on: [Turbofan Palylist](https://www.youtube.com/playlist?list=PLqJt-rNo8TZ1Y5Pzlk4S1205NUt2t-t22)  
-4 - Terrain database based in SRTM data  
+3 - Turbofan engine deck (with parallel processing/multi-core), based on: [Turbofan Palylist](https://www.youtube.com/playlist?list=PLqJt-rNo8TZ1Y5Pzlk4S1205NUt2t-t22)  
+4 - Terrain database based in SRTM data, if FlightGear not available  
 5 - Terrain database from FlightGear  
-6 - FlightGear integration (parallel threading)  
+6 - FlightGear visualization via UDP (with parallel threading)  
+
+## Module:
+The code is split in module files for better organization:  
+```
+.
+|-- main.py - the main simulation loop and control
+|-- ISA_module.py - International Standard Atmosphere (see reference below)
+|-- rcam_parameters.json - configuration file with aircraft data (for the RCAM model)
+|-- psim
+|   |-- physics.py - core differential and non-differential equations
+|   |-- propulsion.py - turbofan engine deck functions
+|   |-- PW2000_similar_deck.csv - engine cycle deck for a PW2000 class engine (see reference below)
+|   |-- environment.py - speed, course and geodesy
+|   |-- constants.py - indexes for controls, states and other constants non-aircraft model related
+|   |-- config.py - json aircraft configuration parser
+|   |-- io
+|       |-- fgFDM.py - FlightGear packet construction functions
+|       |-- joystick.py - pyGame joystick input functions
+|       |-- network.py - FlightGear network interface functions
+|       |-- rcam_terrain.xml - definition file for FlightGear to send terrain height back to Python
+```
+
 
 ## Program Options/Settings:  
 ### Aircraft
 The aircraft parameters are defined in file *rcam_parameters.json*  
+You are encouraged to create other aircraft models and add additional files.  
+
+In **main.py**  
 Select the trim condition, if on ground or in air: TRIM_ON_GROUND  
 Intial altitude: INIT_ALT_FT  
 Trim speed: V_TRIM_MPS  
 Postion: INIT_LATLON_DEG  
+Flaps position: FLAPS_INIT  
+Gear position: INIT_GEAR  
 Flight path angle: GAMMA_TRIM_RAD  
 Heading: INIT_HDG_DEG  
 Wind: WIND_NED_MPS  
 Wind Std Dev: WIND_STDDEV_MPS  
-Engine Deck file: (set in propulsion.py)
+Engine Deck file: (set in propulsion.py)  
 ### Simulation
 Total simulation time: SIM_TOTAL_TIME_S  
 Main simulation loop frame rate: SIM_LOOP_HZ  
 Data rate output to FlightGear: FG_OUTPUT_LOOP_HZ  
 Engine deck calculation rate: DECK_LOOP_HZ  
-Data logging rate: DATA_LOGGING_HZ  
+Simulator/FG visual Z offset: SIM_VISUAL_OFFSET
 Use FlightGear as terrain database: USE_FG_AS_TERRAIN_DB (if set to false, it will use SRTM data instead)  
+Data logging rate: DATA_LOGGING_HZ  
+Selected engine parameters to be output/logged: ENG_LOG_PARAMETERS
+
 Results file (CSV): RESULTS_FILE
-Engine parameters to be logged: ENG_LOG_PARAMETERS  
 ### FlightGear comms
 Main instance for visual: UDP_IP1  
 Second instance for visual: UDP_IP2  
@@ -51,10 +80,10 @@ Second instance for visual: UDP_IP2
 Aiming for performance, the program runs the integration loop at a target pf 400Hz, adjusting the integration steps to the available computing cycles.  
 It uses Numba to speed up the main functions involved in the integration loop.  
 
-Output is sent to FlightGear (FG), over UDP, at a reduced frame rate (60).  
-The FG interface uses the class implemented by Andrew Tridgel [fgDFM](https://github.com/ArduPilot/pymavlink/blob/master/fgDFM.py)  
+Output is sent to FlightGear (FG), over UDP, at a reduced frame rate (set to 60Hz).  
+The FG interface uses a stripped down version of the class implemented by Andrew Tridgel [fgDFM](https://github.com/ArduPilot/pymavlink/blob/master/fgDFM.py). It was simplified and a few additional parameters were added. It is compliant with version 24 of FlightGear protocol.  
 
-Currently, the UDP address is set to the local machine, with  second UDP address available for an extra screen/instance of FG.
+Currently, the first UDP address is set to the local machine, with  second UDP address available for an extra screen/instance of FG.
 
 If a joystick is detected, then inputs come from it  
 Otherwise, offline simulation is run.
@@ -62,9 +91,10 @@ Otherwise, offline simulation is run.
 To run:  
 1 - make sure the joystick is connected  
 2 - place a copy of rcam_terrain.xml in [your FlightGear root directory]/fgdata/Protocol/  
-(in my case, this is /home/username/FlightGear/fgdata/Protocol)  (ah! rcam_terrain.xml is in psim/io of this repo)  
+(in my case, this is /home/[USERNAME]/FlightGear/fgdata/Protocol)  
 3 - from a terminal, start the FlightGear instance that will render visuals and inform the terrain height. For example, in my setup I have FlightGear installed into its own directory. After cd'ing into it, I run this:  
-DRI_PRIME=1 ./flightgear-2024.1.3-linux-amd64.AppImage --airport=LOWI  --aircraft=Embraer170 --aircraft-dir=CustomAircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/NTPS.xml --generic=socket,out,5,127.0.0.1,5502,udp,rcam_terrain  
+./flightgear-2024.1.3-linux-amd64.AppImage --airport=LOWI  --aircraft=757-200-RB211 --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/NTPS.xml --generic=socket,out,5,127.0.0.1,5502,udp,rcam_terrain --prop:/controls/flight/elevator-trim=0
+
 4 - from its own terminal, run main.py  
 
 
