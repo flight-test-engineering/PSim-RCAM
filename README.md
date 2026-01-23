@@ -27,12 +27,12 @@ The code is split in module files for better organization:
 ```
 .
 |-- main.py - the main simulation loop and control
-|-- ISA_module.py - International Standard Atmosphere (see reference below)
+|-- ISA_module.py - International Standard Atmosphere (see * below)
 |-- rcam_parameters.json - configuration file with aircraft data (for the RCAM model)
 |-- psim
 |   |-- physics.py - core differential and non-differential equations
-|   |-- propulsion.py - turbofan engine deck functions
-|   |-- PW2000_similar_deck.csv - engine cycle deck for a PW2000 class engine (see reference below)
+|   |-- propulsion.py - turbofan engine deck functions (see ** below)
+|   |-- PW2000_similar_deck.csv - engine cycle deck for a PW2000 class engine (**)
 |   |-- environment.py - speed, course and geodesy
 |   |-- constants.py - indexes for controls, states and other constants non-aircraft model related
 |   |-- config.py - json aircraft configuration parser
@@ -42,7 +42,8 @@ The code is split in module files for better organization:
 |       |-- network.py - FlightGear network interface functions
 |       |-- rcam_terrain.xml - definition file for FlightGear to send terrain height back to Python
 ```
-
+(*) from this video: [ISA](https://youtu.be/TZJ3B89REHw)  
+(**) from this video: [Turbofan Deck](https://youtu.be/95Gy2wg3olE)  
 
 ## Program Options/Settings:  
 ### Aircraft
