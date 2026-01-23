@@ -239,12 +239,28 @@ if __name__ == "__main__":
 
     # we first need the joystick name, to load the correct parameters...
     # JOYSTICK INIT AND CHECK
-    pygame.init() # automatically initializes joystick also
+    # Explicitly restart the joystick module to clear internal SDL flags
+    pygame.init()
+    if pygame.joystick.get_init():
+        pygame.joystick.quit()
+    pygame.joystick.init()    
     joystick_count = pygame.joystick.get_count()
     if joystick_count == 0:
         joy_name = None
     else:
         this_joy = pygame.joystick.Joystick(0)
+        this_joy.init()
+        # --- FLUSH GHOST INPUTS ---
+        # Pump the event loop multiple times to clear buffered events 
+        # from the previous crash.
+        print("Flushing Joystick Buffer...", end="", flush=True)
+        for _ in range(15):
+            pygame.event.pump()
+            time.sleep(0.01) # Small delay to allow OS driver to poll
+            print(".",end="")
+        print(" done.")
+        # --------------------------
+
         joy_name = this_joy.get_name()
 
 
