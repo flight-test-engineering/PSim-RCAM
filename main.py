@@ -223,7 +223,8 @@ if __name__ == "__main__":
     DATA_LOGGING_HZ = 10 # frames per second to be logged
     ENG_LOG_PARAMETERS = ['Fn', 'Fg', 'F_ram', 'TSFC', 'Wf', 'N1','N2']
 
-    RESULTS_FILE = 'test_data.csv' # name of log file
+    RESULTS_FILE = 'test_data.csv' # name of file where data will be saved
+    LOG2DISK_INTERVAL_S = 30.0 # interval in seconds to save data to disk
 
     
 
@@ -421,11 +422,13 @@ if __name__ == "__main__":
     run_sim_loop = False # this is a semaphore. it will wait for the clock to reach the next "simdt" and run the simulation
     calc_eng_trigger = True
     datalog_trigger = True
+    is_first_data_write = True
     
     # time tracking
-    sim_time_adder, fg_time_adder = 0, 0 # counts the time between integration steps to trigger next simulation frame and FG dispatch
-    eng_time_adder = 0 # loop to calculate engine
-    datalog_time_adder = 0
+    sim_time_adder, fg_time_adder = 0.0, 0.0 # counts the time between integration steps to trigger next simulation frame and FG dispatch
+    eng_time_adder = 0.0 # loop to calculate engine
+    datalog_time_adder = 0.0
+    log2disk_time_adder = 0.0
     
     dt = 0 # actual integration time step
     prev_dt = dt
@@ -750,6 +753,20 @@ if __name__ == "__main__":
                 datalog_time_adder = 0
                 datalog_trigger = True
 
+            # check/set log2disk trigger
+            if log2disk_time_adder >= LOG2DISK_INTERVAL_S:
+                helpers.log_chunk_to_disk(RESULTS_FILE,
+                np.array(t_vector_collector),
+                np.array(data_collector),
+                full_header,
+                is_new_file=is_first_data_write
+                )
+                t_vector_collector = []
+                data_collector = []
+                log2disk_time_adder = 0.0
+                is_first_data_write = False
+
+
             # parking lot
             # it will keep off the simulation loop while time does not catch up with the desired "simdt".
             # continuously adds time until that point, then releases the semaphore to run the sim
@@ -767,6 +784,7 @@ if __name__ == "__main__":
             sim_time_adder += this_frame_dt
             eng_time_adder += this_frame_dt
             datalog_time_adder += this_frame_dt
+            log2disk_time_adder += this_frame_dt
 
 
     if OFFLINE == False:
@@ -794,6 +812,14 @@ if __name__ == "__main__":
             engine_process.terminate()
         
     # save data to disk
-    helpers.save2disk(RESULTS_FILE, x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=full_header, skip=0)
+    helpers.save2disk(RESULTS_FILE+"2", x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=full_header, skip=0)
+    if len(t_vector_collector) > 0: # flush rest of data still in memory:
+        helpers.log_chunk_to_disk(RESULTS_FILE,
+                np.array(t_vector_collector),
+                np.array(data_collector),
+                full_header,
+                is_new_file=is_first_data_write
+                )
+
     fig1 = helpers.make_plots(x_data=np.array(t_vector_collector), y_data=np.array(data_collector), header=full_header, skip=0)
     plt.show();

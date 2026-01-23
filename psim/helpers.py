@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import csv
 import logging
 from datetime import date
+import os
 
 # create logger
 logger = logging.getLogger('psim_logger')
@@ -22,6 +23,58 @@ if not logger.handlers:
     logger.addHandler(file_handler)
     
 
+
+def log_chunk_to_disk(filename, x_data, y_data, header, is_new_file=False):
+    """
+    Appends a chunk of simulation data to disk.
+    
+    Args:
+        filename: Path to CSV
+        x_data: Numpy array of Time
+        y_data: Numpy array of States
+        header: List of column names
+        is_new_file: If True, overwrites file and writes header. 
+                     If False, appends without header.
+    """
+    # Determine mode: 'w' for new file (overwrite), 'a' for appending
+    mode = 'w' if is_new_file else 'a'
+    
+    with open(filename, mode, newline='') as f:
+        writer = csv.writer(f)
+        
+        # Only write header if this is the start of a new log
+        if is_new_file:
+            # Create full header with Time column
+            full_header = ['PSim_Time'] + header
+            writer.writerow(full_header)
+        
+        # Write data rows
+        # Assuming x_data and y_data have same length
+        for idx in range(len(x_data)):
+            # Convert y row to list
+            row_list = y_data[idx].tolist()
+            # Prepend time
+            row_list.insert(0, float(x_data[idx]))
+            writer.writerow(row_list)
+
+def load_from_disk(filename):
+    """
+    Helper to read the full CSV back into memory for plotting at the end.
+    Returns: t_vector, data_matrix
+    """
+    try:
+        # Load using numpy (skip header)
+        raw = np.loadtxt(filename, delimiter=',', skiprows=1)
+        
+        # Split Time (col 0) and Data (cols 1+)
+        t_vec = raw[:, 0]
+        data = raw[:, 1:]
+        return t_vec, data
+    except Exception as e:
+        print(f"Could not load log file for plotting: {e}")
+        return np.array([]), np.array([])
+
+# Keep make_plots as is
 # auxiliary function for plotting results
 def make_plots(x_data=np.array([0,1,2]), y_data=np.array([0,1,2]), \
                 header=['PSim_Time', 'u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'dgsp', 'brake'], skip=0)->plt.plot:
