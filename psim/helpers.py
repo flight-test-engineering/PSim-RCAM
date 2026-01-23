@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import csv
 import logging
+from datetime import date
 
 # create logger
 logger = logging.getLogger('psim_logger')
@@ -10,7 +11,7 @@ logger.setLevel(logging.DEBUG)  # Log everything (DEBUG level or higher)
 # one handler for all loggers
 if not logger.handlers:
     # create a file handler to log to a file
-    file_handler = logging.FileHandler('psim_log_file.log')
+    file_handler = logging.FileHandler(f'{date.today()}_psim_log_file.log')
     file_handler.setLevel(logging.DEBUG)
 
     # define log format

@@ -218,11 +218,12 @@ if __name__ == "__main__":
     SIM_LOOP_HZ = 400 # (Hz) simulation loop frame rate throttling
     FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FlightGear AND for recording data
     DECK_LOOP_HZ = 10 # (Hz) fra1me rate to calculate engine deck
-    SIM_VISUAL_OFFSET = 0 # Simulator Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
+    SIM_VISUAL_OFFSET = 0 # Simulator Z-Axis Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
     USE_FG_AS_TERRAIN_DB = True # if False, use SRTM database instead
     DATA_LOGGING_HZ = 10 # frames per second to be logged
-    RESULTS_FILE = 'test_data.csv' # name of log file
     ENG_LOG_PARAMETERS = ['Fn', 'Fg', 'F_ram', 'TSFC', 'Wf', 'N1','N2']
+
+    RESULTS_FILE = 'test_data.csv' # name of log file
 
     
 
