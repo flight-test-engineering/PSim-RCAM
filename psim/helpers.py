@@ -43,16 +43,13 @@ def disk_logging_worker(log_queue, filename, header):
     #print(f"Starting Disk Logger for {filename}...", end="")
     logger.info(f"[disk_logging_worker] Starting Disk Logger for {filename}...")
     
-    # Check if file exists to decide on writing header
-    file_exists = os.path.exists(filename)
+    # Check if file exists and start fresh if it does
+    if os.path.exists(filename):
+        os.remove(filename)
     
-    # If file exists from a previous run, maybe we want to overwrite it?
-    # For safety in this logic, we assume the Main script deletes the file 
-    # before starting the thread if it wants a fresh start.
-    # OR we can force a wipe on the first write.
-    
+   
     # Let's use a flag to track if we need to write the header
-    need_header = not file_exists
+    need_header = True
 
     while True:
         try:

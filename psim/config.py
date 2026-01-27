@@ -35,6 +35,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> dict:
     consts['S'] = mg['wing_area'] # m^2 - wing area
     consts['ST'] = mg['tail_area'] # m^2 - tail area
     consts['LT'] = mg['tail_arm'] # m - tail aerodynamic center distance to CG
+    consts['WINGSPAN'] = consts['S'] / consts['CBAR'] # m - calculated wing span
 
     # Derived Geometry (CG, AC)
     cgap = params['cg_and_ac_positions']

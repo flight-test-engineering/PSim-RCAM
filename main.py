@@ -529,6 +529,14 @@ if __name__ == "__main__":
             t_vector_collector.append(this_AC_int.t)
 
         print(f'Enf of simulation; {len(t_vector_collector)} time steps!')
+            # save data to disk
+        if len(t_vector_collector) > 0: # flush rest of data still in memory:
+            disk_log_queue.put((np.array(t_vector_collector), np.array(data_collector)))
+            #print("Waiting for Disk Logger to finish...", end="")
+            logger.info('[main] Waiting for Disk Logger to finish...')
+            disk_log_queue.put(None) # Sentinel
+            disk_log_thread.join()   # Wait for writing to complete
+            #print("finished")
         
     # with joystick attached, run online
     else:
@@ -664,7 +672,8 @@ if __name__ == "__main__":
                 current_alt_m = this_latlonh_int.y[2]
                 if USE_FG_AS_TERRAIN_DB:
                     # use FlightGear as a terrain database...
-                    current_AGL_m = current_alt_m - terrain_shared_data['ground_alt'] # this in meters
+                    current_AGL_m = current_alt_m - terrain_shared_data['ground_alt'] # this in meters. subtracting landing gear height
+                    
                 else:
                     # alternate: use SRTM instead...
                     current_AGL_m = env.get_AGL(current_latlon_rad*RAD2DEG, current_alt_m, SIM_VISUAL_OFFSET)
@@ -761,7 +770,7 @@ if __name__ == "__main__":
                     #print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={dcl_dcd_dcm_dalpha}, ALPHA={internals[1]}, CL={internals[3]}')
                     #print(f'ldg_pos: {U_actual[IDX_GEAR]}, ldg dcd: {ldg_dcd}, gnd_sp_armed? {U1[IDX_GNDSP]}, gnd_spoilers_dcl: {U_actual[IDX_GNDSP]}')
                     #print(f'U_norm: {control_norm(U_actual)}')
-                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {U_trim[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpoilerArmed={int(U1[IDX_GNDSP])}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={-body_accels[2]/G:.2f}')
+                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {U_trim[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpoilerArmed={int(U1[IDX_GNDSP])}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={-body_accels[2]/G:.2f}, RADALT={current_AGL_m*M2FT:.0f}ft')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
 

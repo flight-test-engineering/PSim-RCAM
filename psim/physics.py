@@ -346,7 +346,13 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
     if (alpha + dalpha) <= ALPHA_SWITCH:
         CL_wb = N * (alpha - ALPHA_L0 + dalpha) * (1 - dgsp)
     else: 
-        (A3 * (alpha + dalpha)**3 + A2 * (alpha + dalpha)**2 + A1 * (alpha + dalpha) + A0) * (1 - dgsp) + dcl
+        CL_wb = (A3 * (alpha + dalpha)**3 + A2 * (alpha + dalpha)**2 + A1 * (alpha + dalpha) + A0) * (1 - dgsp) + dcl
+
+
+    # Ground Effect # not original from RCAM
+    GE_cl_mult, GE_cd_mult = calc_ground_effect(h - LG_MAIN_L_POS[IDX_MLG_Z]) # subtracting landing gear nominal height - might need adjustments
+    # multiply wing-body calculated CL by ground effect factor
+    CL_wb *= GE_cl_mult # not origincal from RCAM
 
 
     # CL thrust
@@ -361,6 +367,8 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
 
     # Total CD (in stability frame)
     CD = CDMIN + D1 * (N * alpha + D0)**2 + dcd # RCAM modified to include dcd
+    # add ground effect to drag
+    CD *= GE_cd_mult # not original from RCAM
 
     # Total side force CY (stability frame)
     CY = CY_BETA * beta + CY_DR * dr
@@ -513,6 +521,12 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:
     else: 
         CL_wb = (A3 * (alpha + dalpha)**3 + A2 * (alpha + dalpha)**2 + A1 * (alpha + dalpha) + A0) * (1 - dgsp) + dcl
 
+
+    # Ground Effect # not original from RCAM
+    GE_cl_mult, GE_cd_mult = calc_ground_effect(h - LG_MAIN_L_POS[IDX_MLG_Z]) # subtracting landing gear nominal height - might need adjustments
+    # multiply wing-body calculated CL by ground effect factor
+    CL_wb *= GE_cl_mult # not origincal from RCAM
+
     # CL thrust
     epsilon = DEPSDA * (alpha - ALPHA_L0)
     # Prevent divide by zero
@@ -525,6 +539,8 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:
 
     # Total CD (in stability frame)
     CD = CDMIN + D1 * (N * alpha + D0)**2 + dcd
+    # add ground effect to drag
+    CD *= GE_cd_mult # not original from RCAM
 
     # Total side force CY (stability frame)
     CY = CY_BETA * beta + CY_DR * dr
@@ -633,6 +649,7 @@ def compile_numba_functions():
         _ = latlonh_dot_wrapper(t, X, NED, lat, h)
         _ = ss_integrator(t, X, U, rho, h, dcl, dcd, dcm, dalpha)
         _ = latlonh_int(t, latlonh0, NED)
+        _ = calc_ground_effect(h)
 
 
         # 2. Environment
@@ -804,4 +821,36 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
 
     return result.x, result.message #remember that the control vector is missing ground spoilers now
 
-
+@jit(nopython=True)
+def calc_ground_effect(h_agl: float) -> tuple:
+    '''
+    Calculates aerodynamic multipliers for Ground Effect.
+    Based on relative height to wingspan (h/b).
+    
+    Returns:
+        (CL_mult, CD_mult)
+    '''
+    # 1. Calculate Ratio
+    # We use max(h, 0) to handle slight underground numeric errors
+    ratio = max(h_agl, 0.0) / WINGSPAN
+    
+    # 2. Check Range (Effect vanishes above 1.0 span)
+    if ratio >= 1.0:
+        return 1.0, 1.0
+        
+    # 3. Calculate Intensity Factor (0.0 to 1.0)
+    # Using a squared falloff curve: (1 - ratio)^2
+    # This provides a smooth onset as we descend.
+    # At h=0 (ground): factor = 1.0
+    # At h=b (1 span): factor = 0.0
+    factor = (1.0 - ratio) * (1.0 - ratio)
+    
+    # 4. Apply Multipliers
+    # Tuning constants:
+    # Lift increases by up to 25% near ground
+    # Drag decreases by up to 30% near ground
+    
+    cl_mult = 1.0 + (0.25 * factor)
+    cd_mult = 1.0 - (0.30 * factor)
+    
+    return cl_mult, cd_mult

@@ -41,7 +41,7 @@ def fpa(V_NED:np.ndarray)->float:
 
 def get_AGL(current_latlon_deg: np.ndarray, current_alt_m: float, sim_visual_offset: float)->float:
     '''
-    this function fetches the current AGL n meters from the SRTM database
+    this function fetches the current AGL in meters from the SRTM database
     needs lat/lon in degrees
     '''
     ground_alt = elevation_data.get_elevation(current_latlon_deg[0], current_latlon_deg[1])
