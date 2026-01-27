@@ -599,7 +599,8 @@ def compile_numba_functions():
         Runs Numba functions with dummy data to force JIT compilation 
         before the real-time loop begins.
         '''
-        print('Compiling Numba functions (Warm-up)...', end="")
+        #print('Compiling Numba functions (Warm-up)...', end="")
+        logger.info('[compile_numba_functions] Compiling Numba functions (Warm-up)...')
         
         # Dummy Data
         t = 0.0
@@ -644,7 +645,7 @@ def compile_numba_functions():
         _ = env.get_rho(h)
         _ = env.get_AGL(latlonh0, h, 0.0)
         
-        print(' Done.')
+        #print(' Done.')
 
 
 
@@ -760,7 +761,9 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     # we add them separately:
     Z0 = np.concatenate((X0, U0[:-4])) 
 
-    print(f'initial functional cost: {trim_functional3(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
+    #print(f'initial functional cost: {trim_functional3(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
+    #                         flap_pos, gear, gnd_sp, brakes):.3e}')
+    logger.info(f'[trim_model] initial functional cost: {trim_functional3(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
                              flap_pos, gear, gnd_sp, brakes):.3e}')
 
 
@@ -774,7 +777,8 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
         # Updated cost check with h_trim
         current_cost = trim_functional3(result.x, env.VA(result.x[:3]), result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U]), result.x[IDX_V], result.x[IDX_PHI], result.x[IDX_PSI], rho_trim, h_trim,
                                          flap_pos, gear, gnd_sp, brakes)
-        print(f'iter: {iter_counter}, functional cost: {current_cost:.3e}')
+        #print(f'iter: {iter_counter}, functional cost: {current_cost:.3e}')
+        logger.info(f'[trim_model] iter: {iter_counter}, functional cost: {current_cost:.3e}')
 
         if current_cost < epsilon:
             converge = True
@@ -785,16 +789,17 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
 
     if converge:
         print()
-        print('Trim converged!')
-        print(f'trimmed speed = {env.VA(Z0[:3]):.1f} m/s')
-        print(f'check gamma {result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U])} RAD')
-        print(f'check side vel {result.x[IDX_V]:.1f} m/s')
-        print(f'check phi {result.x[IDX_PHI] * RAD2DEG:.1f} Deg')
-        print(f'check psi {result.x[IDX_PSI]* RAD2DEG:.1f} Deg')
-        logger.info("Trim converged")
+        logger.info(f'[trim_model] Trim converged! Speed: {env.VA(Z0[:3]):.1f} m/s, Gamma: {result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U])} RAD')
+        # print('Trim converged!')
+        # print(f'trimmed speed = {env.VA(Z0[:3]):.1f} m/s')
+        # print(f'check gamma {result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U])} RAD')
+        # print(f'check side vel {result.x[IDX_V]:.1f} m/s')
+        # print(f'check phi {result.x[IDX_PHI] * RAD2DEG:.1f} Deg')
+        # print(f'check psi {result.x[IDX_PSI]* RAD2DEG:.1f} Deg')
+        # logger.info("Trim converged")
     else:
-        print('FAILED TO CONVERGE')
-        logger.warning('Trim FAILED to converge')
+        # print('FAILED TO CONVERGE')
+        logger.warning('[trim_model] Trim FAILED to converge')
 
 
     return result.x, result.message #remember that the control vector is missing ground spoilers now

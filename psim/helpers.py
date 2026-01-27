@@ -40,7 +40,8 @@ def disk_logging_worker(log_queue, filename, header):
         filename: Target CSV file.
         header: List of column names.
     """
-    print(f"Starting Disk Logger for {filename}...", end="")
+    #print(f"Starting Disk Logger for {filename}...", end="")
+    logger.info(f"[disk_logging_worker] Starting Disk Logger for {filename}...")
     
     # Check if file exists to decide on writing header
     file_exists = os.path.exists(filename)
@@ -60,7 +61,8 @@ def disk_logging_worker(log_queue, filename, header):
             
             # Check for shutdown signal
             if item is None:
-                print("Disk Logger finishing...")
+                #print("Disk Logger finishing...")
+                logger.info('[disk_logging_worker] Disk Logger finished.')
                 break
             
             t_chunk, data_chunk = item
@@ -87,9 +89,11 @@ def disk_logging_worker(log_queue, filename, header):
             log_queue.task_done()
             
         except Exception as e:
-            print(f"[DISK ERROR] Could not write to log: {e}")
+            #print(f"[DISK ERROR] Could not write to log: {e}")
+            logger.error(f'[disk_logging_worker] Could not write to log: {e}')
 
-    print("Disk Logger stopped.")
+    #print("Disk Logger stopped.")
+    logger.info(f'[disk_logging_worker] Disk Logger stopped.')
 
 
 
@@ -107,7 +111,8 @@ def load_from_disk(filename):
         data = raw[:, 1:]
         return t_vec, data
     except Exception as e:
-        print(f"Could not load log file for plotting: {e}")
+        #print(f"Could not load log file for plotting: {e}")
+        logger.error(f'[load_from_disk] Could not load log file for plotting: {e}')
         return np.array([]), np.array([])
 
 # Keep make_plots as is

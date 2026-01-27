@@ -49,8 +49,8 @@ class Turbofan_Deck():
         """
 
         # define logistic function parameters
-        print(f'I got this input file for the engine: {input_file}')
-        logger.info(f'I got this input file for the engine: {input_file}')
+        #print(f'I got this input file for the engine: {input_file}')
+        logger.info(f'[Turbofan_Deck]: I got this input file for the engine: {input_file}')
         self.window_start_TLA = 0.0 # initial TLA value when change is triggered
         self.window_target_TLA = 1.0 
         self.window_start_time = 0.0 # time when TLA change was triggered
@@ -520,7 +520,8 @@ def engine_worker(jobs_queue, results_queue):
     """
     Worker process for Engine Deck calculations.
     """
-    print("[Engine Process] Worker started.")
+    #print("[Engine Process] Worker started.")
+    logger.info('[engine_worker] Engine worker started.')
     
 
 
@@ -528,7 +529,8 @@ def engine_worker(jobs_queue, results_queue):
         try:
             job = jobs_queue.get()
             if job is None:
-                print("[Engine Process] Shutdown signal.")
+                #print("[Engine Process] Shutdown signal.")
+                logger.info('[engine_worker] Shutdown signal.')
                 break
             
             # Unpack: Alt (ft), Mach, TLA1, TLA2, Time
@@ -547,8 +549,8 @@ def engine_worker(jobs_queue, results_queue):
             results_queue.put(results)
 
         except Exception as e:
-            print(f"[Engine Process] Error: {e}")
-            logger.warning(f"[Engine Process] Error: {e}")
+            #print(f"[Engine Process] Error: {e}")
+            logger.warning(f"[engine_worker] Error: {e}")
             break
-    print("[Engine Process] Worker finished.")
-    logger.info("[Engine Process] Worker finished.")
+    #print("[Engine Process] Worker finished.")
+    logger.info("[engine_worker] Worker finished.")

@@ -129,8 +129,9 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     alt_m = altitude * FT2M
     rho_trim = env.get_rho(alt_m)
 
-    print()
-    print(f'initializing model with {VA_t*MS2KT:.0f} KIAS, {altitude} ft, rho={rho_trim:.4f} kg/m3, flaps={flap_pos}')
+    #print()
+    #print(f'initializing model with {VA_t*MS2KT:.0f} KIAS, {altitude} ft, rho={rho_trim:.4f} kg/m3, flaps={flap_pos}')
+    logger.info(f'[initialize] initializing model with {VA_t*MS2KT:.0f} KIAS, {altitude} ft, rho={rho_trim:.4f} kg/m3, flaps={flap_pos}')
     
 
     latlonh0 = np.array([latlon[0] * DEG2RAD, latlon[1] * DEG2RAD, alt_m])
@@ -141,14 +142,17 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         res4, res4_status = physics.trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
                                     phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=height,
                                     flap_pos=flap_pos, gear=gear)
-        print()
-        print('Trimming',res4_status)
-        print()
+        # print()
+        # print('Trimming',res4_status)
+        # print()
+        logger.info(f'[initialize] Trimming {res4_status}')
         X0 = res4[:9] # separate states and controls
         U0 = np.concatenate((res4[9:], np.array([flap_pos, gear, 0.0, 0.0]))) # add back ground spoiler and brakes to control vector
-        print(f'initial states: {X0}')
-        print(f'initial inputs: {U0}')
-        print()
+        logger.debug(f'initial states: {X0}')
+        logger.debug(f'initial inputs: {U0}')
+        # print(f'initial states: {X0}')
+        # print(f'initial inputs: {U0}')
+        # print()
     else:
         # we are on the ground
         X0=np.array([VA_t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, INIT_HDG_DEG * DEG2RAD])
@@ -178,7 +182,6 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
 if __name__ == "__main__":
 
 
-    logger.info('Starting')
 
 ############################################################################
     # SELECT AIRCRAFT CONFIGURATION FILE
@@ -253,12 +256,13 @@ if __name__ == "__main__":
         # --- FLUSH GHOST INPUTS ---
         # Pump the event loop multiple times to clear buffered events 
         # from the previous crash.
-        print("Flushing Joystick Buffer...", end="", flush=True)
+        #print("Flushing Joystick Buffer...", end="", flush=True)
+        logger.info("[main] Flushing Joystick Buffer...")
         for _ in range(15):
             pygame.event.pump()
             time.sleep(0.01) # Small delay to allow OS driver to poll
-            print(".",end="")
-        print(" done.")
+            #print(".",end="")
+        #print(" done.")
         # --------------------------
 
         joy_name = this_joy.get_name()
@@ -271,25 +275,27 @@ if __name__ == "__main__":
         joy.initialize_constants(consts) # send constants to joystick function as well
         physics.initialize_constants(consts) # send to physics module as well
     except FileNotFoundError:
-        logger.error("ERROR: `rcam_parameters.json` not found. Please provide a valid config file.")
+        logger.error("[main] ERROR: `rcam_parameters.json` not found. Please provide a valid config file.")
         #print("ERROR: `rcam_parameters.json` not found. Please provide a valid config file.")
         sys.exit(1)
     except (KeyError, json.JSONDecodeError) as e:
-        logger.error(f"ERROR: Invalid format in {AIRCRAFT_CONFIG_FILE}: {e}")
+        logger.error(f"[main] ERROR: Invalid format in {AIRCRAFT_CONFIG_FILE}: {e}")
         sys.exit(1)
 
 
     if OFFLINE:
         if joy_name == None:
-            print()
-            print('Will run OFFLINE simulation, no joystick detected!')
+            #print()
+            #print('Will run OFFLINE simulation, no joystick detected!')
+            logger.info('[main] Will run OFFLINE simulation, no joystick detected!')
         else:
-            print()
-            print(f'Will run OFFLINE simulation, joystick model {joy_name} not in JSON config file!')
-            logger.warning(f'Will run OFFLINE simulation, joystick model {joy_name} not in JSON config file!')
+            #print()
+            #print(f'Will run OFFLINE simulation, joystick model {joy_name} not in JSON config file!')
+            logger.warning(f'[main] Will run OFFLINE simulation, joystick model {joy_name} not in JSON config file!')
     else:
-        print()
-        print(f'found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
+        #print()
+        #print(f'found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
+        logger.info(f'[main] found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
 
 
 
@@ -340,10 +346,11 @@ if __name__ == "__main__":
         )
         try:
             tx_thread.start()
-            print("... started!")
+            #print("... started!")
+            logger.info('[main]...started')
         except Exception as e:
-            logging.error(f"...Error in network thread: {e}")
-            print(f"...Error in network thread: {e}")
+            logging.error(f"[main]...Error in network thread: {e}")
+            #print(f"...Error in network thread: {e}")
             exit()
 
         # INCOMING DATA (from FG to Python)
@@ -531,23 +538,26 @@ if __name__ == "__main__":
         # what comes out of the trimming function is thrust directly
         # for online sim, we can't use it
         # let's run the reverse deck to get the thrust lever angle:
-        print(f'running inverse deck with alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]:.0f} N')
+        logger.info(f'[main] running inverse deck with alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]:.0f} N')
+        #print(f'running inverse deck with alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]:.0f} N')
 
         U1[IDX_THR1] = prop.E1_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC'] # deck takes lbf
         U1[IDX_THR2] = prop.E2_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
         U_trim[IDX_THR1] = U1[IDX_THR1] # percent power
         U_trim[IDX_THR2] = U1[IDX_THR2]
 
-        print(f'this is the inverse deck response: E1:{U1[IDX_THR1]:.4f}; E2:{U1[IDX_THR2]:.4f} % power')
-        print()
+        #print(f'this is the inverse deck response: E1:{U1[IDX_THR1]:.4f}; E2:{U1[IDX_THR2]:.4f} % power')
+        logger.info(f'[main] this is the inverse deck response: E1:{U1[IDX_THR1]:.4f}; E2:{U1[IDX_THR2]:.4f} % power')
+        #print()
 
         # run deck preemptively
-        print("Adding engine deck initial job...", end="")
+        #print("Adding engine deck initial job...", end="")
+        logger.info('[main] Adding engine deck initial job...')
         new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), U_trim[IDX_THR1], U_trim[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
         jobs_queue.put(new_job, block=False)
         # need to give time for deck to run
         time.sleep(.2)
-        print(' done.')
+        #print(' done.')
 
         ##### SIMULATION LOOP #####
         while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
@@ -819,9 +829,9 @@ if __name__ == "__main__":
     if OFFLINE == False:
         # close threads
         # -- Stop TX threads
-        print()
-        print("Shutting down network threads...")
-        logger.info("Shutting down network threads...")
+        #print()
+        #print("Shutting down network threads...")
+        logger.info("[main] Shutting down network threads...")
         fdm_packet_queue.put(None)  # Send the shutdown signal
         tx_thread.join(timeout=1.0) # Wait for the thread to finish
         for s in socks:
@@ -836,21 +846,23 @@ if __name__ == "__main__":
         engine_process.join(timeout=2.0) # Wait for the worker process to finish
         # It's good practice to terminate if it doesn't join cleanly
         if engine_process.is_alive():
-            print("[Main Process] Worker did not shut down cleanly. Terminating.")
-            logger.warning("[Main Process] Worker did not shut down cleanly. Terminating.")
+            #print("[Main Process] Worker did not shut down cleanly. Terminating.")
+            logger.warning("[main] Worker did not shut down cleanly. Terminating.")
             engine_process.terminate()
         
     # save data to disk
     if len(t_vector_collector) > 0: # flush rest of data still in memory:
         disk_log_queue.put((np.array(t_vector_collector), np.array(data_collector)))
-        print("Waiting for Disk Logger to finish...", end="")
+        #print("Waiting for Disk Logger to finish...", end="")
+        logger.info('[main] Waiting for Disk Logger to finish...')
         disk_log_queue.put(None) # Sentinel
         disk_log_thread.join()   # Wait for writing to complete
-        print("finished")
+        #print("finished")
 
 
     try:
-        print(f"Reloading {RESULTS_FILE} for plotting...")
+        #print(f"Reloading {RESULTS_FILE} for plotting...")
+        logger.info(f"Reloading {RESULTS_FILE} for plotting...")
         t_full, data_full = helpers.load_from_disk(RESULTS_FILE)
         
         if len(t_full) > 0:
@@ -859,9 +871,12 @@ if __name__ == "__main__":
             plt.show();
             print("done")
         else:
-            print("No data found to plot.")
+            #print("No data found to plot.")
+            logger.error('[main] No data found to plot.')
             
     except MemoryError:
-        print("Log file too large for RAM plotting.")
+        #print("Log file too large for RAM plotting.")
+        logger.error('[main] Log file too large for RAM plotting.')
     except Exception as e:
-        print(f"Plotting error: {e}")
+        #print(f"Plotting error: {e}")
+        logger.error(f"[main] Plotting error: {e}")

@@ -47,12 +47,12 @@ def get_AGL(current_latlon_deg: np.ndarray, current_alt_m: float, sim_visual_off
     ground_alt = elevation_data.get_elevation(current_latlon_deg[0], current_latlon_deg[1])
     if ground_alt is None:
         ground_alt = 0.0 # Default to Sea Level over oceans
-        logger.debug('NO DEM DATA')
-        print('DEBUG - get_AGL: NO DEM DATA')
+        logger.debug('[get_AGL] NO DEM DATA')
+        #print('DEBUG - get_AGL: NO DEM DATA')
     elif ground_alt < 0:
         ground_alt = 0.0
-        print('Below ground!')
-        logger.warning('get_AGL: below ground!')
+        #print('Below ground!')
+        logger.warning('[get_AGL]: below ground!')
 
 
     return current_alt_m - ground_alt - sim_visual_offset
