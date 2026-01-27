@@ -58,7 +58,7 @@ TODO:
     7) update wind/turbulence per RCAM
     8) add flaps (delta CL, CM, CD) with controls from joystick [DONE]
     9) add landing ger (delta CM, CD) with controls from joystick [DONE]
-    10) add ground effect (delta CL) with radalt/height
+    10) add ground effect (delta CL) with radalt/height [DONE]
 
 
 '''

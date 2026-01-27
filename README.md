@@ -21,6 +21,7 @@ In addition to what prof. Lum implements, the following features are added here:
 4 - Terrain database based in SRTM data, if FlightGear not available  
 5 - Terrain database from FlightGear  
 6 - FlightGear visualization via UDP (with parallel threading)  
+7 - Ground effect on CL and CD  
 
 ## Module:
 The code is split in module files for better organization:  
