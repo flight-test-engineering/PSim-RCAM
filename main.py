@@ -93,6 +93,7 @@ from psim.config import load_aircraft_parameters
 #################################################
 # DEBUG ONLY
 from psim.config import load_aircraft_parameters2
+from numba.experimental import jitclass
 ################################################
 import psim.environment as env
 import psim.propulsion as prop
@@ -111,7 +112,7 @@ import psim.physics as physics
 # Model Initialization
 # ############################################################################
 
-def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi_t=0.0, height=0.0, flap_pos=0, gear=0):
+def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi_t=0.0, height=0.0, flap_pos=0, gear=0, acp=None):
     '''
     this initializes the integrators
     inputs:
@@ -145,7 +146,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         # trim model
         res4, res4_status = physics.trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
                                     phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=height,
-                                    flap_pos=flap_pos, gear=gear)
+                                    flap_pos=flap_pos, gear=gear, acp=acp)
         # print()
         # print('Trimming',res4_status)
         # print()
@@ -169,7 +170,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
 
     # initialize integrators
-    AC_integrator = physics.ss_integrator(t0, X0, U0, rho_trim, height, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA])
+    AC_integrator = physics.ss_integrator(t0, X0, U0, rho_trim, height, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp)
     
     NED0 = env.NED(X0[:3], X0[6:]) #uvw and phithetapsi
     
@@ -177,6 +178,60 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     
     return AC_integrator, X0, U0, latlonh_integrator    
 
+# NUMBA/JIT WARM-UP
+def compile_numba_functions(acp:jitclass)->None:
+        '''
+        Runs Numba functions with dummy data to force JIT compilation 
+        before the real-time loop begins.
+        '''
+        #print('Compiling Numba functions (Warm-up)...', end="")
+        logger.info('[compile_numba_functions] Compiling Numba functions (Warm-up)...')
+        
+        # Dummy Data
+        t = 0.0
+        X = np.zeros(9)
+        U = np.zeros(9)
+        NED = np.zeros(3)
+        rho = 1.225
+        h = 0.0
+        dcl = 0.0
+        dcd = 0.0
+        dcm = 0.0
+        dalpha = 0.0
+        lat = 0.59
+        lon = 0.59
+        latlonh0 = np.array([lat, lon, h])
+
+        
+        # 1. Physics Core
+        _ = physics.array_interp(0, HIGH_LIFT_COEFFS, MAX_FLAP)
+        _ = physics.control_sat(U, acp)
+        _ = physics.control_norm(U, acp)
+        _ = physics.update_actuators(U, U, 0.01, np.ones(9))
+        _ = physics.calculate_gear_compression(X, h, acp)
+        _ = physics.get_air_ground_state(np.ones(3))
+        _ = physics.calculate_ground_forces(X, h, 0.0, acp)
+        _ = physics.RCAM_model(X, U, rho, h, dcl, dcd, dcm, dalpha, acp)
+        _ = physics.RCAM_observe(X, U, rho, h, dcl, dcd, dcm, dalpha, acp)
+        _ = physics.RCAM_model_wrapper(t, X, U, rho, h, dcl, dcd, dcm, dalpha, acp)
+        _ = physics.NED_wrapper(t, X, NED)
+        _ = physics.latlonh_dot_wrapper(t, X, NED, lat, h)
+        _ = physics.ss_integrator(t, X, U, rho, h, dcl, dcd, dcm, dalpha, acp)
+        _ = physics.latlonh_int(t, latlonh0, NED)
+        _ = physics.calc_ground_effect(h)
+
+
+        # 2. Environment
+        _ = env.VA(np.array([10.,0.,0.]))
+        _ = env.fpa(np.ones(3))
+        _ = env.add_wind(np.ones(3), np.ones(3))
+        _ = env.NED(np.array([10.,0.,0.]), np.array([0.,0.,0.]))
+        _ = env.latlonh_dot(np.array([10.,0.,0.]), 0.0, 0.0)
+        _ = env.WGS84_MN(lat)
+        _ = env.get_rho(h)
+        _ = env.get_AGL(latlonh0, h, 0.0)
+        
+        #print(' Done.')
 
 
 # ############################################################################
@@ -277,7 +332,7 @@ if __name__ == "__main__":
         consts = load_aircraft_parameters(AIRCRAFT_CONFIG_FILE, joy_name)
         #####################################
         # DEBUG ONLY
-        consts2 = load_aircraft_parameters2(AIRCRAFT_CONFIG_FILE, joy_name)
+        consts2, acp = load_aircraft_parameters2(AIRCRAFT_CONFIG_FILE, joy_name)
         #####################################
         globals().update(consts)
         joy.initialize_constants(consts) # send constants to joystick function as well
@@ -421,7 +476,7 @@ if __name__ == "__main__":
 
 ##############################################################################
     # Numba/JIT warm-up
-    physics.compile_numba_functions()
+    compile_numba_functions(acp)
 
 ###########################################################################
     # SIMULATION VARIABLES INITIALIZATION
@@ -432,7 +487,7 @@ if __name__ == "__main__":
 
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, 
-                                                            psi_t=INIT_HDG_DEG, height=100.0, flap_pos=FLAPS_INIT)
+                                                            psi_t=INIT_HDG_DEG, height=100.0, flap_pos=FLAPS_INIT, acp=acp)
     # Vector U1 has the controls for the trimmed state
     U1[IDX_GEAR] = INIT_GEAR
     U_trim = U1.copy() # we set U_trim (for trim state, or steady state of the controls) as a copy of the trimmed control states first.
@@ -508,7 +563,7 @@ if __name__ == "__main__":
             current_rho = env.get_rho(current_alt_m)
 
             # add actuator dynamics to control inputs:
-            U_actual = physics.update_actuators(sim_U[:,idx], U_actual, simdt, ACT_TAU)
+            U_actual = physics.update_actuators(sim_U[:,idx], U_actual, simdt, acp.ACT_TAU)
 
             # set highlift deltas (setting to zero for now)
             dcl_dcd_dcm_dalpha = np.zeros(4)
@@ -608,13 +663,13 @@ if __name__ == "__main__":
                 # toggle ground spoilers if button is pressed -> this is done in joystick submodule
                 # ground spoiler arm/disarm state is passaed through U1[IDX_GNDSP]
                 # if spoilers are armed and we are on ground, set ground spoilers to open
-                if (physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m)) and (U1[IDX_GNDSP] == 1)):
+                if (physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m, acp)) and (U1[IDX_GNDSP] == 1)):
                     U_trim[IDX_GNDSP] = GND_SPOILERS_DCL # 40% lift dump
                 else:
                     U_trim[IDX_GNDSP] = 0.0 # close
                 
 
-                U_trim = physics.control_sat(U_trim) # saturate commands
+                U_trim = physics.control_sat(U_trim, acp) # saturate commands
 
 
                 # Calculate the time step for this specific loop iteration
@@ -622,7 +677,7 @@ if __name__ == "__main__":
                 actuator_dt = dt if dt > 0 else simdt 
                 
                 # Update the physical position of the surfaces with actuator dynamics
-                U_actual = physics.update_actuators(U_trim, U_actual, actuator_dt, ACT_TAU)
+                U_actual = physics.update_actuators(U_trim, U_actual, actuator_dt, acp.ACT_TAU)
 
 
                 # Update thrust values (Engine deck results)
@@ -664,7 +719,7 @@ if __name__ == "__main__":
 
 
                 # -- Integrate Physics
-                this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA])
+                this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp)
                 this_AC_int.integrate(this_AC_int.t + dt)
                 current_uvw = this_AC_int.y[0:3]
 
@@ -706,7 +761,7 @@ if __name__ == "__main__":
 
                     # set values and send frames
                     net.set_FDM(my_fgFDM, this_AC_int.y, 
-                            physics.control_norm(U_actual), 
+                            physics.control_norm(U_actual, acp), 
                             current_latlon_rad, 
                             current_alt_m,
                             body_accels,
@@ -728,7 +783,7 @@ if __name__ == "__main__":
                 # so we only trigger engine deck calc at a much slower frame rate
                 if calc_eng_trigger:
                     # Trigger Engine Deck Calculation
-                    on_ground = physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m))
+                    on_ground = physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m, acp))
                     if jobs_queue.empty():
                         #print(f"[Main Process] Triggering new engine calculation...{VA(current_uvw)*MS2KT:.2f}, {current_alt_m*M2FT:.1f}")
                         new_job = (current_alt_m*M2FT, ISA.Vt2M(env.VA(current_uvw)*MS2KT, current_alt_m*M2FT), U_trim[IDX_THR1], U_trim[IDX_THR2], on_ground, time.perf_counter())
@@ -748,7 +803,7 @@ if __name__ == "__main__":
                 
                 if datalog_trigger:
                     # -- Data Logging
-                    internals = physics.RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA]) # get internal FDM states
+                    internals = physics.RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp) # get internal FDM states
                     # engine parameters:
                     eng1_states = np.zeros(len(ENG_LOG_PARAMETERS))
                     eng2_states = np.zeros(len(ENG_LOG_PARAMETERS))

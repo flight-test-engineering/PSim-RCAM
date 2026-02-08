@@ -293,6 +293,10 @@ spec = [
     ('LG_MU_BRAKE', float64),
     ('LG_FRICTION_STIFFNESS', float64),
 
+    # Actuator Limits
+    ('U_LIMITS_MIN', float64[:]),
+    ('U_LIMITS_MAX', float64[:]),
+
     # Actuator Dynamics
     ('ACT_TAU', float64[:]),
 ]
@@ -313,7 +317,7 @@ class AircraftParams:
 # JIT version
 # ############################################################################
 
-def load_aircraft_parameters2(filepath: str, joy_name: str|None) -> dict:
+def load_aircraft_parameters2(filepath: str, joy_name: str|None) -> (dict, jitclass):
     """
     Loads aircraft parameters from a JSON file, processes them, and returns
     them as a dictionary of constants ready for the simulation.
@@ -448,9 +452,9 @@ def load_aircraft_parameters2(filepath: str, joy_name: str|None) -> dict:
     # as per CLum's video @ 7:45
 
     cl_deg = params['control_limits_deg']
-    consts['U_LIMITS_RAD'] = {k: (v[0] * DEG2RAD, v[1] * DEG2RAD) for k, v in cl_deg.items()}
-    consts['U_LIMITS_MIN'] = np.array([lim[0] for lim in consts['U_LIMITS_RAD'].values()])
-    consts['U_LIMITS_MAX'] = np.array([lim[1] for lim in consts['U_LIMITS_RAD'].values()])
+    U_LIMITS_RAD = {k: (v[0] * DEG2RAD, v[1] * DEG2RAD) for k, v in cl_deg.items()}
+    acp.U_LIMITS_MIN = np.array([lim[0] for lim in U_LIMITS_RAD.values()])
+    acp.U_LIMITS_MAX = np.array([lim[1] for lim in U_LIMITS_RAD.values()])
 
     # Landing Gear
     # .. Geometry
@@ -512,8 +516,8 @@ def load_aircraft_parameters2(filepath: str, joy_name: str|None) -> dict:
         consts['JOY_THROTTLE_LIMITS'] = joy_map["joy_throttle_limits"] # these are the limits for the throttle input for this specific joystick - full fwd = -1
         
         # linearly map the joystick input to the RCAM limits
-        throttle_map_m = (consts['U_LIMITS_MAX'][3] - consts['U_LIMITS_MIN'][3]) / (consts['JOY_THROTTLE_LIMITS'][1] - consts['JOY_THROTTLE_LIMITS'][0])
-        throttle_map_b = consts['U_LIMITS_MAX'][3] - throttle_map_m * (consts['JOY_THROTTLE_LIMITS'][1]) # y = mx + b - equation for a line
+        throttle_map_m = (acp.U_LIMITS_MAX[3] - acp.U_LIMITS_MIN[3]) / (consts['JOY_THROTTLE_LIMITS'][1] - consts['JOY_THROTTLE_LIMITS'][0])
+        throttle_map_b = acp.U_LIMITS_MAX[3] - throttle_map_m * (consts['JOY_THROTTLE_LIMITS'][1]) # y = mx + b - equation for a line
         consts['JOY_FACTORS'] = joy_map["partial_joy_factors"]
         consts['JOY_FACTORS']['throttle_m'] = throttle_map_m
         consts['JOY_FACTORS']['throttle_b'] = throttle_map_b
@@ -525,4 +529,4 @@ def load_aircraft_parameters2(filepath: str, joy_name: str|None) -> dict:
         logger.error('[load_aircraft_parameters] no joystick or joystick model not in databas/JSON config file...will run offline loop.')
         consts['OFFLINE'] = True
 
-    return consts
+    return (consts, acp)
