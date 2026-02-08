@@ -90,6 +90,10 @@ import multiprocessing as mp
 
 from psim.constants import *
 from psim.config import load_aircraft_parameters
+#################################################
+# DEBUG ONLY
+from psim.config import load_aircraft_parameters2
+################################################
 import psim.environment as env
 import psim.propulsion as prop
 import psim.helpers as helpers
@@ -271,6 +275,10 @@ if __name__ == "__main__":
     try:
         # Unpack the dictionary into global variables
         consts = load_aircraft_parameters(AIRCRAFT_CONFIG_FILE, joy_name)
+        #####################################
+        # DEBUG ONLY
+        consts2 = load_aircraft_parameters2(AIRCRAFT_CONFIG_FILE, joy_name)
+        #####################################
         globals().update(consts)
         joy.initialize_constants(consts) # send constants to joystick function as well
         physics.initialize_constants(consts) # send to physics module as well
