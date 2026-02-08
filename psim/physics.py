@@ -194,7 +194,7 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float, acp:jitclass)
     
     # Loop through the 3 gears
     # 0=Nose, 1=MainL, 2=MainR
-    gears_pos = [LG_NOSE_POS, LG_MAIN_L_POS, LG_MAIN_R_POS]
+    gears_pos = [acp.LG_NOSE_POS, acp.LG_MAIN_L_POS, acp.LG_MAIN_R_POS]
     
     for i in range(3):
         delta_z = compressions[i]
@@ -211,15 +211,15 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float, acp:jitclass)
             if v_z_gear > 0: 
                 # Compressing (moving into ground)
                 # Use standard damping to absorb energy
-                damping_force = LG_DAMP_COMPRESSION * v_z_gear
+                damping_force = acp.LG_DAMP_COMPRESSION * v_z_gear
             else:
                 # Rebounding (spring pushing plane up)
                 # Use HIGH damping to prevent the spring from shooting the plane up
-                damping_force = LG_DAMP_REBOUND * v_z_gear
+                damping_force = acp.LG_DAMP_REBOUND * v_z_gear
             
             # Normal Force = Spring Force - Damping Force
             # Note: We use max(0, ...) on the spring to ensure it pushes up.
-            F_normal = -max(0.0, LG_SPRING_K * delta_z) - damping_force
+            F_normal = -max(0.0, acp.LG_SPRING_K * delta_z) - damping_force
             
             # Sanity Check: The ground cannot pull the plane down. 
             # If the damping force is so high it overcomes the spring during rebound, 
@@ -231,16 +231,16 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float, acp:jitclass)
             # A simple "stiffness" approach to friction to stop sliding
             # Side force
             F_y = -V_gear[1] * 50000.0 
-            raw_fy = -V_gear[1] * LG_FRICTION_STIFFNESS
+            raw_fy = -V_gear[1] * acp.LG_FRICTION_STIFFNESS
             # for longitudinal force, we have the brakes
-            F_x = F_normal * (LG_MU_BRAKE * brake + LG_ROLLING_FRICTION_MU)
-            raw_fx = -V_gear[0] * LG_FRICTION_STIFFNESS
+            F_x = F_normal * (acp.LG_MU_BRAKE * brake + acp.LG_ROLLING_FRICTION_MU)
+            raw_fx = -V_gear[0] * acp.LG_FRICTION_STIFFNESS
 
             
             # Cap friction so it doesn't exceed mu * Normal Force (Coulomb friction)
             # This prevents numerical instability if sliding sideways fast
-            max_fx = abs(F_normal * (LG_MU_BRAKE + LG_ROLLING_FRICTION_MU))
-            max_fy = abs(F_normal * LG_SIDE_FRICTION_MU)
+            max_fx = abs(F_normal * (acp.LG_MU_BRAKE + acp.LG_ROLLING_FRICTION_MU))
+            max_fy = abs(F_normal * acp.LG_SIDE_FRICTION_MU)
             if abs(V_gear[0]) > 10.0:
                 if abs(F_x) > max_fx: F_x = np.sign(F_x) * max_fx # we are fast, use normal friction
             else:
@@ -326,7 +326,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
     
     # alpha and beta
     # Protect against divide by zero if Va is very small (on ground)
-    if Va < 0.1:
+    if Va < MIN_AIRSPEED_FOR_ALPHA_BETA_M_S:
         alpha = 0.0
         beta = 0.0
     else:
@@ -345,39 +345,39 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
     # which is not availble to the public
     # CL - wing + body
     # RCAM modified to include dalpha and dcl and dgsp
-    if (alpha + dalpha) <= ALPHA_SWITCH:
-        CL_wb = N * (alpha - ALPHA_L0 + dalpha) * (1 - dgsp)
+    if (alpha + dalpha) <= acp.ALPHA_SWITCH:
+        CL_wb = acp.N * (alpha - acp.ALPHA_L0 + dalpha) * (1 - dgsp)
     else: 
-        CL_wb = (A3 * (alpha + dalpha)**3 + A2 * (alpha + dalpha)**2 + A1 * (alpha + dalpha) + A0) * (1 - dgsp) + dcl
+        CL_wb = (acp.A3 * (alpha + dalpha)**3 + acp.A2 * (alpha + dalpha)**2 + acp.A1 * (alpha + dalpha) + acp.A0) * (1 - dgsp) + dcl
 
 
     # Ground Effect # not original from RCAM
-    GE_cl_mult, GE_cd_mult = calc_ground_effect(h - LG_MAIN_L_POS[IDX_MLG_Z]) # subtracting landing gear nominal height - might need adjustments
+    GE_cl_mult, GE_cd_mult = calc_ground_effect(h - acp.LG_MAIN_L_POS[IDX_MLG_Z], acp) # subtracting landing gear nominal height - might need adjustments
     # multiply wing-body calculated CL by ground effect factor
     CL_wb *= GE_cl_mult # not origincal from RCAM
 
 
     # CL thrust
-    epsilon = DEPSDA * (alpha - ALPHA_L0)
+    epsilon = acp.DEPSDA * (alpha - acp.ALPHA_L0)
     # Prevent divide by zero in q_term, if speed is too low
-    q_term = (EPSILON_DOT * q * LT / Va) if Va > 0.1 else 0.0
+    q_term = (acp.EPSILON_DOT * q * acp.LT / Va) if Va > 0.1 else 0.0
     alpha_t = alpha - epsilon + de + q_term
-    CL_t = NT * (ST / S) * alpha_t
+    CL_t = acp.NT * (acp.ST / acp.S) * alpha_t
 
     # Total CL
     CL = CL_wb + CL_t
 
     # Total CD (in stability frame)
-    CD = CDMIN + D1 * (N * alpha + D0)**2 + dcd # RCAM modified to include dcd
+    CD = acp.CDMIN + acp.D1 * (acp.N * alpha + acp.D0)**2 + dcd # RCAM modified to include dcd
     # add ground effect to drag
     CD *= GE_cd_mult # not original from RCAM
 
     # Total side force CY (stability frame)
-    CY = CY_BETA * beta + CY_DR * dr
+    CY = acp.CY_BETA * beta + acp.CY_DR * dr
 
     #------------------- dimensional aerodynamic forces --------------------
     # forces in F_s
-    FA_s = np.array([-CD * Q * S, CY * Q * S, -CL * Q * S])
+    FA_s = np.array([-CD * Q * acp.S, CY * Q * acp.S, -CL * Q * acp.S])
 
     # rotate forces to body axis (F_b)
     C_bs = np.array([[np.cos(alpha), 0.0, -np.sin(alpha)],
@@ -388,32 +388,32 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
     
     #------------------ aerodynamic moment coefficients about AC -----------
     # moments in F_b
-    eta11 = C_l_BETA * beta
-    eta21 = C_m_ALPHA - (NT * (ST * LT) / (S * CBAR)) * (alpha - epsilon) + dcm # RCAM Modified
-    eta31 = (1 - alpha * C_n_BETA) * beta
+    eta11 = acp.C_l_BETA * beta
+    eta21 = acp.C_m_ALPHA - (acp.NT * (acp.ST * acp.LT) / (acp.S * acp.CBAR)) * (alpha - epsilon) + dcm # RCAM Modified
+    eta31 = (1 - alpha * acp.C_n_BETA) * beta
 
     eta = np.array([eta11, eta21, eta31])
     
     # Prevent divide by zero in damping terms
-    inv_Va = (CBAR / Va) if Va > 0.1 else 0.0
+    inv_Va = (acp.CBAR / Va) if Va > 0.1 else 0.0
 
-    dCMdx = inv_Va * np.array([[C_l_P, C_l_Q, C_l_R], 
-                                    [C_m_P, (C_m_Q * (ST * LT**2) / (S * CBAR**2)), C_m_R], 
-                                    [C_n_P, C_n_Q, C_n_R]], dtype=np.dtype('f8'))
-    dCMdu = np.array([[C_l_DA , C_l_DE, C_l_DR],
-                      [C_m_DA, (C_m_DE * (ST * LT) / (S * CBAR)), C_m_DR],
-                      [C_n_DA, C_n_DE, C_n_DR]], dtype=np.dtype('f8'))
+    dCMdx = inv_Va * np.array([[acp.C_l_P, acp.C_l_Q, acp.C_l_R], 
+                                    [acp.C_m_P, (acp.C_m_Q * (acp.ST * acp.LT**2) / (acp.S * acp.CBAR**2)), acp.C_m_R], 
+                                    [acp.C_n_P, acp.C_n_Q, acp.C_n_R]], dtype=np.dtype('f8'))
+    dCMdu = np.array([[acp.C_l_DA , acp.C_l_DE, acp.C_l_DR],
+                      [acp.C_m_DA, (acp.C_m_DE * (acp.ST * acp.LT) / (acp.S * acp.CBAR)), acp.C_m_DR],
+                      [acp.C_n_DA, acp.C_n_DE, acp.C_n_DR]], dtype=np.dtype('f8'))
     
     # CM about AC in Fb
     CMac_b = eta + np.dot(dCMdx, wbe_b) + np.dot(dCMdu, np.array([da, de, dr])) # RCAM original
 
     #------------------- aerodynamic moment about AC -------------------------
     # normalize to aerodynamic moment
-    MAac_b = CMac_b * Q * S * CBAR
+    MAac_b = CMac_b * Q * acp.S * acp.CBAR
 
     #-------------------- aerodynamic moment about CG ------------------------
-    rcg_b = np.array([XCG, YCG, ZCG])
-    rac_b = np.array([XAC, YAC, ZAC])
+    rcg_b = np.array([acp.XCG, acp.YCG, acp.ZCG])
+    rac_b = np.array([acp.XAC, acp.YAC, acp.ZAC])
 
     MAcg_b = MAac_b + np.cross(FA_b, rcg_b - rac_b)
     
@@ -431,8 +431,8 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
     FE_b = FE1_b + FE2_b
 
     # engine moments
-    mew1 = np.array([XCG - XAPT1, YAPT1 - YCG, ZCG - ZAPT1])
-    mew2 = np.array([XCG - XAPT2, YAPT2 - YCG, ZCG - ZAPT2])
+    mew1 = np.array([acp.XCG - acp.XAPT1, acp.YAPT1 - acp.YCG, acp.ZCG - acp.ZAPT1])
+    mew2 = np.array([acp.XCG - acp.XAPT2, acp.YAPT2 - acp.YCG, acp.ZCG - acp.ZAPT2])
 
     MEcg1_b = np.cross(mew1, FE1_b)
     MEcg2_b = np.cross(mew2, FE2_b)
@@ -442,7 +442,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
     #---------------------- gravity effects ----------------------------------
     g_b = np.array([-G * np.sin(theta), G * np.cos(theta) * np.sin(phi), G * np.cos(theta) * np.cos(phi)])
 
-    Fg_b = M * g_b
+    Fg_b = acp.M * g_b
 
     #---------------------- GROUND REACTION ----------------------------------
     # This is extra to RCAM model
@@ -455,13 +455,15 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
     # Added F_gnd_b to the sum
     F_b = Fg_b + FE_b + FA_b + F_gnd_b
     
-    u_v_w_dot  = (1 / M) * F_b - np.cross(wbe_b, V_b)
+    u_v_w_dot  = (1 / acp.M) * F_b - np.cross(wbe_b, V_b)
     
     # form Mcg_b and calc p, q r dot
     # Added M_gnd_b to the sum
     Mcg_b = MAcg_b + MEcg_b + M_gnd_b
     
-    p_q_r_dot = np.dot(INV_INERTIA_TENSOR_b, (Mcg_b - np.cross(wbe_b, np.dot(INERTIA_TENSOR_b , wbe_b))))
+    aux_0 = np.dot(acp.INERTIA_TENSOR_b , wbe_b)
+    aux_1 = Mcg_b - np.cross(wbe_b, np.dot(acp.INERTIA_TENSOR_b , wbe_b))
+    p_q_r_dot = np.dot(acp.INV_INERTIA_TENSOR_b, (Mcg_b - np.cross(wbe_b, np.dot(acp.INERTIA_TENSOR_b , wbe_b))))
     
     # phi, theta, psi dot
     H_phi = np.array([[1.0, np.sin(phi) * np.tan(theta), np.cos(phi) * np.tan(theta)],
@@ -494,7 +496,7 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:
     p, q, r = X[IDX_P], X[IDX_Q], X[IDX_R] # rad/s
     phi, theta, psi = X[IDX_PHI], X[IDX_THETA], X[IDX_PSI] # rad
 
-       # ----------------------- controls ----------------------------------
+    # ----------------------- controls ----------------------------------
     da, de, dr = U[IDX_AIL], U[IDX_ELE], U[IDX_RUD]
     dt1, dt2 = U[IDX_THR1], U[IDX_THR2]
     flap_pos, gear_pos = U[IDX_FLAP], U[IDX_GEAR]
@@ -518,34 +520,35 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:
     # which is not availble to the public
     # CL - wing + body
     # RCAM modified to include dalpha and dcl and dgsp
-    if (alpha + dalpha) <= ALPHA_SWITCH:
-        CL_wb = N * (alpha - ALPHA_L0 + dalpha) * (1 - dgsp)
+    if (alpha + dalpha) <= acp.ALPHA_SWITCH:
+        CL_wb = acp.N * (alpha - acp.ALPHA_L0 + dalpha) * (1 - dgsp)
     else: 
-        CL_wb = (A3 * (alpha + dalpha)**3 + A2 * (alpha + dalpha)**2 + A1 * (alpha + dalpha) + A0) * (1 - dgsp) + dcl
+        CL_wb = (acp.A3 * (alpha + dalpha)**3 + acp.A2 * (alpha + dalpha)**2 + acp.A1 * (alpha + dalpha) + acp.A0) * (1 - dgsp) + dcl
 
 
     # Ground Effect # not original from RCAM
-    GE_cl_mult, GE_cd_mult = calc_ground_effect(h - LG_MAIN_L_POS[IDX_MLG_Z]) # subtracting landing gear nominal height - might need adjustments
+    GE_cl_mult, GE_cd_mult = calc_ground_effect(h - acp.LG_MAIN_L_POS[IDX_MLG_Z], acp) # subtracting landing gear nominal height - might need adjustments
     # multiply wing-body calculated CL by ground effect factor
     CL_wb *= GE_cl_mult # not origincal from RCAM
 
+
     # CL thrust
-    epsilon = DEPSDA * (alpha - ALPHA_L0)
-    # Prevent divide by zero
-    q_term = (EPSILON_DOT * q * LT / Va) if Va > 0.1 else 0.0
+    epsilon = acp.DEPSDA * (alpha - acp.ALPHA_L0)
+    # Prevent divide by zero in q_term, if speed is too low
+    q_term = (acp.EPSILON_DOT * q * acp.LT / Va) if Va > 0.1 else 0.0
     alpha_t = alpha - epsilon + de + q_term
-    CL_t = NT * (ST / S) * alpha_t
+    CL_t = acp.NT * (acp.ST / acp.S) * alpha_t
 
     # Total CL
     CL = CL_wb + CL_t
 
     # Total CD (in stability frame)
-    CD = CDMIN + D1 * (N * alpha + D0)**2 + dcd
+    CD = acp.CDMIN + acp.D1 * (acp.N * alpha + acp.D0)**2 + dcd # RCAM modified to include dcd
     # add ground effect to drag
     CD *= GE_cd_mult # not original from RCAM
 
     # Total side force CY (stability frame)
-    CY = CY_BETA * beta + CY_DR * dr
+    CY = acp.CY_BETA * beta + acp.CY_DR * dr
 
     #---------------------- gravity effects ----------------------------------
     g_b = np.array([-G * np.sin(theta), G * np.cos(theta) * np.sin(phi), G * np.cos(theta) * np.cos(phi)])
@@ -668,10 +671,10 @@ def trim_functional3(Z:np.ndarray, VA_trim:float, gamma_trim:float, side_speed_t
     U[Z.shape[0] -9 + 3] = brakes_pos
 
     # add CL, CD, CM and delta Alpha modifiers due to gear and flaps
-    dcl_dcd_dcm_dalpha = array_interp(flap_pos, HIGH_LIFT_COEFFS, MAX_FLAP)
+    dcl_dcd_dcm_dalpha = array_interp(flap_pos, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
 
     # interpolate for landing gear delta CD
-    ldg_dcd = array_interp(gear_pos, LDG_DCD, MAX_LDG)
+    ldg_dcd = array_interp(gear_pos, acp.LDG_DCD, acp.MAX_LDG)
     dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
     
     # calculate model
@@ -771,7 +774,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     return result.x, result.message #remember that the control vector is missing ground spoilers now
 
 @jit(nopython=True)
-def calc_ground_effect(h_agl: float) -> tuple:
+def calc_ground_effect(h_agl: float, acp:jitclass) -> tuple[float, float]:
     '''
     Calculates aerodynamic multipliers for Ground Effect.
     Based on relative height to wingspan (h/b).
@@ -781,7 +784,7 @@ def calc_ground_effect(h_agl: float) -> tuple:
     '''
     # 1. Calculate Ratio
     # We use max(h, 0) to handle slight underground numeric errors
-    ratio = max(h_agl, 0.0) / WINGSPAN
+    ratio = max(h_agl, 0.0) / acp.WINGSPAN
     
     # 2. Check Range (Effect vanishes above 1.0 span)
     if ratio >= 1.0:

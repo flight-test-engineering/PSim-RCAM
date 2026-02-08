@@ -1,4 +1,5 @@
 import numpy as np
+from numba.experimental import jitclass
 import pygame
 from psim.constants import *
 
@@ -11,7 +12,7 @@ def initialize_constants(params: dict):
     """
     globals().update(params)
 
-def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors):
+def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors, acp):
     '''
     function that will read joystick positions and adjust controls:
     1. joy will change controls on top of trim point
@@ -85,7 +86,7 @@ def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors):
     throttle_cmd = joystick.get_axis(3) * joy_factors['throttle_m'] + joy_factors['throttle_b'] # linearly map joystick inputs to RCAM
     U[IDX_THR1] = U_trim[IDX_THR1] + throttle_cmd
     U[IDX_THR2] = U_trim[IDX_THR2] + throttle_cmd
-    U[IDX_FLAP] = max(0, min(MAX_FLAP, U_trim[IDX_FLAP] + flap_cmd_dn - flap_cmd_up))
+    U[IDX_FLAP] = max(0, min(acp.MAX_FLAP, U_trim[IDX_FLAP] + flap_cmd_dn - flap_cmd_up))
     U_trim[IDX_FLAP] = U[IDX_FLAP]
     U[IDX_BRAKE] = float(brake_applied)
     U[IDX_GEAR] = U_trim[IDX_GEAR] # gear command is lever state

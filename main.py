@@ -164,9 +164,9 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         U0=np.array([0.0, 0.0, 0.0, 0.0, 0.0, flap_pos, gear, 0.0, 0.0])
 
     # interpolate high lift devices effect
-    dcl_dcd_dcm_dalpha = physics.array_interp(flap_pos, HIGH_LIFT_COEFFS, MAX_FLAP)
+    dcl_dcd_dcm_dalpha = physics.array_interp(flap_pos, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
     # interpolate for landing gear delta CD
-    ldg_dcd = physics.array_interp(gear, LDG_DCD, MAX_LDG)
+    ldg_dcd = physics.array_interp(gear, acp.LDG_DCD, acp.MAX_LDG)
     dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
 
     # initialize integrators
@@ -204,7 +204,7 @@ def compile_numba_functions(acp:jitclass)->None:
 
         
         # 1. Physics Core
-        _ = physics.array_interp(0, HIGH_LIFT_COEFFS, MAX_FLAP)
+        _ = physics.array_interp(0, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
         _ = physics.control_sat(U, acp)
         _ = physics.control_norm(U, acp)
         _ = physics.update_actuators(U, U, 0.01, np.ones(9))
@@ -218,7 +218,7 @@ def compile_numba_functions(acp:jitclass)->None:
         _ = physics.latlonh_dot_wrapper(t, X, NED, lat, h)
         _ = physics.ss_integrator(t, X, U, rho, h, dcl, dcd, dcm, dalpha, acp)
         _ = physics.latlonh_int(t, latlonh0, NED)
-        _ = physics.calc_ground_effect(h)
+        _ = physics.calc_ground_effect(h, acp)
 
 
         # 2. Environment
@@ -229,7 +229,6 @@ def compile_numba_functions(acp:jitclass)->None:
         _ = env.latlonh_dot(np.array([10.,0.,0.]), 0.0, 0.0)
         _ = env.WGS84_MN(lat)
         _ = env.get_rho(h)
-        _ = env.get_AGL(latlonh0, h, 0.0)
         
         #print(' Done.')
 
@@ -329,10 +328,10 @@ if __name__ == "__main__":
 
     try:
         # Unpack the dictionary into global variables
-        consts = load_aircraft_parameters(AIRCRAFT_CONFIG_FILE, joy_name)
+        #consts = load_aircraft_parameters(AIRCRAFT_CONFIG_FILE, joy_name)
         #####################################
         # DEBUG ONLY
-        consts2, acp = load_aircraft_parameters2(AIRCRAFT_CONFIG_FILE, joy_name)
+        consts, acp = load_aircraft_parameters2(AIRCRAFT_CONFIG_FILE, joy_name)
         #####################################
         globals().update(consts)
         joy.initialize_constants(consts) # send constants to joystick function as well
@@ -642,7 +641,7 @@ if __name__ == "__main__":
 
                 # -- Inputs & Actuators
                 current_throttle = [U_trim[IDX_THR1], U_trim[IDX_THR2]] # keep track of throttle to zero-out the trim bias
-                U_trim, U1, exit_signal = joy.get_joy_inputs(this_joy, joy_events, U1, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS)
+                U_trim, U1, exit_signal = joy.get_joy_inputs(this_joy, joy_events, U1, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS, acp)
 
                 # U_trim is the manual control inputs (as the joystick is moved)
                 # U1 is the trim state, or the zero input values for each control.
@@ -664,7 +663,7 @@ if __name__ == "__main__":
                 # ground spoiler arm/disarm state is passaed through U1[IDX_GNDSP]
                 # if spoilers are armed and we are on ground, set ground spoilers to open
                 if (physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m, acp)) and (U1[IDX_GNDSP] == 1)):
-                    U_trim[IDX_GNDSP] = GND_SPOILERS_DCL # 40% lift dump
+                    U_trim[IDX_GNDSP] = acp.GND_SPOILERS_DCL # 40% lift dump
                 else:
                     U_trim[IDX_GNDSP] = 0.0 # close
                 
@@ -686,11 +685,11 @@ if __name__ == "__main__":
 
                 # Interpolate for high lift devices influence
                 #hi_lift = high_lift_interp(U_actual[IDX_FLAP])
-                dcl_dcd_dcm_dalpha = physics.array_interp(U_actual[IDX_FLAP], HIGH_LIFT_COEFFS, MAX_FLAP)
+                dcl_dcd_dcm_dalpha = physics.array_interp(U_actual[IDX_FLAP], acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
 
 
                 # interpolate for landing gear delta CD
-                ldg_dcd = physics.array_interp(U_actual[IDX_GEAR], LDG_DCD, MAX_LDG)
+                ldg_dcd = physics.array_interp(U_actual[IDX_GEAR], acp.LDG_DCD, acp.MAX_LDG)
                 dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
 
 
