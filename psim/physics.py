@@ -29,11 +29,12 @@ def array_interp(x:float, data_array:np.array, data_array_len:int) -> np.array:
     interpolates between the two closest data points
     returns the interpolated array
     '''
+    local_data_array = np.copy(data_array)
     x = max(0.0, min(float(data_array_len), x))
     idx = int(x)
     frac = x - idx
-    if idx >= data_array_len: return data_array[data_array_len]
-    return data_array[idx] + (data_array[idx+1] - data_array[idx]) * frac 
+    if idx >= data_array_len: return local_data_array[data_array_len]
+    return local_data_array[idx] + (local_data_array[idx+1] - local_data_array[idx]) * frac
 
 
 # ############################################################################
@@ -346,7 +347,7 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
     # CL - wing + body
     # RCAM modified to include dalpha and dcl and dgsp
     if (alpha + dalpha) <= acp.ALPHA_SWITCH:
-        CL_wb = acp.N * (alpha - acp.ALPHA_L0 + dalpha) * (1 - dgsp)
+        CL_wb = acp.N * (alpha - acp.ALPHA_L0 + dalpha) * (1 - dgsp) + dcl
     else: 
         CL_wb = (acp.A3 * (alpha + dalpha)**3 + acp.A2 * (alpha + dalpha)**2 + acp.A1 * (alpha + dalpha) + acp.A0) * (1 - dgsp) + dcl
 

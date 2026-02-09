@@ -331,6 +331,7 @@ if __name__ == "__main__":
         #consts = load_aircraft_parameters(AIRCRAFT_CONFIG_FILE, joy_name)
         #####################################
         # DEBUG ONLY
+        
         consts, acp = load_aircraft_parameters2(AIRCRAFT_CONFIG_FILE, joy_name)
         #####################################
         globals().update(consts)
@@ -634,6 +635,7 @@ if __name__ == "__main__":
             # get clock
             start = time.perf_counter()
 
+
             if run_sim_loop:
 
                 #pygame.event.pump() # More efficient than event.get() if just reading axes
@@ -686,7 +688,6 @@ if __name__ == "__main__":
                 # Interpolate for high lift devices influence
                 #hi_lift = high_lift_interp(U_actual[IDX_FLAP])
                 dcl_dcd_dcm_dalpha = physics.array_interp(U_actual[IDX_FLAP], acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
-
 
                 # interpolate for landing gear delta CD
                 ldg_dcd = physics.array_interp(U_actual[IDX_GEAR], acp.LDG_DCD, acp.MAX_LDG)
@@ -832,7 +833,7 @@ if __name__ == "__main__":
                     #print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={dcl_dcd_dcm_dalpha}, ALPHA={internals[1]}, CL={internals[3]}')
                     #print(f'ldg_pos: {U_actual[IDX_GEAR]}, ldg dcd: {ldg_dcd}, gnd_sp_armed? {U1[IDX_GNDSP]}, gnd_spoilers_dcl: {U_actual[IDX_GNDSP]}')
                     #print(f'U_norm: {control_norm(U_actual)}')
-                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {U_trim[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpoilerArmed={int(U1[IDX_GNDSP])}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={-body_accels[2]/G:.2f}, RADALT={current_AGL_m*M2FT:.0f}ft')
+                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {U_trim[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpoilerArmed={int(U1[IDX_GNDSP])}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={-body_accels[2]/G:.2f}, RADALT={current_AGL_m*M2FT:.0f}ft, ds={dcl_dcd_dcm_dalpha}')
                     last_frame_time = this_AC_int.t
                 #################################################################################################################################################################
 
@@ -845,7 +846,8 @@ if __name__ == "__main__":
                 prev_dt = dt
                 dt = 0
                 run_sim_loop = False
-
+            
+            
             #check/set frame triggers
             if fg_time_adder >= fgdt:
                 fg_time_adder = 0

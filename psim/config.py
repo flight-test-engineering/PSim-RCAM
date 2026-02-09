@@ -379,13 +379,18 @@ def load_aircraft_parameters2(filepath: str, joy_name: str|None) -> (dict, jitcl
     # adm multiplier for tail dynamic downwash response wrt pitch rate
     # (TP-088-3, p. 15, eq 2.28)
     acp.EPSILON_DOT = ac['htail_coeffs']['epsilon_dot'] 
+
     # ... high lift coefficients ...
     # key: delta_CD, delta_CD, delta_CM, delta_alpha
     high_lift_dict = ac['high_lift_coeffs']
     acp.HIGH_LIFT_COEFFS = np.array([high_lift_dict[str(i)] for i in range(len(high_lift_dict))])
+    
+    # adjust delta_alpha to radians
     for i in range(acp.HIGH_LIFT_COEFFS.shape[0]):
         acp.HIGH_LIFT_COEFFS[i][3] = acp.HIGH_LIFT_COEFFS[i][3] * DEG2RAD # RCAM model uses alpha in radians
+    
     acp.MAX_FLAP = int(acp.HIGH_LIFT_COEFFS.shape[0] - 1)
+    
     # ... landing gear drag increase ...
     ldg_drag_dict = ac['landing_gear_drag']
     acp.LDG_DCD = np.array([ldg_drag_dict[str(i)] for i in range(len(ldg_drag_dict))])   
