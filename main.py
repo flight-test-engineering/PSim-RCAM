@@ -1,4 +1,4 @@
-# FGROOT = /usr/share/games/flightgear
+# FG_ROOT = /home/XXXX/.fgfs/fgdata_2024_1
 
 # DRI_PRIME=1 fgfs --airport=SBGP  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/NTPS.xml
 # DRI_PRIME=1 fgfs --airport=LOWI  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/fte.xml 2>/dev/null
@@ -90,11 +90,9 @@ import multiprocessing as mp
 
 from psim.constants import *
 from psim.config import load_aircraft_parameters
-#################################################
-# DEBUG ONLY
-from psim.config import load_aircraft_parameters2
+
 from numba.experimental import jitclass
-################################################
+
 import psim.environment as env
 import psim.propulsion as prop
 import psim.helpers as helpers
@@ -106,7 +104,6 @@ import psim.physics as physics
 
 
   
-
 
 # ############################################################################
 # Model Initialization
@@ -206,7 +203,6 @@ def compile_numba_functions(acp:jitclass)->None:
         # 1. Physics Core
         _ = physics.array_interp(0, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
         _ = physics.control_sat(U, acp)
-        _ = physics.control_norm(U, acp)
         _ = physics.update_actuators(U, U, 0.01, np.ones(9))
         _ = physics.calculate_gear_compression(X, h, acp)
         _ = physics.get_air_ground_state(np.ones(3))
@@ -231,6 +227,7 @@ def compile_numba_functions(acp:jitclass)->None:
         _ = env.get_rho(h)
         
         #print(' Done.')
+        logger.info('[compile_numba_functions] ...done compiling.')
 
 
 # ############################################################################
@@ -328,12 +325,9 @@ if __name__ == "__main__":
 
     try:
         # Unpack the dictionary into global variables
-        #consts = load_aircraft_parameters(AIRCRAFT_CONFIG_FILE, joy_name)
-        #####################################
-        # DEBUG ONLY
         
-        consts, acp = load_aircraft_parameters2(AIRCRAFT_CONFIG_FILE, joy_name)
-        #####################################
+        consts, acp = load_aircraft_parameters(AIRCRAFT_CONFIG_FILE, joy_name)
+
         globals().update(consts)
         joy.initialize_constants(consts) # send constants to joystick function as well
         physics.initialize_constants(consts) # send to physics module as well
@@ -367,7 +361,7 @@ if __name__ == "__main__":
     terrain_shared_data = {'ground_alt': 0.0}
 
 ##########################################################################
-    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA', 'dE', 'dR', 'dT1', 'dT2', 'flap_pos', 'gear_pos', 'dgsp', 'brake']
+    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA_actual', 'dE_actual', 'dR_actual', 'dT1_actual', 'dT2_actual','dA_cmd', 'dE_cmd', 'dR_cmd', 'dT1_cmd', 'dT2_cmd', 'flap_pos', 'gear_pos', 'dgsp', 'brake']
     internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz']
     engine_header = []
     for eng_prefix in ['E1', 'E2']:
@@ -476,6 +470,7 @@ if __name__ == "__main__":
 
 ##############################################################################
     # Numba/JIT warm-up
+    
     compile_numba_functions(acp)
 
 ###########################################################################
@@ -505,15 +500,16 @@ if __name__ == "__main__":
     current_alt_m = INIT_ALT_FT * FT2M # m
     current_latlon_rad = INIT_LATLON_DEG
     current_AGL_m = env.get_AGL(INIT_LATLON_DEG, current_alt_m, SIM_VISUAL_OFFSET)
+
     
     # frame variables
     frame_count = 0
-    last_frame_time = 0 # holds the time from last 100 frame to calc frame rate at print statement
 
     fgdt = 1.0 / FG_OUTPUT_LOOP_HZ # (s) fg frame period
     simdt = 1 / SIM_LOOP_HZ # (s) desired simulation time step
     deckdt = 1 / DECK_LOOP_HZ
     datalogdt = 1 / DATA_LOGGING_HZ
+
     
     # semaphores
     send_frame_trigger = False
@@ -626,9 +622,7 @@ if __name__ == "__main__":
         logger.info('[main] Adding engine deck initial job...')
         new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), U_trim[IDX_THR1], U_trim[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
         jobs_queue.put(new_job, block=False)
-        # need to give time for deck to run
-        time.sleep(.2)
-        #print(' done.')
+
 
         ##### SIMULATION LOOP #####
         while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
@@ -670,15 +664,11 @@ if __name__ == "__main__":
                     U_trim[IDX_GNDSP] = 0.0 # close
                 
 
-                U_trim = physics.control_sat(U_trim, acp) # saturate commands
+                #U_trim = physics.control_sat(U_trim, acp) # saturate commands
 
-
-                # Calculate the time step for this specific loop iteration
-                # If this is the first step, prev_dt might be 0, so guard against it
-                actuator_dt = dt if dt > 0 else simdt 
                 
                 # Update the physical position of the surfaces with actuator dynamics
-                U_actual = physics.update_actuators(U_trim, U_actual, actuator_dt, acp.ACT_TAU)
+                U_actual = physics.update_actuators(U_trim, U_actual, dt, acp.ACT_TAU)
 
 
                 # Update thrust values (Engine deck results)
@@ -811,7 +801,7 @@ if __name__ == "__main__":
                         for idx, p in enumerate(ENG_LOG_PARAMETERS):
                             eng1_states[idx] = eng_vals[0][p]
                             eng2_states[idx] = eng_vals[1][p]
-                    data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_trim, internals, eng1_states, eng2_states)))
+                    data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED, U_actual, U_trim, internals, eng1_states, eng2_states)))
                     t_vector_collector.append(this_AC_int.t)
                     datalog_trigger = False
 
@@ -821,20 +811,7 @@ if __name__ == "__main__":
 
                 # print out stuff every so often
                 if (frame_count % 100) == 0:
-                    #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, theta:{this_AC_int.y[7]:0.6f}, Elev:{this_joy.get_axis(1) * elev_factor}')
-                    #print(f'frame: {frame_count}, time: {this_AC_int.t:0.2f}, lat:{current_latlon_rad[0]:0.6f}, lon:{current_latlon_rad[1]:0.6f}')
-                    #print(f'time: {this_AC_int.t:0.2f}, N:{current_NED[0]:0.3f}, E:{current_NED[1]:0.3f}, D:{current_NED[2]:0.3f}')
-                    #print(f'time: {this_AC_int.t:0.1f}s, dt: {this_AC_int.t - last_frame_time:0.2f}s Vcas_2fg:{my_fgFDM.get("vcas"):0.1f}KCAS, U_trim={U_trim[3]:0.3f},{U_trim[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}ft, alt={current_alt_m*M2FT:0.1f}, gnd_sp_arm:{gnd_spoilers_armed}')
-                    #print(f'fr#:{frame_count}, time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={e1_thrust:0.0f},{e2_thrust:0.0f}N, AGL={current_AGL_m*M2FT:0.0f}, {open_gnd_spoiler=}, {gnd_spoilers_armed=}, {toggle_gnd_spoiler_debounce=}, {U_trim[IDX_GNDSP]=}')
-                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_trim={U_trim[3]:0.3f},{U_trim[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GNDSP={U1[IDX_GNDSP]:0.4f}, UmanGNDSP={U_trim[IDX_GNDSP]:0.4f}, UactualGNDSP={U_actual[IDX_GNDSP]}')
-                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_trim={U_trim[3]:0.3f},{U_trim[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_trim[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}')
-                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, U_trim={U_trim[3]:0.3f},{U_trim[4]:0.3f}, U1={U1[3]:0.3f},{U1[4]:0.3f}, E12T={U_actual[IDX_THR1]:0.0f},{U_actual[IDX_THR2]:0.0f}N, Flap_U1={U1[IDX_FLAP]}, U1THR1={U1[IDX_THR1]:0.4f}, UmanTHR1={U_trim[IDX_THR1]:0.4f}, UactualTHR1={U_actual[IDX_THR1]}')
-                    #print(f'time: {this_AC_int.t:0.1f}s, alt={current_alt_m*M2FT:0.0f}, E12T={U_actual[IDX_THR1]:0.0f}, U1GEAR={U1[IDX_GEAR]:0.4f}, UmanGEAR={U_trim[IDX_GEAR]:0.4f}, UactualGEAR={U_actual[IDX_GEAR]}, U1FLAP={U1[IDX_FLAP]:0.4f}, UmanFLAP={U_trim[IDX_FLAP]:0.4f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={hi_lift}')
-                    #print(f'time: {this_AC_int.t:0.1f}s, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f}, UactualFLAP={U_actual[IDX_FLAP]}, HLDeltas={dcl_dcd_dcm_dalpha}, ALPHA={internals[1]}, CL={internals[3]}')
-                    #print(f'ldg_pos: {U_actual[IDX_GEAR]}, ldg dcd: {ldg_dcd}, gnd_sp_armed? {U1[IDX_GNDSP]}, gnd_spoilers_dcl: {U_actual[IDX_GNDSP]}')
-                    #print(f'U_norm: {control_norm(U_actual)}')
-                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {U_trim[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpoilerArmed={int(U1[IDX_GNDSP])}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={-body_accels[2]/G:.2f}, RADALT={current_AGL_m*M2FT:.0f}ft, ds={dcl_dcd_dcm_dalpha}')
-                    last_frame_time = this_AC_int.t
+                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {U_trim[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpArmed={int(U1[IDX_GNDSP])},Elev={U1[IDX_ELE]:.3f}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={-body_accels[2]/G:.2f}, RADALT={current_AGL_m*M2FT:.0f}ft')
                 #################################################################################################################################################################
 
                 # reset integrator timestep counter
@@ -851,7 +828,7 @@ if __name__ == "__main__":
             #check/set frame triggers
             if fg_time_adder >= fgdt:
                 fg_time_adder = 0
-                dt = sim_time_adder
+                #dt = sim_time_adder
                 send_frame_trigger = True
 
             # check/set engine calc trigger
