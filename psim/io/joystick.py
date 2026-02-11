@@ -12,7 +12,8 @@ def initialize_constants(params: dict):
     """
     globals().update(params)
 
-def get_joy_inputs(joystick, joy_events, U_trim, fr, trim_params, joy_factors, acp):
+def get_joy_inputs(joystick: pygame.joystick, joy_events: pygame.event, U_trim: np.ndarray, fr:float,
+                  trim_params: np.ndarray, joy_factors: np.ndarray, acp:jitclass):
     '''
     function that will read joystick positions and adjust controls:
     1. joy will change controls on top of trim point

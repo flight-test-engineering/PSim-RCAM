@@ -1,17 +1,3 @@
-# FG_ROOT = /home/XXXX/.fgfs/fgdata_2024_1
-
-# DRI_PRIME=1 fgfs --airport=SBGP  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/NTPS.xml
-# DRI_PRIME=1 fgfs --airport=LOWI  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/fte.xml 2>/dev/null
-
-
-# FG with JSBSim:
-# DRI_PRIME=1 fgfs --airport=SBGP  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/  --enable-hud  --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning
-# DRI_PRIME=1 fgfs --airport=KSFO --runway=28R  --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs/Aircraft/org.flightgear.fgaddon.stable_2020/Aircraft/757-200  --enable-hud  --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning
-
-# "v" muda o visual
-# https://wiki.flightgear.org/Command_line_options
-
-
 '''
 Partial Python implementation of the non-linear flight dynamics model proposed by:
 Group for Aeronautical Research and Technology Europe (GARTEUR) - Research Civil Aircraft Model (RCAM)
@@ -31,7 +17,7 @@ The program runs the integration loop at a target pf 400Hz, adjusting the integr
 It uses Numba to speed up the main functions involved in the integration loop
 
 Output is sent to FlightGear (FG), over UDP, at a reduced frame rate (60)
-The FG interface uses the class implemented by Andrew Tridgel (fgFDM):
+The FG interface uses code based on the class implemented by Andrew Tridgel (fgFDM):
 https://github.com/ArduPilot/pymavlink/blob/master/fgFDM.py
 
 currently, the UDP address is set to the local machine.
@@ -310,14 +296,10 @@ if __name__ == "__main__":
         this_joy.init()
         # --- FLUSH GHOST INPUTS ---
         # Pump the event loop multiple times to clear buffered events 
-        # from the previous crash.
-        #print("Flushing Joystick Buffer...", end="", flush=True)
         logger.info("[main] Flushing Joystick Buffer...")
         for _ in range(15):
             pygame.event.pump()
             time.sleep(0.01) # Small delay to allow OS driver to poll
-            #print(".",end="")
-        #print(" done.")
         # --------------------------
 
         joy_name = this_joy.get_name()
