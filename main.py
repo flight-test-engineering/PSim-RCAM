@@ -52,6 +52,8 @@ TODO:
 # imports
 import time
 import numpy as np
+from numba.experimental import jitclass # dataclass for FDM
+
 
 
 import matplotlib.pyplot as plt
@@ -73,20 +75,17 @@ import queue
 # multiprocessing for engine deck
 import multiprocessing as mp
 
-
-from psim.constants import *
-from psim.config import load_aircraft_parameters
-
-from numba.experimental import jitclass
-
-import psim.environment as env
-import psim.propulsion as prop
-import psim.helpers as helpers
-from psim.helpers import logger # use the logger without the helper namespace across all modules
-import psim.io.joystick as joy
-import psim.io.network as net
-from psim.io.fgFDM import * # FlightGear comm class
-import psim.physics as physics
+# module imports
+from psim.constants import *                        # basic global constants
+from psim.config import load_aircraft_parameters    # reads json and loads parameters
+import psim.environment as env                      # ISA atmosphere and geodsy
+import psim.propulsion as prop                      # engine deck
+import psim.helpers as helpers                      # plotting and helpers
+from psim.helpers import logger                     # use the logger without "helper" namespace
+import psim.io.joystick as joy                      # joystcik stuff
+import psim.io.network as net                       # FG network comms
+from psim.io.fgFDM import *                         # FlightGear comm class
+import psim.physics as physics                      # actual FDM math is here
 
 
   
@@ -117,8 +116,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     alt_m = altitude * FT2M
     rho_trim = env.get_rho(alt_m)
 
-    #print()
-    #print(f'initializing model with {VA_t*MS2KT:.0f} KIAS, {altitude} ft, rho={rho_trim:.4f} kg/m3, flaps={flap_pos}')
+
     logger.info(f'[initialize] initializing model with {VA_t*MS2KT:.0f} KIAS, {altitude} ft, rho={rho_trim:.4f} kg/m3, flaps={flap_pos}')
     
 
@@ -130,17 +128,11 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         res4, res4_status = physics.trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
                                     phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=height,
                                     flap_pos=flap_pos, gear=gear, acp=acp)
-        # print()
-        # print('Trimming',res4_status)
-        # print()
         logger.info(f'[initialize] Trimming {res4_status}')
         X0 = res4[:9] # separate states and controls
         U0 = np.concatenate((res4[9:], np.array([flap_pos, gear, 0.0, 0.0]))) # add back ground spoiler and brakes to control vector
         logger.debug(f'initial states: {X0}')
         logger.debug(f'initial inputs: {U0}')
-        # print(f'initial states: {X0}')
-        # print(f'initial inputs: {U0}')
-        # print()
     else:
         # we are on the ground
         X0=np.array([VA_t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, INIT_HDG_DEG * DEG2RAD])
@@ -148,12 +140,14 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
 
     # interpolate high lift devices effect
     dcl_dcd_dcm_dalpha = physics.array_interp(flap_pos, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
+
     # interpolate for landing gear delta CD
     ldg_dcd = physics.array_interp(gear, acp.LDG_DCD, acp.MAX_LDG)
     dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
 
     # initialize integrators
-    AC_integrator = physics.ss_integrator(t0, X0, U0, rho_trim, height, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp)
+    AC_integrator = physics.ss_integrator(t0, X0, U0, rho_trim, height, dcl_dcd_dcm_dalpha[IDX_DCL], 
+                                            dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp)
     
     NED0 = env.NED(X0[:3], X0[6:]) #uvw and phithetapsi
     
@@ -167,7 +161,6 @@ def compile_numba_functions(acp:jitclass)->None:
         Runs Numba functions with dummy data to force JIT compilation 
         before the real-time loop begins.
         '''
-        #print('Compiling Numba functions (Warm-up)...', end="")
         logger.info('[compile_numba_functions] Compiling Numba functions (Warm-up)...')
         
         # Dummy Data
@@ -212,7 +205,6 @@ def compile_numba_functions(acp:jitclass)->None:
         _ = env.WGS84_MN(lat)
         _ = env.get_rho(h)
         
-        #print(' Done.')
         logger.info('[compile_numba_functions] ...done compiling.')
 
 
@@ -249,38 +241,33 @@ if __name__ == "__main__":
     
     GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
     INIT_HDG_DEG = 82.0 # DEG
-    # Lat/Lon
+    # Lat/Lon - alternate locations
     #INIT_LATLON_DEG = np.array([37.6213, -122.3790]) #in degrees - the func initialize transforms to radians internally
     #INIT_LATLON_DEG = np.array([-21.7632, -48.4051]) #in degrees - SBGP
     #INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
     # wind
-    WIND_NED_MPS = np.array([0, 0, 0]) # (m/s), NED
+    WIND_NED_MPS = np.array([0, 0, 0]) # average wind (m/s), NED
     WIND_STDDEV_MPS = np.array([1, 1, 0]) # wind standard deviation, NED
 
 ###########################################################################
     # SIMULATION OPTIONS
-    SIM_TOTAL_TIME_S = 10 * 60 # (s) total simulation time
-    SIM_LOOP_HZ = 400 # (Hz) simulation loop frame rate throttling
-    FG_OUTPUT_LOOP_HZ = 60 # (Hz) frames per second to be sent out to FlightGear AND for recording data
-    DECK_LOOP_HZ = 10 # (Hz) fra1me rate to calculate engine deck
-    SIM_VISUAL_OFFSET = 0 # Simulator Z-Axis Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
+    SIM_TOTAL_TIME_S = 10 * 60  # (s) total simulation time
+    SIM_LOOP_HZ = 400           # (Hz) simulation loop frame rate throttling
+    FG_OUTPUT_LOOP_HZ = 60      # (Hz) frames per second to be sent out to FlightGear AND for recording data
+    DECK_LOOP_HZ = 10           # (Hz) fra1me rate to calculate engine deck
+    SIM_VISUAL_OFFSET = 0       # Simulator Z-Axis Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
     USE_FG_AS_TERRAIN_DB = True # if False, use SRTM database instead
-    DATA_LOGGING_HZ = 10 # frames per second to be logged
+    DATA_LOGGING_HZ = 10        # frames per second to be logged
     ENG_LOG_PARAMETERS = ['Fn', 'Fg', 'F_ram', 'TSFC', 'Wf', 'N1','N2']
 
-    RESULTS_FILE = 'test_data.csv' # name of file where data will be saved
-    LOG2DISK_INTERVAL_S = 30.0 # interval in seconds to save data to disk
+    RESULTS_FILE = 'test_data.csv'  # name of file where data will be saved
+    LOG2DISK_INTERVAL_S = 30.0      # interval in seconds to save data to disk
 
     
 
 ###########################################################################
     # Load Aircraft Parameters into Global Scope
     #
-    # Numba's JIT compiler captures global variables when a function is first
-    # compiled. By loading our parameters into the global scope, we make them
-    # available to the performance-critical functions without needing to pass 
-    # them as arguments on every call.
-
     # we first need the joystick name, to load the correct parameters...
     # JOYSTICK INIT AND CHECK
     # Explicitly restart the joystick module to clear internal SDL flags
@@ -314,7 +301,6 @@ if __name__ == "__main__":
         physics.initialize_constants(consts) # send to physics module as well
     except FileNotFoundError:
         logger.error("[main] ERROR: `rcam_parameters.json` not found. Please provide a valid config file.")
-        #print("ERROR: `rcam_parameters.json` not found. Please provide a valid config file.")
         sys.exit(1)
     except (KeyError, json.JSONDecodeError) as e:
         logger.error(f"[main] ERROR: Invalid format in {AIRCRAFT_CONFIG_FILE}: {e}")
@@ -323,40 +309,37 @@ if __name__ == "__main__":
 
     if OFFLINE:
         if joy_name == None:
-            #print()
-            #print('Will run OFFLINE simulation, no joystick detected!')
             logger.info('[main] Will run OFFLINE simulation, no joystick detected!')
         else:
-            #print()
-            #print(f'Will run OFFLINE simulation, joystick model {joy_name} not in JSON config file!')
             logger.warning(f'[main] Will run OFFLINE simulation, joystick model {joy_name} not in JSON config file!')
     else:
-        #print()
-        #print(f'found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
         logger.info(f'[main] found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
 
 
 
 ###########################################################################
     # TERRAIN SHARED DATA
-    terrain_shared_data = {'ground_alt': 0.0}
+    terrain_shared_data = {'ground_alt': 0.0} # this variable receives terrain height from the FG thread
 
 ##########################################################################
-    internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz']
-    internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz']
-    internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz']
+
+    # header for saving data to disk
     signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA_actual', 
                         'dE_actual', 'dR_actual', 'dT1_actual', 'dT2_actual','flap_pos_actual', 'gear_pos_actual', 'dgsp_actual', 'brake_actual',
                         'dA_cmd', 'dE_cmd', 'dR_cmd', 'dT1_cmd', 'dT2_cmd', 'flap_pos_cmd', 'gear_pos', 'dgsp', 'brake']
-    internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz']
+    
+    internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz'] # internal FDM states
     engine_header = []
     for eng_prefix in ['E1', 'E2']:
         for param in ENG_LOG_PARAMETERS:
             engine_header.append(eng_prefix+param)
+
     full_header = signals_header + internals_header + engine_header
 
-
+############################################
 #### MULTI THREADING / MULTI PROCESSING ####
+############################################
+
 ###########################################################################
     # FlightGear Threads and Engine Deck Process Initialization
     # we only start the network and multiprocessing if doing online sim, at least for now
@@ -364,11 +347,10 @@ if __name__ == "__main__":
     ############################################################################
         # FLIGHTGEAR SOCKS
         # OUTGOING data (from Python to FG)
-        # Open network sockets to communicate with FlightGear
         UDP_IP1 = "127.0.0.1" # set to localhost
         UDP_PORT1 = 5500
         
-        UDP_IP2 = "192.168.0.26" # set to a remote computer on the same network
+        UDP_IP2 = "192.168.0.26" # set to a remote computer, for additional visuals
         UDP_PORT2 = 5501
 
         sock1 = socket.socket(socket.AF_INET, # Internet
@@ -389,11 +371,9 @@ if __name__ == "__main__":
         )
         try:
             tx_thread.start()
-            #print("... started!")
             logger.info('[main]...started')
         except Exception as e:
             logging.error(f"[main]...Error in network thread: {e}")
-            #print(f"...Error in network thread: {e}")
             exit()
 
         # INCOMING DATA (from FG to Python)
@@ -454,58 +434,61 @@ if __name__ == "__main__":
     )
     disk_log_thread.start()
 
+
 ##############################################################################
     # Numba/JIT warm-up
+    # on first run, Numba needs to compile functions
+    # this takes time and creates stutter
+    # so we warm it up before we start crunching
     
     compile_numba_functions(acp)
 
 ###########################################################################
     # SIMULATION VARIABLES INITIALIZATION
-    data_collector, t_vector_collector = [], [] # data collectors
+    data_collector, t_vector_collector = [], [] # data collectors, for saving data to disk
     
-    prev_uvw = np.array([0,0,0])
+    prev_uvw = np.array([0,0,0]) # velocity vectors
     current_uvw = np.array([0,0,0])
 
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, trim_point, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, 
                                                             psi_t=INIT_HDG_DEG, height=100.0, flap_pos=FLAPS_INIT, acp=acp)
     trim_point[IDX_GEAR] = INIT_GEAR # controls for the trimmed state
-    inceptor_cmd = trim_point.copy() # we set U_trim (for trim state, or steady state of the controls) as a copy of the trimmed control states first.
+    inceptor_cmd = trim_point.copy() # we set inceptor_cmd as a copy of the trimmed control states first.
 
 
     # Initialize Actual Surface Positions
-    # We start with actual = commanded (assuming stable trim)
-    U_actual = trim_point.copy() # U_actual will be the controls after applying the actuator dynamics
+    # We start with actual = trimmed state (assuming stable trim)
+    U_actual = trim_point.copy() # U_actual will be the controls vector after applying actuator dynamics
 
-    e1_thrust = trim_point[3]
+    e1_thrust = trim_point[3] # trimming routine returns thrust, not thrust lever position
     e2_thrust = trim_point[4]
 
 
     # aircraft position variables
     current_alt_m = INIT_ALT_FT * FT2M # m
-    current_latlon_rad = INIT_LATLON_DEG
+    current_latlon_rad = INIT_LATLON_DEG * DEG2RAD
     current_AGL_m = env.get_AGL(INIT_LATLON_DEG, current_alt_m, SIM_VISUAL_OFFSET)
 
     
     # frame variables
     frame_count = 0
 
-    fgdt = 1.0 / FG_OUTPUT_LOOP_HZ # (s) fg frame period
+    fgdt = 1.0 / FG_OUTPUT_LOOP_HZ # (s) fg frame OUTPUT period
     simdt = 1 / SIM_LOOP_HZ # (s) desired simulation time step
-    deckdt = 1 / DECK_LOOP_HZ
-    datalogdt = 1 / DATA_LOGGING_HZ
+    deckdt = 1 / DECK_LOOP_HZ # (s) engine deck call interval
+    datalogdt = 1 / DATA_LOGGING_HZ # (s) data logging time interval
 
     
     # semaphores
-    send_frame_trigger = False
-    run_sim_loop = False # this is a semaphore. it will wait for the clock to reach the next "simdt" and run the simulation
+    send_frame_trigger = False # send frame to FG
+    run_sim_loop = False # main simulation semaphore. it will wait for the clock to reach the next "simdt" and run the simulation
     calc_eng_trigger = True
     datalog_trigger = True
-    is_first_data_write = True
     
     # time tracking
     sim_time_adder, fg_time_adder = 0.0, 0.0 # counts the time between integration steps to trigger next simulation frame and FG dispatch
-    eng_time_adder = 0.0 # loop to calculate engine
+    eng_time_adder = 0.0 # timer to calculate engine deck
     datalog_time_adder = 0.0
     log2disk_time_adder = 0.0
     
@@ -598,10 +581,8 @@ if __name__ == "__main__":
         inceptor_cmd[IDX_THR2] = trim_point[IDX_THR2]
 
         logger.info(f'[main] this is the inverse deck response: E1:{trim_point[IDX_THR1]:.4f}; E2:{trim_point[IDX_THR2]:.4f} % power')
-        #print()
 
-        # run deck preemptively
-        #print("Adding engine deck initial job...", end="")
+        # run deck preemptively, so we have data when we need it
         logger.info('[main] Adding engine deck initial job...')
         new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
         jobs_queue.put(new_job, block=False)
@@ -631,7 +612,6 @@ if __name__ == "__main__":
 
             if run_sim_loop:
 
-                #pygame.event.pump() # More efficient than event.get() if just reading axes
                 joy_events = pygame.event.get()
 
                 # -- Inputs & Actuators
@@ -669,13 +649,12 @@ if __name__ == "__main__":
                 # Update the physical position of the surfaces with actuator dynamics
                 U_actual = physics.update_actuators(inceptor_cmd, U_actual, dt, acp.ACT_TAU)
 
-
                 # Update thrust values (Engine deck results)
                 U_actual[IDX_THR1] = e1_thrust
-                U_actual[IDX_THR2] = e2_thrust
+                U_actual[IDX_THR2] = e2_thrust 
+
 
                 # Interpolate for high lift devices influence
-                #hi_lift = high_lift_interp(U_actual[IDX_FLAP])
                 dcl_dcd_dcm_dalpha = physics.array_interp(U_actual[IDX_FLAP], acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
 
                 # interpolate for landing gear delta CD
@@ -686,18 +665,20 @@ if __name__ == "__main__":
                 # -- Engines - multiprocessing
                 # if there are new deck values, fetch them,
                 # if not, keep what we have
+                # note, we need to keep this here, after the update thrust values above,
+                # otherwise, on engine cut, there is no dynamics
                 try:
                     eng_vals = results_queue.get(block=False) # block=False is equivalent to get_nowait()
                     if trim_point[IDX_THR1] < -0.5:
                         # TODO: make time constants variable???
                         e1_thrust = physics.update_actuators(-eng_vals[0]['F_ram'] * LBF2N, U_actual[IDX_THR1], 0.1, 1.5) # FOR NOW, FIXED TIME CONSTANT AND DT
+                        U_actual[IDX_THR1] = e1_thrust
                     else:
                         e1_thrust = eng_vals[0]['Fn'] * LBF2N # deck returns lbf, need to convert to N
-                    U_actual[IDX_THR1] = e1_thrust
-                    e2_thrust = eng_vals[1]['Fn'] * LBF2N
-                    U_actual[IDX_THR2] = e2_thrust
+                    e2_thrust = eng_vals[1]['Fn'] * LBF2N # engine 2 is always what the deck returns, no engine cut yet...
+                    U_actual[IDX_THR2] = e2_thrust 
                 except mp.queues.Empty:
-                    pass              
+                    pass             
 
 
                 # -------------------------------------------------------
@@ -774,17 +755,14 @@ if __name__ == "__main__":
                     # Trigger Engine Deck Calculation
                     on_ground = physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m, acp))
                     if jobs_queue.empty():
-                        #print(f"[Main Process] Triggering new engine calculation...{VA(current_uvw)*MS2KT:.2f}, {current_alt_m*M2FT:.1f}")
                         new_job = (current_alt_m*M2FT, ISA.Vt2M(env.VA(current_uvw)*MS2KT, current_alt_m*M2FT), inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2], on_ground, time.perf_counter())
                         try:
                             jobs_queue.put(new_job, block=False)
                             eng_time_adder = 0
                         except mp.queues.Full:
-                            #print("[Main Process] Engine Worker is busy, skipping this trigger.")
                             logger.warning("[Main Process] Engine Worker is busy, skipping this trigger.")
                             pass
                     else:
-                        #print("[Main Process] Engine Worker is still busy with a pending job, skipping this trigger.")
                         logger.warning("[Main Process] Engine Worker is still busy with a pending job, skipping this trigger.")
                         pass
                     calc_eng_trigger = False
@@ -841,17 +819,12 @@ if __name__ == "__main__":
 
             # check/set log2disk trigger
             if log2disk_time_adder >= LOG2DISK_INTERVAL_S:
-                #helpers.log_chunk_to_disk(RESULTS_FILE,
-                #np.array(t_vector_collector),
-                #np.array(data_collector),
-                #full_header,
-                #is_new_file=is_first_data_write
-                #)
                 disk_log_queue.put((np.array(t_vector_collector), np.array(data_collector)))
+                # zero out variables
                 t_vector_collector = []
                 data_collector = []
                 log2disk_time_adder = 0.0
-                is_first_data_write = False
+
 
 
             # parking lot
