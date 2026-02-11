@@ -361,7 +361,12 @@ if __name__ == "__main__":
     terrain_shared_data = {'ground_alt': 0.0}
 
 ##########################################################################
-    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA_actual', 'dE_actual', 'dR_actual', 'dT1_actual', 'dT2_actual','dA_cmd', 'dE_cmd', 'dR_cmd', 'dT1_cmd', 'dT2_cmd', 'flap_pos', 'gear_pos', 'dgsp', 'brake']
+    internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz']
+    internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz']
+    internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz']
+    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA_actual', 
+                        'dE_actual', 'dR_actual', 'dT1_actual', 'dT2_actual','flap_pos_actual', 'gear_pos_actual', 'dgsp_actual', 'brake_actual',
+                        'dA_cmd', 'dE_cmd', 'dR_cmd', 'dT1_cmd', 'dT2_cmd', 'flap_pos_cmd', 'gear_pos', 'dgsp', 'brake']
     internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz']
     engine_header = []
     for eng_prefix in ['E1', 'E2']:
@@ -828,7 +833,6 @@ if __name__ == "__main__":
             #check/set frame triggers
             if fg_time_adder >= fgdt:
                 fg_time_adder = 0
-                #dt = sim_time_adder
                 send_frame_trigger = True
 
             # check/set engine calc trigger
