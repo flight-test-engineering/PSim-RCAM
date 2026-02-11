@@ -322,7 +322,6 @@ if __name__ == "__main__":
 
         joy_name = this_joy.get_name()
 
-
     try:
         # Unpack the dictionary into global variables
         
