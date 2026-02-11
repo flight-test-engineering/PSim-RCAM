@@ -351,6 +351,9 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
     else: 
         CL_wb = (acp.A3 * (alpha + dalpha)**3 + acp.A2 * (alpha + dalpha)**2 + acp.A1 * (alpha + dalpha) + acp.A0) * (1 - dgsp) + dcl
 
+    # clip CL_wb (not original from RCAM)
+    if CL_wb < -1.0: CL_wb = -1.0
+
 
     # Ground Effect # not original from RCAM
     GE_cl_mult, GE_cd_mult = calc_ground_effect(h - acp.LG_MAIN_L_POS[IDX_MLG_Z], acp) # subtracting landing gear nominal height - might need adjustments
@@ -526,6 +529,8 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:
     else: 
         CL_wb = (acp.A3 * (alpha + dalpha)**3 + acp.A2 * (alpha + dalpha)**2 + acp.A1 * (alpha + dalpha) + acp.A0) * (1 - dgsp) + dcl
 
+    # clip CL_wb (not original from RCAM)
+    if CL_wb < -1.0: CL_wb = -1.0
 
     # Ground Effect # not original from RCAM
     GE_cl_mult, GE_cd_mult = calc_ground_effect(h - acp.LG_MAIN_L_POS[IDX_MLG_Z], acp) # subtracting landing gear nominal height - might need adjustments
