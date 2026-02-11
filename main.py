@@ -628,6 +628,18 @@ if __name__ == "__main__":
         new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), U_trim[IDX_THR1], U_trim[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
         jobs_queue.put(new_job, block=False)
 
+        print('Move joystick to start sim', end='')
+        joy_not_moved = True
+        while joy_not_moved:
+            dummy = this_joy.get_axis(JOY_PITCH_AXIS) 
+            pygame.event.pump()
+            if abs(dummy) < 0.05:
+                joy_not_moved = False
+                print('movement detecte! OK!')
+            else:
+                print(".", end='')
+                time.sleep(0.1)
+
 
         ##### SIMULATION LOOP #####
         while this_AC_int.t <= SIM_TOTAL_TIME_S and exit_signal == 0:
