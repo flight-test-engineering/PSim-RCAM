@@ -467,19 +467,18 @@ if __name__ == "__main__":
     current_uvw = np.array([0,0,0])
 
     # aircraft initialization (includes trimming)
-    this_AC_int, X_trim, U1, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, 
+    this_AC_int, X_trim, trim_point, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, 
                                                             psi_t=INIT_HDG_DEG, height=100.0, flap_pos=FLAPS_INIT, acp=acp)
-    # Vector U1 has the controls for the trimmed state
-    U1[IDX_GEAR] = INIT_GEAR
-    U_trim = U1.copy() # we set U_trim (for trim state, or steady state of the controls) as a copy of the trimmed control states first.
+    trim_point[IDX_GEAR] = INIT_GEAR # controls for the trimmed state
+    inceptor_cmd = trim_point.copy() # we set U_trim (for trim state, or steady state of the controls) as a copy of the trimmed control states first.
 
 
     # Initialize Actual Surface Positions
     # We start with actual = commanded (assuming stable trim)
-    U_actual = U1.copy() # U_actual will be the controls after applying the actuator dynamics
+    U_actual = trim_point.copy() # U_actual will be the controls after applying the actuator dynamics
 
-    e1_thrust = U1[3]
-    e2_thrust = U1[4]
+    e1_thrust = trim_point[3]
+    e2_thrust = trim_point[4]
 
 
     # aircraft position variables
@@ -525,9 +524,9 @@ if __name__ == "__main__":
         print(f'Offline sim time vector: {t_vector[0]:.2f}s to {t_vector[-1]:.2f}s')
 
         # create control inputs and set equal to trim
-        sim_U = np.zeros((U_trim.shape[0],t_vector.shape[0]))
+        sim_U = np.zeros((inceptor_cmd.shape[0],t_vector.shape[0]))
         for i in range(sim_U.shape[0]):
-            sim_U[i,:] = sim_U[i,:] + U_trim[i]
+            sim_U[i,:] = sim_U[i,:] + inceptor_cmd[i]
         
         # all doublets have zero as starting amplitude
         pitch_doublet = helpers.get_doublet(t_vector,t=5, duration=2, amplitude=0.2)
@@ -591,22 +590,20 @@ if __name__ == "__main__":
         # what comes out of the trimming function is thrust directly
         # for online sim, we can't use it
         # let's run the reverse deck to get the thrust lever angle:
-        logger.info(f'[main] running inverse deck with alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]:.0f} N')
-        #print(f'running inverse deck with alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {U1[3]:.0f} N')
+        logger.info(f'[main] running inverse deck with alt: {INIT_ALT_FT:.1f} ft, Mach: {ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT):.3f}, Thrust: {trim_point[3]:.0f} N')
 
-        U1[IDX_THR1] = prop.E1_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC'] # deck takes lbf
-        U1[IDX_THR2] = prop.E2_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
-        U_trim[IDX_THR1] = U1[IDX_THR1] # percent power
-        U_trim[IDX_THR2] = U1[IDX_THR2]
+        trim_point[IDX_THR1] = prop.E1_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC'] # deck takes lbf
+        trim_point[IDX_THR2] = prop.E2_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
+        inceptor_cmd[IDX_THR1] = trim_point[IDX_THR1] # percent power
+        inceptor_cmd[IDX_THR2] = trim_point[IDX_THR2]
 
-        #print(f'this is the inverse deck response: E1:{U1[IDX_THR1]:.4f}; E2:{U1[IDX_THR2]:.4f} % power')
-        logger.info(f'[main] this is the inverse deck response: E1:{U1[IDX_THR1]:.4f}; E2:{U1[IDX_THR2]:.4f} % power')
+        logger.info(f'[main] this is the inverse deck response: E1:{trim_point[IDX_THR1]:.4f}; E2:{trim_point[IDX_THR2]:.4f} % power')
         #print()
 
         # run deck preemptively
         #print("Adding engine deck initial job...", end="")
         logger.info('[main] Adding engine deck initial job...')
-        new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), U_trim[IDX_THR1], U_trim[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
+        new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
         jobs_queue.put(new_job, block=False)
 
 
@@ -638,39 +635,39 @@ if __name__ == "__main__":
                 joy_events = pygame.event.get()
 
                 # -- Inputs & Actuators
-                current_throttle = [U_trim[IDX_THR1], U_trim[IDX_THR2]] # keep track of throttle to zero-out the trim bias
-                U_trim, U1, exit_signal = joy.get_joy_inputs(this_joy, joy_events, U1, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS, acp)
+                current_throttle = [inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2]] # keep track of throttle to zero-out the trim bias
+                inceptor_cmd, trim_point, exit_signal = joy.get_joy_inputs(this_joy, joy_events, trim_point, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS, acp)
 
-                # U_trim is the manual control inputs (as the joystick is moved)
-                # U1 is the trim state, or the zero input values for each control.
+                # inceptor_cmd is the manual control inputs (as the joystick is moved)
+                # trim_point is the trim state, or the zero input values for each control.
                 
                 # for throtlle, initial trim state is always positive, so we washout if throttles move back
                 # if engine trim state is negative, it means engine is OFF
-                delta_throttle_1 = U_trim[IDX_THR1] - current_throttle[0] #we look only at #1 engine for simplicity
-                if delta_throttle_1 < 0 and U1[IDX_THR1] > 0: # if we retard throttle and have positive trim bias
-                    if delta_throttle_1 > U1[IDX_THR1]: # if we move the throttle a lot, limit washout to zero
-                        U1[IDX_THR1] = 0
-                        U1[IDX_THR2] = 0
+                delta_throttle_1 = inceptor_cmd[IDX_THR1] - current_throttle[0] #we look only at #1 engine for simplicity
+                if delta_throttle_1 < 0 and trim_point[IDX_THR1] > 0: # if we retard throttle and have positive trim bias
+                    if delta_throttle_1 > trim_point[IDX_THR1]: # if we move the throttle a lot, limit washout to zero
+                        trim_point[IDX_THR1] = 0
+                        trim_point[IDX_THR2] = 0
                     else: #washout from the trim bias, the amount we moved the throttle lever
-                        U1[IDX_THR1] += delta_throttle_1
-                        U1[IDX_THR2] += delta_throttle_1
-                        if U1[IDX_THR1] < 0 : U1[IDX_THR1] = 0 # ensure it is never less than zero
-                        if U1[IDX_THR2] < 0 : U1[IDX_THR2] = 0
+                        trim_point[IDX_THR1] += delta_throttle_1
+                        trim_point[IDX_THR2] += delta_throttle_1
+                        if trim_point[IDX_THR1] < 0 : trim_point[IDX_THR1] = 0 # ensure it is never less than zero
+                        if trim_point[IDX_THR2] < 0 : trim_point[IDX_THR2] = 0
 
                 # toggle ground spoilers if button is pressed -> this is done in joystick submodule
-                # ground spoiler arm/disarm state is passaed through U1[IDX_GNDSP]
+                # ground spoiler arm/disarm state is passaed through inceptor_cmd[IDX_GNDSP]
                 # if spoilers are armed and we are on ground, set ground spoilers to open
-                if (physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m, acp)) and (U1[IDX_GNDSP] == 1)):
-                    U_trim[IDX_GNDSP] = acp.GND_SPOILERS_DCL # 40% lift dump
+                if (physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m, acp)) and (trim_point[IDX_GNDSP] == 1)):
+                    inceptor_cmd[IDX_GNDSP] = acp.GND_SPOILERS_DCL # 40% lift dump
                 else:
-                    U_trim[IDX_GNDSP] = 0.0 # close
+                    inceptor_cmd[IDX_GNDSP] = 0.0 # close
                 
-
-                #U_trim = physics.control_sat(U_trim, acp) # saturate commands
+                # Apply control saturation
+                inceptor_cmd = physics.control_sat(inceptor_cmd, acp)
 
                 
                 # Update the physical position of the surfaces with actuator dynamics
-                U_actual = physics.update_actuators(U_trim, U_actual, dt, acp.ACT_TAU)
+                U_actual = physics.update_actuators(inceptor_cmd, U_actual, dt, acp.ACT_TAU)
 
 
                 # Update thrust values (Engine deck results)
@@ -691,7 +688,7 @@ if __name__ == "__main__":
                 # if not, keep what we have
                 try:
                     eng_vals = results_queue.get(block=False) # block=False is equivalent to get_nowait()
-                    if U1[IDX_THR1] < -0.5:
+                    if trim_point[IDX_THR1] < -0.5:
                         # TODO: make time constants variable???
                         e1_thrust = physics.update_actuators(-eng_vals[0]['F_ram'] * LBF2N, U_actual[IDX_THR1], 0.1, 1.5) # FOR NOW, FIXED TIME CONSTANT AND DT
                     else:
@@ -778,7 +775,7 @@ if __name__ == "__main__":
                     on_ground = physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m, acp))
                     if jobs_queue.empty():
                         #print(f"[Main Process] Triggering new engine calculation...{VA(current_uvw)*MS2KT:.2f}, {current_alt_m*M2FT:.1f}")
-                        new_job = (current_alt_m*M2FT, ISA.Vt2M(env.VA(current_uvw)*MS2KT, current_alt_m*M2FT), U_trim[IDX_THR1], U_trim[IDX_THR2], on_ground, time.perf_counter())
+                        new_job = (current_alt_m*M2FT, ISA.Vt2M(env.VA(current_uvw)*MS2KT, current_alt_m*M2FT), inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2], on_ground, time.perf_counter())
                         try:
                             jobs_queue.put(new_job, block=False)
                             eng_time_adder = 0
@@ -803,7 +800,7 @@ if __name__ == "__main__":
                         for idx, p in enumerate(ENG_LOG_PARAMETERS):
                             eng1_states[idx] = eng_vals[0][p]
                             eng2_states[idx] = eng_vals[1][p]
-                    data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED, U_actual, U_trim, internals, eng1_states, eng2_states)))
+                    data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED, U_actual, inceptor_cmd, internals, eng1_states, eng2_states)))
                     t_vector_collector.append(this_AC_int.t)
                     datalog_trigger = False
 
@@ -813,7 +810,7 @@ if __name__ == "__main__":
 
                 # print out stuff every so often
                 if (frame_count % 100) == 0:
-                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {U_trim[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpArmed={int(U1[IDX_GNDSP])},Elev={U1[IDX_ELE]:.3f}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={-body_accels[2]/G:.2f}, RADALT={current_AGL_m*M2FT:.0f}ft')
+                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {inceptor_cmd[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpArmed={int(trim_point[IDX_GNDSP])},Elev={trim_point[IDX_ELE]:.3f}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={-body_accels[2]/G:.2f}, RADALT={current_AGL_m*M2FT:.0f}ft')
                 #################################################################################################################################################################
 
                 # reset integrator timestep counter
