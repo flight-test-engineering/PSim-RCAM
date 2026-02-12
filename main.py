@@ -533,7 +533,7 @@ if __name__ == "__main__":
             dcl_dcd_dcm_dalpha = np.zeros(4)
             
             # integrate 6-DOF
-            this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA])
+            this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp)
             this_AC_int.integrate(this_AC_int.t + simdt)
 
             # integrate navigation equations
@@ -559,11 +559,10 @@ if __name__ == "__main__":
             # save data to disk
         if len(t_vector_collector) > 0: # flush rest of data still in memory:
             disk_log_queue.put((np.array(t_vector_collector), np.array(data_collector)))
-            #print("Waiting for Disk Logger to finish...", end="")
             logger.info('[main] Waiting for Disk Logger to finish...')
             disk_log_queue.put(None) # Sentinel
             disk_log_thread.join()   # Wait for writing to complete
-            #print("finished")
+            logger.info('[main] disk logging finished...')
         
     # with joystick attached, run online
     else:
@@ -850,8 +849,6 @@ if __name__ == "__main__":
     if OFFLINE == False:
         # close threads
         # -- Stop TX threads
-        #print()
-        #print("Shutting down network threads...")
         logger.info("[main] Shutting down network threads...")
         fdm_packet_queue.put(None)  # Send the shutdown signal
         tx_thread.join(timeout=1.0) # Wait for the thread to finish
@@ -867,22 +864,18 @@ if __name__ == "__main__":
         engine_process.join(timeout=2.0) # Wait for the worker process to finish
         # It's good practice to terminate if it doesn't join cleanly
         if engine_process.is_alive():
-            #print("[Main Process] Worker did not shut down cleanly. Terminating.")
             logger.warning("[main] Worker did not shut down cleanly. Terminating.")
             engine_process.terminate()
         
     # save data to disk
     if len(t_vector_collector) > 0: # flush rest of data still in memory:
         disk_log_queue.put((np.array(t_vector_collector), np.array(data_collector)))
-        #print("Waiting for Disk Logger to finish...", end="")
         logger.info('[main] Waiting for Disk Logger to finish...')
         disk_log_queue.put(None) # Sentinel
         disk_log_thread.join()   # Wait for writing to complete
-        #print("finished")
 
 
     try:
-        #print(f"Reloading {RESULTS_FILE} for plotting...")
         logger.info(f"Reloading {RESULTS_FILE} for plotting...")
         t_full, data_full = helpers.load_from_disk(RESULTS_FILE)
         
@@ -892,12 +885,9 @@ if __name__ == "__main__":
             plt.show();
             print("done")
         else:
-            #print("No data found to plot.")
             logger.error('[main] No data found to plot.')
             
     except MemoryError:
-        #print("Log file too large for RAM plotting.")
         logger.error('[main] Log file too large for RAM plotting.')
     except Exception as e:
-        #print(f"Plotting error: {e}")
         logger.error(f"[main] Plotting error: {e}")

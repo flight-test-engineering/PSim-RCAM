@@ -23,7 +23,6 @@ def network_worker(socks:list[socket.socket], packet_queue:queue.Queue, fg_addre
         packet_queue: a Python multithread queue that received the packets to be sent
         fg_addresses: list of tuples with IP address and port
     """
-    #print("Starting FlightGear output network thread", end="")
     logger.info('[network_worker] Starting FlightGear output network thread')
     while True:
         try:
@@ -34,7 +33,6 @@ def network_worker(socks:list[socket.socket], packet_queue:queue.Queue, fg_addre
 
             # THREADING: Check for the sentinel value (None) to signal shutdown.
             if packet is None:
-                #print("Network thread received shutdown signal.")
                 logger.info('[network_worker]Network thread received shutdown signal.')
                 break
 
@@ -46,10 +44,8 @@ def network_worker(socks:list[socket.socket], packet_queue:queue.Queue, fg_addre
             # This will only happen if a timeout is used in get()
             continue
         except Exception as e:
-            #print(f"Error in network thread: {e}")
             logger.error(f'[network_worker] Error in network thread: {e}')
             break
-    #print("Network thread finished.")
     logger.info("[network_worker] Network thread finished.")
 
 
@@ -58,7 +54,6 @@ def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
     Listens for UDP packets from FlightGear containing ground elevation.
     Updates shared_data['ground_alt'] with the latest received value.
     """
-    #print(f"Starting Terrain RX Worker on {ip}:{port}...", end="")
     logger.info(f"[terrain_udp_worker] Starting Terrain RX Worker on {ip}:{port}...")
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -70,7 +65,6 @@ def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
         sock.settimeout(0.5) 
         sock.setblocking(0) # Non-blocking mode
         
-        #print(" Listening.")
         logger.info("[terrain_udp_worker] Listening")
         
         while True:
@@ -101,16 +95,13 @@ def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
             except socket.timeout:
                 continue  # Expected, keep going
             except (ConnectionError, OSError) as e:
-                #print(f"Fatal network error: {e}")
                 logger.error(f"[terrain_udp_worker] Fatal network error: {e}")
                 break
             except Exception as e:
-                #print(f"Unexpected error: {e}")
                 logger.error(f"[terrain_udp_worker] Unexpected error: {e}")
                 continue
     finally:
         sock.close()
-        #print("Terrain RX Worker finished.")
         logger.info("[terrain_udp_worker] Terrain RX Worker finished.")
 
 

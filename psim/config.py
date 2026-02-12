@@ -112,7 +112,6 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> (dict, jitcla
     with open(filepath, 'r') as f:
         params = json.load(f)
 
-    #print(f"Loading aircraft model: {params['aircraft_name']}")
     logger.info(f"[load_aircraft_parameters] Loading aircraft model: {params['aircraft_name']}")
 
     consts = {}
@@ -282,7 +281,6 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> (dict, jitcla
     # - Logitech Extreme 3D
     joystick_library = params['joystick_maps']
     if joy_name in joystick_library.keys():
-        #print(f'joystick {joy_name} in database/JSON config file...will run online loop.')
         logger.info(f'[load_aircraft_parameters] joystick {joy_name} in database/JSON config file...will run online loop.')
         joy_map = joystick_library[joy_name]
         consts['JOY_ROLL_AXIS'] = joy_map["roll_axis"] # axis number that controls roll
@@ -317,7 +315,6 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> (dict, jitcla
 
 
     else:
-        #print('no joystick or joystick model not in databas/JSON config file...will run offline loop.')
         logger.error('[load_aircraft_parameters] no joystick or joystick model not in databas/JSON config file...will run offline loop.')
         consts['OFFLINE'] = True
 
