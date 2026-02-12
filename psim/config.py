@@ -63,8 +63,8 @@ spec = [
     ('C_n_DA', float64), ('C_n_DE', float64), ('C_n_DR', float64),
 
     # Arrays (Must define as float64[:])
-    ('INERTIA_TENSOR_b', float64[:,:]),
-    ('INV_INERTIA_TENSOR_b', float64[:,:]),
+    ('INERTIA_TENSOR_b', float64[:,::1]),
+    ('INV_INERTIA_TENSOR_b', float64[:,::1]),
     
     # Gear (Vectors)
     ('LG_NOSE_POS', float64[:]),
@@ -234,8 +234,8 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> (dict, jitcla
     # .. inertia tensor ..
     mass = float(mg['mass'])
     tensor_per_unit_mass = np.array(params['inertia']['tensor_per_unit_mass'])
-    acp.INERTIA_TENSOR_b = mass * tensor_per_unit_mass # each element in m2 - (TP-088-3, p. 12, para 2.3.1.2, eq 2.11)
-    acp.INV_INERTIA_TENSOR_b = np.linalg.inv(acp.INERTIA_TENSOR_b)
+    acp.INERTIA_TENSOR_b = np.ascontiguousarray(mass * tensor_per_unit_mass) # each element in m2 - (TP-088-3, p. 12, para 2.3.1.2, eq 2.11)
+    acp.INV_INERTIA_TENSOR_b = np.ascontiguousarray(np.linalg.inv(acp.INERTIA_TENSOR_b))
 
     # .. Control Surface and Throttle Limits ..
     # (TP-088-3, p. 19, para 2.5)

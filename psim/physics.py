@@ -465,8 +465,6 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
     # Added M_gnd_b to the sum
     Mcg_b = MAcg_b + MEcg_b + M_gnd_b
     
-    aux_0 = np.dot(acp.INERTIA_TENSOR_b , wbe_b)
-    aux_1 = Mcg_b - np.cross(wbe_b, np.dot(acp.INERTIA_TENSOR_b , wbe_b))
     p_q_r_dot = np.dot(acp.INV_INERTIA_TENSOR_b, (Mcg_b - np.cross(wbe_b, np.dot(acp.INERTIA_TENSOR_b , wbe_b))))
     
     # phi, theta, psi dot
