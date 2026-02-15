@@ -3,11 +3,11 @@
 # PSim-RCAM
 Welcome to PSim-RCAM - short for Python Simulation - Research Civil Aircraft Model!
 
-This is a Python implementation of the non-linear flight dynamics model proposed by:  
+This is a Python implementation of the non-linear flight dynamics model published by:  
 Group for Aeronautical Research and Technology Europe (GARTEUR) - [Research Civil Aircraft Model (RCAM) (rev Jun 1995)](http://garteur.org/wp-content/reports/FM/FM_AG-08_TP-088-3.pdf)  
 HOWEVER:  
-    # a few equations and values are only available in the later RCAM revision (rev Feb 1997)  
-    # the 1997 revision is not availble to the public  
+    # a few equations and values are only available in the later RCAM revision (dated Feb 1997)  
+    # the 1997 revision is not easy to find  
     # the values and equations from this reference were obtained from youtube videos listed below:  
 
 The excellent tutorials by Christopher Lum (for Matlab/Simulink) were used as a guide:  
@@ -85,9 +85,10 @@ It uses Numba to speed up the main functions involved in the integration loop.
 Output is sent to FlightGear (FG), over UDP, at a reduced frame rate (set to 60Hz).  
 The FG interface uses a stripped down version of the class implemented by Andrew Tridgel [fgDFM](https://github.com/ArduPilot/pymavlink/blob/master/fgDFM.py). It was simplified and a few additional parameters were added. It is compliant with version 24 of FlightGear protocol.  
 
-Currently, the first UDP address is set to the local machine, with  second UDP address available for an extra screen/instance of FG.
+Currently, the first UDP address is set to the local machine, with a second UDP address available for an extra screen/instance of FG.
 
-If a joystick is detected, then inputs come from it  
+If a known joystick is detected, then inputs come from it  
+Currently, only mappings for the Logitech Extreme 3D joystick is implemented. You will need to add your own to the JSON config file (follow similar structure).  
 Otherwise, offline simulation is run.
 
 To run:  
@@ -100,7 +101,7 @@ To run:
 4 - from its own terminal, run main.py  
 
 
-
+____________________________________________________________________________________________
 Here is the simulation flowchart:
 
 ```mermaid
