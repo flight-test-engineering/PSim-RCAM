@@ -73,11 +73,12 @@ Use FlightGear as terrain database: USE_FG_AS_TERRAIN_DB (if set to false, it wi
 Data logging rate: DATA_LOGGING_HZ  
 Selected engine parameters to be output/logged: ENG_LOG_PARAMETERS
 
-Results file (CSV): RESULTS_FILE
+Results file (CSV): RESULTS_FILE  
+Select time interval to save to disk: LOG2DISK_INTERVAL_S  
+
 ### FlightGear comms
 Main instance for visual: UDP_IP1  
 Second instance for visual: UDP_IP2  
-
 
 Aiming for performance, the program runs the integration loop at a target pf 400Hz, adjusting the integration steps to the available computing cycles.  
 It uses Numba to speed up the main functions involved in the integration loop.  
