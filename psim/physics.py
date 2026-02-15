@@ -636,35 +636,49 @@ def trim_functional3(Z:np.ndarray, VA_trim:float, gamma_trim:float, side_speed_t
     '''
     functional to calculate a cost for minimizer (used to find trim point)
     inputs:
-        Z: lumped vector of X (states) and U (control)
-        trim targets:
-        VA_trim: airspeed [m/s]
-        gamma_trim: climb gradient [rad]
-        side_speed_trim: lateral (v) speed [m/s]
-        phi_trim: roll angle [rad]
-        psi_trim: course angle [rad]
-        rho_trim: density of air at trim condition [kg/m3]
-        h_trim: height above the ground (m) - for ground proximity checks,
-        flap_pos: number between 0 and MAX_FLAP
-        gear_pos: 0 for gear up, 1 for down
-        gnd_sp_pos: 0 for closed, 1 for open
-        brakes_pos: 0 for not applied, 1 applied
+        Z: lumped vector of X (states) and U (control sub-set)
+            states:
+                u, v, w, p, q, r, phi, theta, psi
+            controls sub-set:
+                ail, ele, rud, thr1, thr2
+        
+        controls *NOT USED* by trimming function (and not part of Z):
+        (because we do not want the optimizer to play with these)
+            flap_pos: number between 0 and MAX_FLAP
+            gear_pos: 0 for gear up, 1 for down
+            gnd_sp_pos: 0 for closed, 1 for open
+            brakes_pos: 0 for not applied, 1 applied
 
-    ****
-    method
-    Q.T*H*Q
-    with H = diagonal matrix of "1"s (equal weights for all states)
-    this returns the squares of the elements in Q
+        trim targets:
+            VA_trim: airspeed [m/s]
+            gamma_trim: climb gradient [rad]
+            side_speed_trim: lateral (v) speed [m/s]
+            phi_trim: roll angle [rad]
+            psi_trim: course angle [rad]
+        conditions to trim at:
+            rho_trim: density of air at trim condition [kg/m3]
+            h_trim: height above the ground (m) - for ground proximity checks,
+
+
+    method:
+        Q.T*H*Q
+        with H = diagonal matrix of "1"s (equal weights for all states)
+        this returns the squares of the elements in Q
     
     returns:
         cost [float]
     '''
 
+    # re-create the variables (states and controls)
+    # in form and shape that the RCAM_model function expects
+
     X = Z[:9] # extract states
     
     # create controls vector with size of Z, minus 9 states, plus 4 extra controls
+    # (flaps position, gear position, gnd spoiler, brake)
     U = np.zeros(Z.shape[0] - 9 + 4) 
 
+    # copy control sub-set values over to U
     for i in range (Z.shape[0] - 9):
         U[i] = Z[9+i]
 
@@ -706,7 +720,8 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
         u, v, w, p, q, r, phi, theta, psi
     U0 controls:
         ail, ele, rud, thr1, thr2, flaps position, gear position, gnd spoiler, brake
-    h_trim is passed on to check ground proximity
+    with the caveat that the following controls are locked for the optimzer:
+        flaps position, gear position, gnd spoiler, brake
 
     '''
 
@@ -728,7 +743,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     converge = False
 
     # concatenate states and inputs into single vector
-    # for trimming, ground spoilers and brakes are not a valid control
+    # for trimming, flaps, gear, ground spoilers and brakes are not a valid control
     # removing additional control values from trim variables
     # because we do not want the optimizer to play with them,
     # we add them separately:
@@ -745,7 +760,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
                 method='Nelder-Mead', options={'maxiter':50000,\
                                                'maxfev':40000})
         
-        # Updated cost check with h_trim
+        # Cost check
         current_cost = trim_functional3(result.x, env.VA(result.x[:3]), result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U]), result.x[IDX_V], result.x[IDX_PHI], result.x[IDX_PSI], rho_trim, h_trim,
                                          flap_pos, gear, gnd_sp, brakes, acp)
         logger.info(f'[trim_model] iter: {iter_counter}, functional cost: {current_cost:.3e}')
@@ -763,7 +778,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
         logger.warning('[trim_model] Trim FAILED to converge')
 
 
-    return result.x, result.message #remember that the control vector is missing ground spoilers now
+    return result.x, result.message #remember that the control vector is missing flaps position, gear position, gnd spoiler, brake now
 
 @jit(nopython=True)
 def calc_ground_effect(h_agl: float, acp:jitclass) -> tuple[float, float]:
