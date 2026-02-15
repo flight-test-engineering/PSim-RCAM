@@ -31,6 +31,8 @@ fgfs --airport=KSFO --runway=28R --aircraft=757-200-RB211 --aircraft-dir=~/.fgfs
 DRI_PRIME=1 fgfs --airport=LOWI  --aircraft=Embraer170 --aircraft-dir=./FlightGear/Aircraft/E-jet-family/ --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/fte.xml 2>/dev/null
 
 If a joystick is detected, then inputs come from it
+--> for best results, start the throttles at idle
+
 Otherwise, offline simulation is run
 
 
@@ -53,8 +55,6 @@ TODO:
 import time
 import numpy as np
 from numba.experimental import jitclass # dataclass for FDM
-
-
 
 import matplotlib.pyplot as plt
 import matplotlib
@@ -116,9 +116,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     alt_m = altitude * FT2M
     rho_trim = env.get_rho(alt_m)
 
-
     logger.info(f'[initialize] initializing model with {VA_t*MS2KT:.0f} KIAS, {altitude} ft, rho={rho_trim:.4f} kg/m3, flaps={flap_pos}')
-    
 
     latlonh0 = np.array([latlon[0] * DEG2RAD, latlon[1] * DEG2RAD, alt_m])
 
@@ -129,8 +127,8 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
                                     phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=height,
                                     flap_pos=flap_pos, gear=gear, acp=acp)
         logger.info(f'[initialize] Trimming {res4_status}')
-        X0 = res4[:9] # separate states and controls
-        U0 = np.concatenate((res4[9:], np.array([flap_pos, gear, 0.0, 0.0]))) # add back ground spoiler and brakes to control vector
+        X0 = res4[:9] # separate states from controls
+        U0 = np.concatenate((res4[9:], np.array([flap_pos, gear, 0.0, 0.0]))) # add back gear, flaps, ground spoiler and brakes to control vector
         logger.debug(f'initial states: {X0}')
         logger.debug(f'initial inputs: {U0}')
     else:
@@ -138,7 +136,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         X0=np.array([VA_t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, INIT_HDG_DEG * DEG2RAD])
         U0=np.array([0.0, 0.0, 0.0, 0.0, 0.0, flap_pos, gear, 0.0, 0.0])
 
-    # interpolate high lift devices effect
+    # interpolate high lift devices effects
     dcl_dcd_dcm_dalpha = physics.array_interp(flap_pos, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
 
     # interpolate for landing gear delta CD
@@ -155,7 +153,7 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
     
     return AC_integrator, X0, U0, latlonh_integrator    
 
-# NUMBA/JIT WARM-UP
+# Numba/JIT warm-up
 def compile_numba_functions(acp:jitclass)->None:
         '''
         Runs Numba functions with dummy data to force JIT compilation 
@@ -232,6 +230,7 @@ if __name__ == "__main__":
         FLAPS_INIT = 0
         INIT_GEAR = 1
     else:
+        # FLYING
         INIT_ALT_FT = 2400 #ft
         V_TRIM_MPS = 160 * KT2MS # m/s
         INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
@@ -241,10 +240,12 @@ if __name__ == "__main__":
     
     GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
     INIT_HDG_DEG = 82.0 # DEG
+
     # Lat/Lon - alternate locations
     #INIT_LATLON_DEG = np.array([37.6213, -122.3790]) #in degrees - the func initialize transforms to radians internally
     #INIT_LATLON_DEG = np.array([-21.7632, -48.4051]) #in degrees - SBGP
     #INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
+
     # wind
     WIND_NED_MPS = np.array([0, 0, 0]) # average wind (m/s), NED
     WIND_STDDEV_MPS = np.array([1, 1, 0]) # wind standard deviation, NED
@@ -269,7 +270,7 @@ if __name__ == "__main__":
     # Load Aircraft Parameters into Global Scope
     #
     # we first need the joystick name, to load the correct parameters...
-    # JOYSTICK INIT AND CHECK
+
     # Explicitly restart the joystick module to clear internal SDL flags
     pygame.init()
     if pygame.joystick.get_init():
@@ -281,13 +282,12 @@ if __name__ == "__main__":
     else:
         this_joy = pygame.joystick.Joystick(0)
         this_joy.init()
-        # --- FLUSH GHOST INPUTS ---
+        # flush ghost inputs
         # Pump the event loop multiple times to clear buffered events 
         logger.info("[main] Flushing Joystick Buffer...")
         for _ in range(15):
             pygame.event.pump()
             time.sleep(0.01) # Small delay to allow OS driver to poll
-        # --------------------------
 
         joy_name = this_joy.get_name()
 
@@ -297,6 +297,7 @@ if __name__ == "__main__":
         consts, acp = load_aircraft_parameters(AIRCRAFT_CONFIG_FILE, joy_name)
 
         globals().update(consts)
+
         joy.initialize_constants(consts) # send constants to joystick function as well
         physics.initialize_constants(consts) # send to physics module as well
     except FileNotFoundError:
@@ -322,8 +323,8 @@ if __name__ == "__main__":
     terrain_shared_data = {'ground_alt': 0.0} # this variable receives terrain height from the FG thread
 
 ##########################################################################
-
     # header for saving data to disk
+
     signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA_actual', 
                         'dE_actual', 'dR_actual', 'dT1_actual', 'dT2_actual','flap_pos_actual', 'gear_pos_actual', 'dgsp_actual', 'brake_actual',
                         'dA_cmd', 'dE_cmd', 'dR_cmd', 'dT1_cmd', 'dT2_cmd', 'flap_pos_cmd', 'gear_pos', 'dgsp', 'brake']
@@ -336,16 +337,21 @@ if __name__ == "__main__":
 
     full_header = signals_header + internals_header + engine_header
 
+    # vectors to log engine data to disk
+    eng1_states = np.zeros(len(ENG_LOG_PARAMETERS))
+    eng2_states = np.zeros(len(ENG_LOG_PARAMETERS))
+
 ############################################
 #### MULTI THREADING / MULTI PROCESSING ####
 ############################################
 
 ###########################################################################
     # FlightGear Threads and Engine Deck Process Initialization
-    # we only start the network and multiprocessing if doing online sim, at least for now
+    # we only start the network and multiprocessing if doing online sim
     if OFFLINE == False:
     ############################################################################
-        # FLIGHTGEAR SOCKS
+        # FLIGHTGEAR
+
         # OUTGOING data (from Python to FG)
         UDP_IP1 = "127.0.0.1" # set to localhost
         UDP_PORT1 = 5500
@@ -407,8 +413,7 @@ if __name__ == "__main__":
 
 
     #######################################################################################
-        # Engine Deck Multiprocessing
-        # --- Multiprocessing Setup ---
+        # Engine Deck
         # MULTIPROCESSING: Use Queues from the multiprocessing module.
         # These queues handle the necessary serialization (pickling) to pass
         # data between process memory spaces.
@@ -492,7 +497,7 @@ if __name__ == "__main__":
     datalog_time_adder = 0.0
     log2disk_time_adder = 0.0
     
-    dt = 0 # actual integration time step
+    dt = 0 # actual (measured) integration time step
     prev_dt = dt
 
     exit_signal = 0 # if joystick button #1 is pressed, end simulation
@@ -501,7 +506,6 @@ if __name__ == "__main__":
     # RUN SIMULATION
     # if no joystick detected, run offline
     if OFFLINE:
-        # code for offline simulation
         # create time vector
         t_vector = np.arange(0, SIM_TOTAL_TIME_S, simdt)
         print(f'Offline sim time vector: {t_vector[0]:.2f}s to {t_vector[-1]:.2f}s')
@@ -520,8 +524,6 @@ if __name__ == "__main__":
         sim_U[1,:] += pitch_doublet
         sim_U[2,:] += yaw_doublet
         
-        
-
         # single step integrate through each time step
         for idx, t in enumerate(t_vector):
             current_rho = env.get_rho(current_alt_m)
@@ -557,18 +559,20 @@ if __name__ == "__main__":
 
         print(f'Enf of simulation; {len(t_vector_collector)} time steps!')
             # save data to disk
-        if len(t_vector_collector) > 0: # flush rest of data still in memory:
+        if len(t_vector_collector) > 0: # if we have data, send it out to disk:
             disk_log_queue.put((np.array(t_vector_collector), np.array(data_collector)))
             logger.info('[main] Waiting for Disk Logger to finish...')
             disk_log_queue.put(None) # Sentinel
             disk_log_thread.join()   # Wait for writing to complete
             logger.info('[main] disk logging finished...')
+        else:
+            logger.warning('[main] something went wrong and no simultion was calculated... not saving to disk...')
         
     # with joystick attached, run online
     else:
         ##### ONLINE #####
 
-        # adjust engine command
+        # adjust engine control (U)
         # what comes out of the trimming function is thrust directly
         # for online sim, we can't use it
         # let's run the reverse deck to get the thrust lever angle:
@@ -576,26 +580,28 @@ if __name__ == "__main__":
 
         trim_point[IDX_THR1] = prop.E1_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e1_thrust*N2LBF)['PC'] # deck takes lbf
         trim_point[IDX_THR2] = prop.E2_deck.interp_altMNFN(INIT_ALT_FT, ISA.Vc2M(V_TRIM_MPS*MS2KT, INIT_ALT_FT), e2_thrust*N2LBF)['PC']
+        # store TLA as our inceptor_cmd
         inceptor_cmd[IDX_THR1] = trim_point[IDX_THR1] # percent power
         inceptor_cmd[IDX_THR2] = trim_point[IDX_THR2]
 
         logger.info(f'[main] this is the inverse deck response: E1:{trim_point[IDX_THR1]:.4f}; E2:{trim_point[IDX_THR2]:.4f} % power')
 
-        # run deck preemptively, so we have data when we need it
+        # run deck preemptively, so we have data when we need it shortly...
         logger.info('[main] Adding engine deck initial job...')
         new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
         jobs_queue.put(new_job, block=False)
 
 
-        # joystick needs to read zero (or close to zero)
-        # if not, it means pygame is reading the zero wrong
-        # to reset, only if joystick is moved
+        # pygame sometimes does not initialize the joystick correctly and
+        # until it is moved, returns non-zero position,
+        # even with stick in neutral.
+        # here we ask for user help by moving the stick...
         print('Move joystick to start sim...', end='')
         joy_not_moved = True
         while joy_not_moved:
             dummy = this_joy.get_axis(JOY_PITCH_AXIS) 
             pygame.event.pump()
-            if abs(dummy) < 0.05:
+            if abs(dummy) < 0.1:
                 joy_not_moved = False
                 print('movement detecte! OK!') # now we can proceed
             else:
@@ -608,17 +614,16 @@ if __name__ == "__main__":
             # get clock
             start = time.perf_counter()
 
-
             if run_sim_loop:
 
-                joy_events = pygame.event.get()
-
                 # -- Inputs & Actuators
+                joy_events = pygame.event.get()
+                
                 current_throttle = [inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2]] # keep track of throttle to zero-out the trim bias
                 inceptor_cmd, trim_point, exit_signal = joy.get_joy_inputs(this_joy, joy_events, trim_point, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS, acp)
 
                 # inceptor_cmd is the manual control inputs (as the joystick is moved)
-                # trim_point is the trim state, or the zero input values for each control.
+                # trim_point is the trim state for each control.
                 
                 # for throtlle, initial trim state is always positive, so we washout if throttles move back
                 # if engine trim state is negative, it means engine is OFF
@@ -633,13 +638,13 @@ if __name__ == "__main__":
                         if trim_point[IDX_THR1] < 0 : trim_point[IDX_THR1] = 0 # ensure it is never less than zero
                         if trim_point[IDX_THR2] < 0 : trim_point[IDX_THR2] = 0
 
-                # toggle ground spoilers if button is pressed -> this is done in joystick submodule
+                # toggle ground spoilers armed if button is pressed -> this is done in joystick submodule
                 # ground spoiler arm/disarm state is passaed through inceptor_cmd[IDX_GNDSP]
                 # if spoilers are armed and we are on ground, set ground spoilers to open
                 if (physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m, acp)) and (trim_point[IDX_GNDSP] == 1)):
-                    inceptor_cmd[IDX_GNDSP] = acp.GND_SPOILERS_DCL # 40% lift dump
+                    inceptor_cmd[IDX_GNDSP] = acp.GND_SPOILERS_DCL # % lift dump
                 else:
-                    inceptor_cmd[IDX_GNDSP] = 0.0 # close
+                    inceptor_cmd[IDX_GNDSP] = 0.0 # closed, no lift dump
                 
                 # Apply control saturation
                 inceptor_cmd = physics.control_sat(inceptor_cmd, acp)
@@ -665,27 +670,28 @@ if __name__ == "__main__":
                 # if there are new deck values, fetch them,
                 # if not, keep what we have
                 # note, we need to keep this here, after the update thrust values above,
-                # otherwise, on engine cut, there is no dynamics
+                # otherwise, on engine cut, there are no engine dynamics (spooldown)
                 try:
                     eng_vals = results_queue.get(block=False) # block=False is equivalent to get_nowait()
-                    if trim_point[IDX_THR1] < -0.5:
+                    # engine cut logic
+                    if trim_point[IDX_THR1] < -0.5: # engine was cut
                         # TODO: make time constants variable???
                         e1_thrust = physics.update_actuators(-eng_vals[0]['F_ram'] * LBF2N, U_actual[IDX_THR1], 0.1, 1.5) # FOR NOW, FIXED TIME CONSTANT AND DT
-                        U_actual[IDX_THR1] = e1_thrust
-                    else:
+                        
+                    else: # engine is running
                         e1_thrust = eng_vals[0]['Fn'] * LBF2N # deck returns lbf, need to convert to N
                     e2_thrust = eng_vals[1]['Fn'] * LBF2N # engine 2 is always what the deck returns, no engine cut yet...
+                    U_actual[IDX_THR1] = e1_thrust
                     U_actual[IDX_THR2] = e2_thrust 
                 except mp.queues.Empty:
                     pass             
 
 
                 # -------------------------------------------------------
-                # PREPARE FOR INTEGRATOR
+                # INTEGRATION
                 # -------------------------------------------------------
                 prev_uvw = current_uvw
                 current_rho = env.get_rho(current_alt_m)
-
 
                 # -- Integrate Physics
                 this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp)
@@ -702,19 +708,20 @@ if __name__ == "__main__":
                 # store current state and time vector for next iteration
                 current_latlon_rad = this_latlonh_int.y[0:2]
                 current_alt_m = this_latlonh_int.y[2]
+
+                # height above terrain
                 if USE_FG_AS_TERRAIN_DB:
                     # use FlightGear as a terrain database...
                     current_AGL_m = current_alt_m - terrain_shared_data['ground_alt'] # this in meters. subtracting landing gear height
-                    
                 else:
                     # alternate: use SRTM instead...
                     current_AGL_m = env.get_AGL(current_latlon_rad*RAD2DEG, current_alt_m, SIM_VISUAL_OFFSET)
                 
 
-                
+                # SEMAPHORES TRIGGER CHECKS
+
                 # -- FlightGear Output
                 if send_frame_trigger:
-                    # for efficiency, we will use this loop to 
                     # -- Send data to FlightGear
                     # it is easier to calculate body accelerations instead of reaching into the RCAM function
                     if dt == 0:
@@ -745,7 +752,6 @@ if __name__ == "__main__":
                     send_frame_trigger = False
 
                 
-
                 # -- Engine Deck trigger
                 # deck calculation is CPU intensive
                 # and engine dynamics are slow
@@ -767,12 +773,10 @@ if __name__ == "__main__":
                     calc_eng_trigger = False
 
                 
+                # -- Data logging
                 if datalog_trigger:
-                    # -- Data Logging
                     internals = physics.RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp) # get internal FDM states
                     # engine parameters:
-                    eng1_states = np.zeros(len(ENG_LOG_PARAMETERS))
-                    eng2_states = np.zeros(len(ENG_LOG_PARAMETERS))
                     if eng_vals:
                         for idx, p in enumerate(ENG_LOG_PARAMETERS):
                             eng1_states[idx] = eng_vals[0][p]
@@ -784,6 +788,9 @@ if __name__ == "__main__":
                 
                 # -- Next frame setup
                 frame_count += 1
+                prev_dt = dt
+                dt = 0
+                run_sim_loop = False
 
                 # print out stuff every so often
                 if (frame_count % 100) == 0:
@@ -796,11 +803,9 @@ if __name__ == "__main__":
                 #if dt > simdt:
                     #actual_fps = 1.0 / dt
                     #print(f"[WARNING] Sim Loop Lag: Target {SIM_LOOP_HZ}Hz | Actual {actual_fps:.1f}Hz | Calc Time {calc_duration*1000:.2f}ms")
-                prev_dt = dt
-                dt = 0
-                run_sim_loop = False
             
             
+            # TIMERS CHECKS
             #check/set frame triggers
             if fg_time_adder >= fgdt:
                 fg_time_adder = 0
@@ -827,7 +832,7 @@ if __name__ == "__main__":
 
 
             # parking lot
-            # it will keep off the simulation loop while time does not catch up with the desired "simdt".
+            # it will keep off the simulation loop until time does not catch up with the desired "simdt".
             # continuously adds time until that point, then releases the semaphore to run the sim
             if sim_time_adder >= simdt:
                 dt = sim_time_adder
@@ -867,7 +872,7 @@ if __name__ == "__main__":
             logger.warning("[main] Worker did not shut down cleanly. Terminating.")
             engine_process.terminate()
         
-    # save data to disk
+    # save last data to disk
     if len(t_vector_collector) > 0: # flush rest of data still in memory:
         disk_log_queue.put((np.array(t_vector_collector), np.array(data_collector)))
         logger.info('[main] Waiting for Disk Logger to finish...')
@@ -875,6 +880,7 @@ if __name__ == "__main__":
         disk_log_thread.join()   # Wait for writing to complete
 
 
+    # plotting results
     try:
         logger.info(f"Reloading {RESULTS_FILE} for plotting...")
         t_full, data_full = helpers.load_from_disk(RESULTS_FILE)
