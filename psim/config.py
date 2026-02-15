@@ -147,7 +147,8 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> (dict, jitcla
     acp.XAPT1, acp.YAPT1, acp.ZAPT1 = ep[0]['x'], ep[0]['y'], ep[0]['z']
     acp.XAPT2, acp.YAPT2, acp.ZAPT2 = ep[1]['x'], ep[1]['y'], ep[1]['z']
 
-    # .. aerodynamic properties - lift ..
+    # .. aerodynamic properties 
+    # ... wing lift ...
     ac = params['aerodynamic_coeffs']
     acp.DEPSDA = ac['depsda'] # rad/rad - change in downwash wrt alpha # (TP-088-3, p. 14, para 2.3.4, eq 2.30)
     acp.ALPHA_L0 = ac['alpha_l0_deg'] * DEG2RAD # rad - zero lift AOA
@@ -159,23 +160,21 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> (dict, jitcla
     acp.A1 = ac['lift_poly_coeffs']['a1'] # adm - coeff of alpha^1
     acp.A0 = ac['lift_poly_coeffs']['a0'] # adm - coeff of alpha^0
     # ... tail ...
-    # adm - slope of linear region of TAIL lift slope
     # (TP-088-3, p. 15, eq 2.27)
-    acp.NT = ac['htail_coeffs']['nt'] 
-    # adm multiplier for tail dynamic downwash response wrt pitch rate
+    acp.NT = ac['htail_coeffs']['nt']                   # adm - slope of linear region of TAIL lift slope
     # (TP-088-3, p. 15, eq 2.28)
-    acp.EPSILON_DOT = ac['htail_coeffs']['epsilon_dot'] 
+    acp.EPSILON_DOT = ac['htail_coeffs']['epsilon_dot'] # adm multiplier for tail dynamic downwash response wrt pitch rate
 
     # ... high lift coefficients ...
     # key: delta_CD, delta_CD, delta_CM, delta_alpha
     high_lift_dict = ac['high_lift_coeffs']
     acp.HIGH_LIFT_COEFFS = np.array([high_lift_dict[str(i)] for i in range(len(high_lift_dict))])
     
-    # adjust delta_alpha to radians
+    # transform delta_alpha to radians
     for i in range(acp.HIGH_LIFT_COEFFS.shape[0]):
         acp.HIGH_LIFT_COEFFS[i][3] = acp.HIGH_LIFT_COEFFS[i][3] * DEG2RAD # RCAM model uses alpha in radians
     
-    acp.MAX_FLAP = int(acp.HIGH_LIFT_COEFFS.shape[0] - 1)
+    acp.MAX_FLAP = int(acp.HIGH_LIFT_COEFFS.shape[0] - 1) # maximum flap setting (note: integer)
     
     # ... landing gear drag increase ...
     ldg_drag_dict = ac['landing_gear_drag']
@@ -183,6 +182,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> (dict, jitcla
     acp.MAX_LDG = int(acp.LDG_DCD.shape[0] - 1)
     # ... ground spoilers lift dump ...
     acp.GND_SPOILERS_DCL = ac['gnd_spoilers_dcl']
+
     # .. aerodynamic properties - drag ..
     drag_coeffs = params['drag_coeffs']
     # (TP-088-3, p. 14, para 2.3.4, eq 2.31)
@@ -202,7 +202,6 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> (dict, jitcla
     acp.C_l_BETA = moment_coeffs['c_l_beta'] # adm - roll moment due to beta
     acp.C_m_ALPHA = moment_coeffs['c_m_alpha'] # adm - pitch moment due to alpha
     acp.C_n_BETA = moment_coeffs['c_n_beta'] * RAD2DEG # per RCAM doc, need to mult by 180/pi
-
 
     # ... roll, pitch, yaw moments with rates ..,
     # (TP-088-3, p. 14, para 2.3.4, eq 2.33)
@@ -238,14 +237,10 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> (dict, jitcla
 
     # .. Control Surface and Throttle Limits ..
     # (TP-088-3, p. 19, para 2.5)
-    # however, the 1997 RCAM has [0.5 and 10] * pi/180 for the throttles
-    # this equates to a 0.35 thrust to weight ratio
-    # as per CLum's video @ 7:45
-
     cl_deg = params['control_limits_deg']
-    U_LIMITS_RAD = {k: (v[0] * DEG2RAD, v[1] * DEG2RAD) for k, v in cl_deg.items()}
-    acp.U_LIMITS_MIN = np.array([lim[0] for lim in U_LIMITS_RAD.values()])
-    acp.U_LIMITS_MAX = np.array([lim[1] for lim in U_LIMITS_RAD.values()])
+    U_LIMITS_RAD = {k: (v[0] * DEG2RAD, v[1] * DEG2RAD) for k, v in cl_deg.items()} # transform from degrees to radians
+    acp.U_LIMITS_MIN = np.array([lim[0] for lim in U_LIMITS_RAD.values()]) # separate mins
+    acp.U_LIMITS_MAX = np.array([lim[1] for lim in U_LIMITS_RAD.values()]) # from maximums for efficiency
 
     # Landing Gear
     # .. Geometry
@@ -284,7 +279,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> (dict, jitcla
         logger.info(f'[load_aircraft_parameters] joystick {joy_name} in database/JSON config file...will run online loop.')
         joy_map = joystick_library[joy_name]
         consts['JOY_ROLL_AXIS'] = joy_map["roll_axis"] # axis number that controls roll
-        consts['JOY_PITCH_AXIS'] = joy_map["pitch_axis"] # axis number tht controls pitch
+        consts['JOY_PITCH_AXIS'] = joy_map["pitch_axis"] # axis number that controls pitch
         consts['JOY_YAW_AXIS'] = joy_map["yaw_axis"]  # axis number for yaw
         consts['JOY_ZERO_AIL_RUD_THR'] = joy_map["zero_ail_rud_thr"] # convenience function to zero ail,rud and thrust trim points
         consts['JOY_ARM_DIS_GND_SPOILER'] = joy_map["arm_disarm_gnd_spoiler"] # toggles ARM/DISARM of ground spoilers
@@ -301,7 +296,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> (dict, jitcla
         consts['JOY_FLAP_CMD_UP'] = joy_map['flaps_command_up'] # command flaps one notch up
         consts['JOY_FLAP_CMD_DN'] = joy_map['flaps_command_dn'] # command flaps one notch down
         consts['JOY_EXIT_SIGNAL'] = joy_map["exit_signal"] # ends the simulation
-        consts['JOY_BRAKE'] = joy_map["brake"] # ends the simulation
+        consts['JOY_BRAKE'] = joy_map["brake"] # applies brakes
         consts['JOY_TRIM_PARAMS'] = joy_map["trim_params"]  # Trim rate adjustment (amount per second)
         consts['JOY_THROTTLE_LIMITS'] = joy_map["joy_throttle_limits"] # these are the limits for the throttle input for this specific joystick - full fwd = -1
         

@@ -3,9 +3,7 @@ from numba.experimental import jitclass
 import pygame
 from psim.constants import *
 
-# ############################################################################
-# Module Initialization
-# ############################################################################
+
 def initialize_constants(params: dict):
     """
     Injects aircraft parameters into this module's global namespace 
@@ -74,7 +72,7 @@ def get_joy_inputs(joystick: pygame.joystick, joy_events: pygame.event, trim_poi
         trim_point[IDX_RUD] = 0.0
         trim_point[IDX_THR2] = trim_point[IDX_THR1]
     
-
+    # apply new trim
     trim_point[IDX_ELE] += pitch_trim_step * pitch_dn - pitch_trim_step * pitch_up
     trim_point[IDX_THR1] += throttle_trim_step * T1_fd - throttle_trim_step * T1_af
 

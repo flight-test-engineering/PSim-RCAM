@@ -15,14 +15,14 @@ from psim.helpers import logger
 
 # Threads for communication with FlightGear
 def network_worker(socks:list[socket.socket], packet_queue:queue.Queue, fg_addresses:list[str]):
-    """
+    '''
     This function runs in a separate thread. It waits for FDM packets to appear
     in the queue and sends them over UDP.
     Inputs:
         socks: list with network open socks
         packet_queue: a Python multithread queue that received the packets to be sent
         fg_addresses: list of tuples with IP address and port
-    """
+    '''
     logger.info('[network_worker] Starting FlightGear output network thread')
     while True:
         try:
@@ -50,10 +50,10 @@ def network_worker(socks:list[socket.socket], packet_queue:queue.Queue, fg_addre
 
 
 def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
-    """
+    '''
     Listens for UDP packets from FlightGear containing ground elevation.
     Updates shared_data['ground_alt'] with the latest received value.
-    """
+    '''
     logger.info(f"[terrain_udp_worker] Starting Terrain RX Worker on {ip}:{port}...")
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
