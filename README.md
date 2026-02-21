@@ -92,14 +92,18 @@ If a known joystick is detected, then inputs come from it
 Currently, only mappings for the Logitech Extreme 3D joystick is implemented. You will need to add your own to the JSON config file (follow similar structure).  
 Otherwise, offline simulation is run.
 
+Before running the code/setup:  
+1 - for FG terrain database comms, place a copy of psim/io/rcam_terrain.xml in [your FlightGear root directory]/fgdata/Protocol/  
+(in my case, this is /home/[USERNAME]/FlightGear/fgdata/Protocol) 
+2 - for SRTM terrain database, place a copy of psim/io/N47E011.hgt in [your home directory]/.cache/srtm/  
+(in my case, this is /home/[USERNAME]/.cache/srtm)  
+3 - if available, plug joystick in  
+
 To run:  
-1 - make sure the joystick is connected  
-2 - place a copy of rcam_terrain.xml in [your FlightGear root directory]/fgdata/Protocol/  
-(in my case, this is /home/[USERNAME]/FlightGear/fgdata/Protocol)  
-3 - from a terminal, start the FlightGear instance that will render visuals and inform the terrain height. For example, in my setup I have FlightGear installed into its own directory. After cd'ing into it, I run this:  
+1 - from a terminal, start the FlightGear instance that will render visuals and inform the terrain height. For example, in my setup I have FlightGear installed into its own directory. After cd'ing into it, I run this:  
 ./flightgear-2024.1.3-linux-amd64.AppImage --airport=LOWI  --aircraft=757-200-RB211 --native-fdm=socket,in,60,,5500,udp --fdm=null --enable-hud --in-air --fog-disable --shading-smooth --texture-filtering=4 --timeofday=morning --altitude=2500 --prop:/sim/hud/path[1]=Huds/NTPS.xml --generic=socket,out,5,127.0.0.1,5502,udp,rcam_terrain --prop:/controls/flight/elevator-trim=0
 
-4 - from its own terminal, run main.py  
+2 - from its own terminal, run main.py  
 
 
 ____________________________________________________________________________________________
