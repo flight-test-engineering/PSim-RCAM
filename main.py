@@ -261,8 +261,9 @@ if __name__ == "__main__":
     DATA_LOGGING_HZ = 10        # frames per second to be logged
     ENG_LOG_PARAMETERS = ['Fn', 'Fg', 'F_ram', 'TSFC', 'Wf', 'N1','N2']
 
-    RESULTS_FILE = 'test_data.csv'  # name of file where data will be saved
-    LOG2DISK_INTERVAL_S = 30.0      # interval in seconds to save data to disk
+    RESULTS_FILE = 'test_data.csv'              # name of file where data will be saved
+    LOG2DISK_INTERVAL_S = 30.0                  # interval in seconds to save data to disk
+    RESULTS_PLOT_FILE = 'test_data_plot.png'    # name of file of quick plot
 
     
 
@@ -596,7 +597,9 @@ if __name__ == "__main__":
         # until it is moved, returns non-zero position,
         # even with stick in neutral.
         # here we ask for user help by moving the stick...
-        print('Move joystick to start sim...', end='')
+        logger.info('[main] waiting for joystick to be moved or return a valid value...')
+        print('Move joystick to start sim...')
+        print('.', end='')
         joy_not_moved = True
         while joy_not_moved:
             dummy = this_joy.get_axis(JOY_PITCH_AXIS) 
@@ -887,8 +890,8 @@ if __name__ == "__main__":
         
         if len(t_full) > 0:
             print("Generating Plots...", end="")
-            helpers.make_plots(t_full, data_full, header=full_header, skip=0)
-            plt.show();
+            full_plot = helpers.make_plots(t_full, data_full, header=full_header, skip=0)
+            plt.savefig(RESULTS_PLOT_FILE)
             print("done")
         else:
             logger.error('[main] No data found to plot.')
