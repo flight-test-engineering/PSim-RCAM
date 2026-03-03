@@ -465,8 +465,6 @@ if __name__ == "__main__":
 
     data_collector, t_vector_collector = [], [] # data collectors, for saving data to disk
     
-    prev_uvw = np.array([0,0,0]) # velocity vectors
-    current_uvw = np.array([0,0,0])
 
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, trim_point, this_latlonh_int = initialize(
@@ -482,8 +480,8 @@ if __name__ == "__main__":
     # We start with actual = trimmed state (assuming stable trim)
     U_actual = trim_point.copy() # U_actual will be the controls vector after applying actuator dynamics
 
-    e1_thrust = trim_point[3] # trimming routine returns thrust, not thrust lever position
-    e2_thrust = trim_point[4]
+    e1_thrust = trim_point[IDX_THR1] # trimming routine returns thrust, not thrust lever position
+    e2_thrust = trim_point[IDX_THR2]
 
 
     # aircraft position variables
@@ -708,7 +706,6 @@ if __name__ == "__main__":
                 # -------------------------------------------------------
                 # INTEGRATION
                 # -------------------------------------------------------
-                prev_uvw = current_uvw
                 current_rho = env.get_rho(current_alt_m)
 
                 # 2. Update environmental/control inputs into the state object
@@ -724,9 +721,11 @@ if __name__ == "__main__":
                 this_AC_int.integrate(this_AC_int.t + dt)
                 # 4. CRITICAL: Re-sync state observables to the final step
                 fdm_state.X = this_AC_int.y
-                physics.RCAM_model(fdm_state, acp) 
+                _ = physics.RCAM_model(fdm_state, acp)
+                fdm_state.Va = env.VA(np.array([fdm_state.X[IDX_U], 
+                                                fdm_state.X[IDX_V],
+                                                fdm_state.X[IDX_W]]))
 
-                current_uvw = this_AC_int.y[0:3]
 
                 # -- Integrate navigation equations
                 current_NED = env.NED(this_AC_int.y[:3], this_AC_int.y[6:])
@@ -782,7 +781,7 @@ if __name__ == "__main__":
                     # Trigger Engine Deck Calculation
                     on_ground = physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m, acp))
                     if jobs_queue.empty():
-                        new_job = (current_alt_m*M2FT, ISA.Vt2M(env.VA(current_uvw)*MS2KT, current_alt_m*M2FT), inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2], on_ground, time.perf_counter())
+                        new_job = (current_alt_m*M2FT, ISA.Vt2M(fdm_state.Va*MS2KT, current_alt_m*M2FT), inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2], on_ground, time.perf_counter())
                         try:
                             jobs_queue.put(new_job, block=False)
                             eng_time_adder = 0
