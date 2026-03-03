@@ -94,7 +94,7 @@ import psim.physics as physics                      # actual FDM math is here
 # Model Initialization
 # ############################################################################
 
-def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi_t=0.0, height=0.0, flap_pos=0, gear=0, acp=None):
+def initialize(VA_t, gamma_t, latlon, altitude, psi_t, height, flap_pos, gear_pos, acp, fdm_state):
     '''
     this initializes the integrators
     inputs:
@@ -125,27 +125,36 @@ def initialize(VA_t=85.0, gamma_t=0.0, latlon=np.zeros(2), altitude=10000.0, psi
         # trim model
         res4, res4_status = physics.trim_model(VA_trim=VA_t, gamma_trim=gamma_t, side_speed_trim=0, 
                                     phi_trim=0.0, psi_trim=psi_t*DEG2RAD, rho_trim=rho_trim, h_trim=height,
-                                    flap_pos=flap_pos, gear=gear, acp=acp)
+                                    flap_pos=flap_pos, gear=gear_pos, acp=acp)
         logger.info(f'[initialize] Trimming {res4_status}')
         X0 = res4[:9] # separate states from controls
-        U0 = np.concatenate((res4[9:], np.array([flap_pos, gear, 0.0, 0.0]))) # add back gear, flaps, ground spoiler and brakes to control vector
+        U0 = np.concatenate((res4[9:], np.array([flap_pos, gear_pos, 0.0, 0.0]))) # add back gear, flaps, ground spoiler and brakes to control vector
         logger.debug(f'initial states: {X0}')
         logger.debug(f'initial inputs: {U0}')
     else:
         # we are on the ground
         X0=np.array([VA_t, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, INIT_HDG_DEG * DEG2RAD])
-        U0=np.array([0.0, 0.0, 0.0, 0.0, 0.0, flap_pos, gear, 0.0, 0.0])
+        U0=np.array([0.0, 0.0, 0.0, 0.0, 0.0, flap_pos, gear_pos, 0.0, 0.0])
 
     # interpolate high lift devices effects
     dcl_dcd_dcm_dalpha = physics.array_interp(flap_pos, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
 
     # interpolate for landing gear delta CD
-    ldg_dcd = physics.array_interp(gear, acp.LDG_DCD, acp.MAX_LDG)
+    ldg_dcd = physics.array_interp(gear_pos, acp.LDG_DCD, acp.MAX_LDG)
     dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
 
     # initialize integrators
-    AC_integrator = physics.ss_integrator(t0, X0, U0, rho_trim, height, dcl_dcd_dcm_dalpha[IDX_DCL], 
-                                            dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp)
+    fdm_state.X = X0
+    fdm_state.U = U0
+    fdm_state.rho = rho_trim
+    fdm_state.h = height
+    fdm_state.dcl = dcl_dcd_dcm_dalpha[IDX_DCL]
+    fdm_state.dcd = dcl_dcd_dcm_dalpha[IDX_DCD]
+    fdm_state.dcm = dcl_dcd_dcm_dalpha[IDX_DCM]
+    fdm_state.dalpha = dcl_dcd_dcm_dalpha[IDX_DALPHA]
+
+    # 2. Call the updated integrator with just 4 arguments
+    AC_integrator = physics.ss_integrator(t0, X0, fdm_state, acp)
     
     NED0 = env.NED(X0[:3], X0[6:]) #uvw and phithetapsi
     
@@ -460,8 +469,11 @@ if __name__ == "__main__":
     current_uvw = np.array([0,0,0])
 
     # aircraft initialization (includes trimming)
-    this_AC_int, X_trim, trim_point, this_latlonh_int = initialize(VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, altitude=INIT_ALT_FT, 
-                                                            psi_t=INIT_HDG_DEG, height=100.0, flap_pos=FLAPS_INIT, acp=acp)
+    this_AC_int, X_trim, trim_point, this_latlonh_int = initialize(
+        VA_t=V_TRIM_MPS, gamma_t=GAMMA_TRIM_RAD, latlon=INIT_LATLON_DEG, 
+        altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG, height=100.0, 
+        flap_pos=FLAPS_INIT, gear_pos=INIT_GEAR, acp=acp, fdm_state=fdm_state
+    )
     trim_point[IDX_GEAR] = INIT_GEAR # controls for the trimmed state
     inceptor_cmd = trim_point.copy() # we set inceptor_cmd as a copy of the trimmed control states first.
 
