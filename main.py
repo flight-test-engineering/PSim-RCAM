@@ -720,9 +720,6 @@ if __name__ == "__main__":
                 # 4. CRITICAL: Re-sync state observables to the final step
                 fdm_state.X = this_AC_int.y
                 _ = physics.RCAM_model(fdm_state, acp)
-                fdm_state.Va = env.VA(np.array([fdm_state.X[IDX_U], 
-                                                fdm_state.X[IDX_V],
-                                                fdm_state.X[IDX_W]]))
 
 
                 # -- Integrate navigation equations

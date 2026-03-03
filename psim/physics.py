@@ -389,24 +389,23 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     flap_pos, gear_pos = state.U[IDX_FLAP], state.U[IDX_GEAR]
     dgsp, brake = state.U[IDX_GNDSP], state.U[IDX_BRAKE]
     
-    rho, h = state.rho, state.h
     dcl, dcd, dcm, dalpha = state.dcl, state.dcd, state.dcm, state.dalpha
 
     #----------------- intermediate variables ---------------------------
     # airspeed
-    Va = np.sqrt(u**2 + v**2 + w**2) # m/s
+    state.Va = np.sqrt(u**2 + v**2 + w**2) # m/s
     
     # alpha and beta
     # Protect against divide by zero if Va is very small (on ground)
-    if Va < MIN_AIRSPEED_FOR_ALPHA_BETA_M_S:
+    if state.Va < MIN_AIRSPEED_FOR_ALPHA_BETA_M_S:
         alpha = 0.0
         beta = 0.0
     else:
         alpha = np.arctan2(w, u)
-        beta = np.arcsin(v / Va)
+        beta = np.arcsin(v / state.Va)
     
     # dynamic pressure
-    Q = 0.5 * rho * Va**2
+    Q = 0.5 * state.rho * state.Va**2
     
     # define vectors wbe_b and V_b
     wbe_b = np.array([p, q, r])
@@ -427,7 +426,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
 
 
     # Ground Effect # not original from RCAM
-    GE_cl_mult, GE_cd_mult = calc_ground_effect(h - acp.LG_MAIN_L_POS[IDX_MLG_Z], acp) # subtracting landing gear nominal height - might need adjustments
+    GE_cl_mult, GE_cd_mult = calc_ground_effect(state.h - acp.LG_MAIN_L_POS[IDX_MLG_Z], acp) # subtracting landing gear nominal height - might need adjustments
     # multiply wing-body calculated CL by ground effect factor
     CL_wb *= GE_cl_mult # not origincal from RCAM
 
@@ -435,7 +434,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     # CL thrust
     epsilon = acp.DEPSDA * (alpha - acp.ALPHA_L0)
     # Prevent divide by zero in q_term, if speed is too low
-    q_term = (acp.EPSILON_DOT * q * acp.LT / Va) if Va > 0.1 else 0.0
+    q_term = (acp.EPSILON_DOT * q * acp.LT / state.Va) if state.Va > 0.1 else 0.0
     alpha_t = alpha - epsilon + de + q_term
     CL_t = acp.NT * (acp.ST / acp.S) * alpha_t
 
@@ -470,7 +469,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     eta = np.array([eta11, eta21, eta31])
     
     # Prevent divide by zero in damping terms
-    inv_Va = (acp.CBAR / Va) if Va > 0.1 else 0.0
+    inv_Va = (acp.CBAR / state.Va) if state.Va > 0.1 else 0.0
 
     dCMdx = inv_Va * np.array([[acp.C_l_P, acp.C_l_Q, acp.C_l_R], 
                                     [acp.C_m_P, (acp.C_m_Q * (acp.ST * acp.LT**2) / (acp.S * acp.CBAR**2)), acp.C_m_R], 
@@ -553,7 +552,6 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     # Store outputs to the state object
     state.dX = np.concatenate((u_v_w_dot, p_q_r_dot, phi_theta_psi_dot))
     
-    state.Va = Va
     state.alpha = alpha * RAD2DEG
     state.beta = beta * RAD2DEG
     state.CL = CL
