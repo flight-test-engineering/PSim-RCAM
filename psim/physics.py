@@ -16,6 +16,64 @@ def initialize_constants(params: dict)->None:
     """
     globals().update(params)
 
+from numba.experimental import jitclass
+from numba import float64
+
+# Define the data and types for the FDM State
+state_spec =[
+    # Inputs / Configurations
+    ('X', float64[:]),
+    ('U', float64[:]),
+    ('rho', float64),
+    ('h', float64),
+    ('dcl', float64),
+    ('dcd', float64),
+    ('dcm', float64),
+    ('dalpha', float64),
+    
+    # Outputs / Intermediates (previously from RCAM_observe)
+    ('dX', float64[:]),
+    ('Va', float64),
+    ('alpha', float64),
+    ('beta', float64),
+    ('CL', float64),
+    ('CD', float64),
+    ('CY', float64),
+    ('F_gnd_x', float64),
+    ('F_gnd_y', float64),
+    ('F_gnd_z', float64),
+    
+    # Body Accelerations for FlightGear
+    ('body_accels', float64[:]),
+]
+
+@jitclass(state_spec)
+class FDMState:
+    def __init__(self):
+        # Initialize arrays and scalars
+        self.X = np.zeros(9)
+        self.U = np.zeros(9)
+        self.rho = 1.225
+        self.h = 0.0
+        self.dcl = 0.0
+        self.dcd = 0.0
+        self.dcm = 0.0
+        self.dalpha = 0.0
+        
+        self.dX = np.zeros(9)
+        self.body_accels = np.zeros(3)
+        self.Va = 0.0
+        self.alpha = 0.0
+        self.beta = 0.0
+        self.CL = 0.0
+        self.CD = 0.0
+        self.CY = 0.0
+        self.F_gnd_x = 0.0
+        self.F_gnd_y = 0.0
+        self.F_gnd_z = 0.0
+
+
+
 
 
 # ############################################################################
@@ -267,7 +325,7 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float, acp:jitclass)
 # ############################################################################
 
 @jit(nopython=True)
-def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:float, dcm:float, dalpha:float, acp:jitclass) -> np.ndarray:
+def RCAM_model(state: FDMState, acp: jitclass) -> None:
     '''
     Modified RCAM model implementation
     sources: RCAM docs and Christopher Lum
@@ -310,16 +368,29 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
         X_dot: derivatives of states (same order)
     '''
    
-    # ------------------------- states ----------------------------------
-    u, v, w = X[IDX_U], X[IDX_V], X[IDX_W] # m/s
-    p, q, r = X[IDX_P], X[IDX_Q], X[IDX_R] # rad/s
-    phi, theta, psi = X[IDX_PHI], X[IDX_THETA], X[IDX_PSI] # rad
+    # --------------- extract data from dataclass, to local variables ----
+    X = state.X
+    U = state.U
+    rho = state.rho
+    h = state.h
+    dcl = state.dcl
+    dcd = state.dcd
+    dcm = state.dcm
+    dalpha = state.dalpha
 
-    # ----------------------- controls ----------------------------------
-    da, de, dr = U[IDX_AIL], U[IDX_ELE], U[IDX_RUD]
-    dt1, dt2 = U[IDX_THR1], U[IDX_THR2]
-    flap_pos, gear_pos = U[IDX_FLAP], U[IDX_GEAR]
-    dgsp, brake = U[IDX_GNDSP], U[IDX_BRAKE]
+    # ------------------------- states ----------------------------------
+    u, v, w = state.X[IDX_U], state.X[IDX_V], state.X[IDX_W]
+    p, q, r = state.X[IDX_P], state.X[IDX_Q], state.X[IDX_R]
+    phi, theta, psi = state.X[IDX_PHI], state.X[IDX_THETA], state.X[IDX_PSI]
+
+    # ----------------------- controls & env ----------------------------
+    da, de, dr = state.U[IDX_AIL], state.U[IDX_ELE], state.U[IDX_RUD]
+    dt1, dt2 = state.U[IDX_THR1], state.U[IDX_THR2]
+    flap_pos, gear_pos = state.U[IDX_FLAP], state.U[IDX_GEAR]
+    dgsp, brake = state.U[IDX_GNDSP], state.U[IDX_BRAKE]
+    
+    rho, h = state.rho, state.h
+    dcl, dcd, dcm, dalpha = state.dcl, state.dcd, state.dcm, state.dalpha
 
     #----------------- intermediate variables ---------------------------
     # airspeed
@@ -473,101 +544,28 @@ def RCAM_model(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:fl
                       [0.0, np.sin(phi) / np.cos(theta), np.cos(phi) / np.cos(theta)]], dtype=np.dtype('f8'))
     
     phi_theta_psi_dot = np.dot(H_phi, wbe_b)
+
+    # Calculate Body Accelerations for FlightGear natively!
+    # Specific Force = (Total Forces excluding Gravity) / Mass
+    # OR simply: u_v_w_dot + g_b (matches your current calculation perfectly)
+    state.body_accels = u_v_w_dot + g_b 
     
-    #--------------------- place in first order form --------------------------
-    X_dot = np.concatenate((u_v_w_dot, p_q_r_dot, phi_theta_psi_dot))
+    # Store outputs to the state object
+    state.dX = np.concatenate((u_v_w_dot, p_q_r_dot, phi_theta_psi_dot))
     
-    return X_dot
+    state.Va = Va
+    state.alpha = alpha * RAD2DEG
+    state.beta = beta * RAD2DEG
+    state.CL = CL
+    state.CD = CD
+    state.CY = CY
+    state.F_gnd_x = F_gnd_b[0]
+    state.F_gnd_y = F_gnd_b[1]
+    state.F_gnd_z = F_gnd_b[2]
+        
+    return None
 
 
-# for efficiency, we create a new function twin just to calculate the internal states and return them for logging. 
-# we do not need to log at full simulation frame rate.
-@jit(nopython=True)
-def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:float, dcm:float, dalpha:float, acp:jitclass) -> np.ndarray:
-    '''
-    Performs the same calculations as RCAM_model but returns internal variables
-    for logging purposes instead of state derivatives.
-    
-    Returns array:
-    [0:Va, 1:alpha, 2:beta, 3:CL, 4:CD, 5:CY, 6:Gnd_Fx, 7:Gnd_Fy, 8:Gnd_Fz]
-    -> you can add more variables if required
-    '''
-   
-    # ------------------------- states ----------------------------------
-    u, v, w = X[IDX_U], X[IDX_V], X[IDX_W] # m/s
-    p, q, r = X[IDX_P], X[IDX_Q], X[IDX_R] # rad/s
-    phi, theta, psi = X[IDX_PHI], X[IDX_THETA], X[IDX_PSI] # rad
-
-    # ----------------------- controls ----------------------------------
-    da, de, dr = U[IDX_AIL], U[IDX_ELE], U[IDX_RUD]
-    dt1, dt2 = U[IDX_THR1], U[IDX_THR2]
-    flap_pos, gear_pos = U[IDX_FLAP], U[IDX_GEAR]
-    dgsp, brake = U[IDX_GNDSP], U[IDX_BRAKE]
-
-    #----------------- intermediate variables ---------------------------
-    # airspeed
-    Va = np.sqrt(u**2 + v**2 + w**2) # m/s
-    
-    # alpha and beta
-    # Protect against divide by zero if Va is very small (on ground)
-    if Va < MIN_AIRSPEED_FOR_ALPHA_BETA_M_S:
-        alpha = 0.0
-        beta = 0.0
-    else:
-        alpha = np.arctan2(w, u)
-        beta = np.arcsin(v / Va)
-       
-    #----------------- aerodynamic force coefficients ---------------------
-        # this is only available in the newer RCAM document (rev Feb 1997)
-    # which is not availble to the public
-    # CL - wing + body
-    # RCAM modified to include dalpha and dcl and dgsp
-    if (alpha + dalpha) <= acp.ALPHA_SWITCH:
-        CL_wb = acp.N * (alpha - acp.ALPHA_L0 + dalpha) * (1 - dgsp)
-    else: 
-        CL_wb = (acp.A3 * (alpha + dalpha)**3 + acp.A2 * (alpha + dalpha)**2 + acp.A1 * (alpha + dalpha) + acp.A0) * (1 - dgsp) + dcl
-
-    # clip CL_wb (not original from RCAM)
-    if CL_wb < -1.0: CL_wb = -1.0
-
-    # Ground Effect # not original from RCAM
-    GE_cl_mult, GE_cd_mult = calc_ground_effect(h - acp.LG_MAIN_L_POS[IDX_MLG_Z], acp) # subtracting landing gear nominal height - might need adjustments
-    # multiply wing-body calculated CL by ground effect factor
-    CL_wb *= GE_cl_mult # not origincal from RCAM
-
-
-    # CL thrust
-    epsilon = acp.DEPSDA * (alpha - acp.ALPHA_L0)
-    # Prevent divide by zero in q_term, if speed is too low
-    q_term = (acp.EPSILON_DOT * q * acp.LT / Va) if Va > 0.1 else 0.0
-    alpha_t = alpha - epsilon + de + q_term
-    CL_t = acp.NT * (acp.ST / acp.S) * alpha_t
-
-    # Total CL
-    CL = CL_wb + CL_t
-
-    # Total CD (in stability frame)
-    CD = acp.CDMIN + acp.D1 * (acp.N * alpha + acp.D0)**2 + dcd # RCAM modified to include dcd
-    # add ground effect to drag
-    CD *= GE_cd_mult # not original from RCAM
-
-    # Total side force CY (stability frame)
-    CY = acp.CY_BETA * beta + acp.CY_DR * dr
-
-    #---------------------- gravity effects ----------------------------------
-    g_b = np.array([-G * np.sin(theta), G * np.cos(theta) * np.sin(phi), G * np.cos(theta) * np.cos(phi)])
-    
-
-    #---------------------- GROUND REACTION ----------------------------------
-    # This is the new part for Step 3
-    Gnd_Reac = calculate_ground_forces(X, h, brake, acp)
-    F_gnd_b = Gnd_Reac[:3]
-    F_gnd_x = Gnd_Reac[0]
-    F_gnd_y = Gnd_Reac[1]
-    F_gnd_z = Gnd_Reac[2]
-
-    
-    return np.array([Va, alpha*RAD2DEG, beta*RAD2DEG, CL, CD, CY, F_gnd_x, F_gnd_y, F_gnd_z])
 
 
 
@@ -579,8 +577,10 @@ def RCAM_observe(X:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:
     # Scipy's "integrate.ode" does not accept a numba/@jit(nopython=True) compiled function
     # therefore, we need to create dummy wrappers
 
-def RCAM_model_wrapper(t, X, U, rho, h, dcl, dcd, dcm, dalpha, acp):
-    return RCAM_model(X, U, rho, h, dcl, dcd, dcm, dalpha, acp)
+def RCAM_model_wrapper(t, X, state, acp):
+    state.X = X  # Feed the current RK evaluation state into the dataclass
+    RCAM_model(state, acp)
+    return state.dX # Return the derivative array
 
 def NED_wrapper(t, X, NED):
     return env.NED
@@ -590,16 +590,14 @@ def latlonh_dot_wrapper(t, X, V_NED, lat, h):
 
 
 # # # integrators
-def ss_integrator(t_ini:float, X0:np.ndarray, U:np.ndarray, rho:float, h:float, dcl:float, dcd:float, dcm:float, dalpha:float, acp:jitclass):
+def ss_integrator(t_ini:float, X0:np.ndarray, state:FDMState, acp:jitclass):
     '''
     single step integrator for FDM
     returns scipy object, initialized
     '''
-
-    RK_integrator = integrate.ode(RCAM_model_wrapper, acp)
+    RK_integrator = integrate.ode(RCAM_model_wrapper)
     RK_integrator.set_integrator('dopri5') 
-    RK_integrator.set_f_params(U, rho, h, dcl, dcd, dcm, dalpha, acp)
-
+    RK_integrator.set_f_params(state, acp) # Pass the state object pointer
     RK_integrator.set_initial_value(X0, t_ini)
     return RK_integrator
 
@@ -632,7 +630,8 @@ def latlonh_int(t_ini:float, latlonh0:np.ndarray, V_NED:np.ndarray):
 
 def trim_functional3(Z:np.ndarray, VA_trim:float, gamma_trim:float, side_speed_trim:float,
                      phi_trim:float, psi_trim:float, rho_trim:float, h_trim:float, 
-                     flap_pos:float, gear_pos:float, gnd_sp_pos:float, brakes_pos:float, acp:jitclass) -> np.dtype('f8'):
+                     flap_pos:float, gear_pos:float, gnd_sp_pos:float, brakes_pos:float, 
+                     trim_state, acp:jitclass) -> float:
     '''
     functional to calculate a cost for minimizer (used to find trim point)
     inputs:
@@ -695,11 +694,21 @@ def trim_functional3(Z:np.ndarray, VA_trim:float, gamma_trim:float, side_speed_t
     ldg_dcd = array_interp(gear_pos, acp.LDG_DCD, acp.MAX_LDG)
     dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
     
-    # calculate model
-    X_dot = RCAM_model(X, U, rho_trim, h_trim, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp)
+    trim_state.X = X
+    trim_state.U = U
+    trim_state.rho = rho_trim
+    trim_state.h = h_trim
+    trim_state.dcl = dcl_dcd_dcm_dalpha[IDX_DCL]
+    trim_state.dcd = dcl_dcd_dcm_dalpha[IDX_DCD]
+    trim_state.dcm = dcl_dcd_dcm_dalpha[IDX_DCM]
+    trim_state.dalpha = dcl_dcd_dcm_dalpha[IDX_DALPHA]
     
+    # calculate model (mutates trim_state in place)
+    RCAM_model(trim_state, acp)
+    X_dot = trim_state.dX
+
     # calculate speed and gamma
-    VA_current = env.VA(X[:3])
+    VA_current = trim_state.Va
     gamma_current = X[IDX_THETA] - np.arctan2(X[IDX_W], X[IDX_U]) 
      
     Q = np.concatenate((X_dot, [VA_current - VA_trim], [gamma_current - gamma_trim], [X[IDX_V] - side_speed_trim], [X[IDX_PHI] - phi_trim], [X[IDX_PSI] - psi_trim]))
@@ -713,7 +722,7 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
                h_trim=100.0, flap_pos=0, gear=0, gnd_sp=0, brakes=0,
                X0=np.array([85.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), 
                U0=np.array([1.0, 1.0, 1.0, 0.08, 0.08, 0.0, 0.0, 0.0, 0.0]),
-               acp=None) -> np.ndarray:
+               acp=None) -> tuple[np.ndarray, str]:
     '''
     uses scipy minimize on functional to find trim point
     X0 states:
@@ -724,6 +733,8 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
         flaps position, gear position, gnd spoiler, brake
 
     '''
+
+    trim_state = FDMState()
 
     # add target trim values to X0 vector, as a better initial guess for the states
     X0[IDX_U] = VA_trim
@@ -749,20 +760,18 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     # we add them separately:
     Z0 = np.concatenate((X0, U0[:-4])) 
 
-    logger.info(f'[trim_model] initial functional cost: {trim_functional3(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
-                             flap_pos, gear, gnd_sp, brakes, acp):.3e}')
+    logger.info(f'[trim_model] initial functional cost: {trim_functional3(Z0, VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim, flap_pos, gear, gnd_sp, brakes, trim_state, acp):.3e}')
 
 
     while iter_counter <= MAX_ITER and not converge:
         # Updated args tuple to include h_trim
-        result = minimize(trim_functional3, Z0, args=(VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim,
-                          flap_pos, gear, gnd_sp, brakes, acp),
-                method='Nelder-Mead', options={'maxiter':50000,\
-                                               'maxfev':40000})
+        result = minimize(trim_functional3, Z0, 
+                          args=(VA_trim, gamma_trim, side_speed_trim, phi_trim, psi_trim, rho_trim, h_trim, flap_pos, gear, gnd_sp, brakes, trim_state, acp),
+                          method='Nelder-Mead', 
+                          options={'maxiter':50000, 'maxfev':40000})
         
         # Cost check
-        current_cost = trim_functional3(result.x, env.VA(result.x[:3]), result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U]), result.x[IDX_V], result.x[IDX_PHI], result.x[IDX_PSI], rho_trim, h_trim,
-                                         flap_pos, gear, gnd_sp, brakes, acp)
+        current_cost = trim_functional3(result.x, env.VA(result.x[:3]), result.x[IDX_THETA] - np.arctan2(result.x[IDX_W], result.x[IDX_U]), result.x[IDX_V], result.x[IDX_PHI], result.x[IDX_PSI], rho_trim, h_trim, flap_pos, gear, gnd_sp, brakes, trim_state, acp)
         logger.info(f'[trim_model] iter: {iter_counter}, functional cost: {current_cost:.3e}')
 
         if current_cost < epsilon:

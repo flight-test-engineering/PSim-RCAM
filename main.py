@@ -163,6 +163,7 @@ def compile_numba_functions(acp:jitclass)->None:
         
         # Dummy Data
         t = 0.0
+        dummy_state = physics.FDMState()
         X = np.zeros(9)
         U = np.zeros(9)
         NED = np.zeros(3)
@@ -184,12 +185,11 @@ def compile_numba_functions(acp:jitclass)->None:
         _ = physics.calculate_gear_compression(X, h, acp)
         _ = physics.get_air_ground_state(np.ones(3))
         _ = physics.calculate_ground_forces(X, h, 0.0, acp)
-        _ = physics.RCAM_model(X, U, rho, h, dcl, dcd, dcm, dalpha, acp)
-        _ = physics.RCAM_observe(X, U, rho, h, dcl, dcd, dcm, dalpha, acp)
-        _ = physics.RCAM_model_wrapper(t, X, U, rho, h, dcl, dcd, dcm, dalpha, acp)
+        _ = physics.RCAM_model(dummy_state, acp) 
+        _ = physics.RCAM_model_wrapper(t, X, dummy_state, acp)
         _ = physics.NED_wrapper(t, X, NED)
         _ = physics.latlonh_dot_wrapper(t, X, NED, lat, h)
-        _ = physics.ss_integrator(t, X, U, rho, h, dcl, dcd, dcm, dalpha, acp)
+        _ = physics.ss_integrator(t, X, dummy_state, acp)
         _ = physics.latlonh_int(t, latlonh0, NED)
         _ = physics.calc_ground_effect(h, acp)
 
@@ -451,6 +451,9 @@ if __name__ == "__main__":
 
 ###########################################################################
     # SIMULATION VARIABLES INITIALIZATION
+    # instantiate the main dataclass that holds states and controls
+    fdm_state = physics.FDMState()
+
     data_collector, t_vector_collector = [], [] # data collectors, for saving data to disk
     
     prev_uvw = np.array([0,0,0]) # velocity vectors
@@ -696,9 +699,21 @@ if __name__ == "__main__":
                 prev_uvw = current_uvw
                 current_rho = env.get_rho(current_alt_m)
 
+                # 2. Update environmental/control inputs into the state object
+                fdm_state.U = U_actual
+                fdm_state.rho = current_rho
+                fdm_state.h = current_AGL_m
+                fdm_state.dcl = dcl_dcd_dcm_dalpha[IDX_DCL]
+                fdm_state.dcd = dcl_dcd_dcm_dalpha[IDX_DCD]
+                fdm_state.dcm = dcl_dcd_dcm_dalpha[IDX_DCM]
+                fdm_state.dalpha = dcl_dcd_dcm_dalpha[IDX_DALPHA]
+
                 # -- Integrate Physics
-                this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp)
                 this_AC_int.integrate(this_AC_int.t + dt)
+                # 4. CRITICAL: Re-sync state observables to the final step
+                fdm_state.X = this_AC_int.y
+                physics.RCAM_model(fdm_state, acp) 
+
                 current_uvw = this_AC_int.y[0:3]
 
                 # -- Integrate navigation equations
@@ -727,15 +742,7 @@ if __name__ == "__main__":
                 if send_frame_trigger:
                     # -- Send data to FlightGear
                     # it is easier to calculate body accelerations instead of reaching into the RCAM function
-                    if dt == 0:
-                        body_accels = np.zeros(prev_uvw.shape)
-                    else:
-                        body_accels = (current_uvw - prev_uvw) / dt
-                    # add gravity
-                    g_b = np.array([-G * np.sin(this_AC_int.y[IDX_THETA]),
-                                    G * np.cos(this_AC_int.y[IDX_THETA]) * np.sin(this_AC_int.y[IDX_PHI]),
-                                    G * np.cos(this_AC_int.y[IDX_THETA]) * np.cos(this_AC_int.y[IDX_PHI])])
-                    body_accels = body_accels + g_b
+                    body_accels = fdm_state.body_accels.copy()
                     body_accels[2] = -body_accels[2] # FG expects Z-up
 
                     # set values and send frames
@@ -778,7 +785,11 @@ if __name__ == "__main__":
                 
                 # -- Data logging
                 if datalog_trigger:
-                    internals = physics.RCAM_observe(this_AC_int.y, U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp) # get internal FDM states
+                    internals = np.array([
+                            fdm_state.Va, fdm_state.alpha, fdm_state.beta,
+                            fdm_state.CL, fdm_state.CD, fdm_state.CY,
+                            fdm_state.F_gnd_x, fdm_state.F_gnd_y, fdm_state.F_gnd_z
+                        ])
                     # engine parameters:
                     if eng_vals:
                         for idx, p in enumerate(ENG_LOG_PARAMETERS):
