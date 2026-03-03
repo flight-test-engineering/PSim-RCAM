@@ -335,7 +335,7 @@ if __name__ == "__main__":
 ##########################################################################
     # header for saving data to disk
 
-    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'h', 'V_N', 'V_E', 'V_D', 'dA_actual', 
+    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'Alt', 'V_N', 'V_E', 'V_D', 'dA_actual', 
                         'dE_actual', 'dR_actual', 'dT1_actual', 'dT2_actual','flap_pos_actual', 'gear_pos_actual', 'dgsp_actual', 'brake_actual',
                         'dA_cmd', 'dE_cmd', 'dR_cmd', 'dT1_cmd', 'dT2_cmd', 'flap_pos_cmd', 'gear_pos', 'dgsp', 'brake']
     
@@ -487,7 +487,7 @@ if __name__ == "__main__":
     # aircraft position variables
     current_alt_m = INIT_ALT_FT * FT2M # m
     current_latlon_rad = INIT_LATLON_DEG * DEG2RAD
-    current_AGL_m = env.get_AGL(INIT_LATLON_DEG, current_alt_m, SIM_VISUAL_OFFSET)
+    fdm_state.h = env.get_AGL(INIT_LATLON_DEG, current_alt_m, SIM_VISUAL_OFFSET)
 
     
     # frame variables
@@ -549,7 +549,7 @@ if __name__ == "__main__":
             dcl_dcd_dcm_dalpha = np.zeros(4)
             
             # integrate 6-DOF
-            this_AC_int.set_f_params(U_actual, current_rho, current_AGL_m, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp)
+            this_AC_int.set_f_params(U_actual, current_rho, fdm_state.h, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp)
             this_AC_int.integrate(this_AC_int.t + simdt)
 
             # integrate navigation equations
@@ -561,10 +561,10 @@ if __name__ == "__main__":
             # store current state and time vector
             current_latlon_rad = this_latlonh_int.y[0:2] # store lat and long (RAD)
             
-            if current_AGL_m != 0 : 
-                current_alt_m = this_latlonh_int.y[2] # store altitude (m)
+            if fdm_state.h != 0 : 
+                fdm_state.h = this_latlonh_int.y[2] # store altitude (m)
             else:
-                this_latlonh_int.y[2] = current_alt_m
+                this_latlonh_int.y[2] = fdm_state.h
 
             data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_actual)))
             current_alt_m = this_latlonh_int.y[2] # store altitude (m)
@@ -657,7 +657,7 @@ if __name__ == "__main__":
                 # toggle ground spoilers armed if button is pressed -> this is done in joystick submodule
                 # ground spoiler arm/disarm state is passaed through inceptor_cmd[IDX_GNDSP]
                 # if spoilers are armed and we are on ground, set ground spoilers to open
-                if (physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m, acp)) and (trim_point[IDX_GNDSP] == 1)):
+                if (physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], fdm_state.h, acp)) and (trim_point[IDX_GNDSP] == 1)):
                     inceptor_cmd[IDX_GNDSP] = acp.GND_SPOILERS_DCL # % lift dump
                 else:
                     inceptor_cmd[IDX_GNDSP] = 0.0 # closed, no lift dump
@@ -706,12 +706,10 @@ if __name__ == "__main__":
                 # -------------------------------------------------------
                 # INTEGRATION
                 # -------------------------------------------------------
-                current_rho = env.get_rho(current_alt_m)
+                fdm_state.rho = env.get_rho(current_alt_m)
 
                 # 2. Update environmental/control inputs into the state object
                 fdm_state.U = U_actual
-                fdm_state.rho = current_rho
-                fdm_state.h = current_AGL_m
                 fdm_state.dcl = dcl_dcd_dcm_dalpha[IDX_DCL]
                 fdm_state.dcd = dcl_dcd_dcm_dalpha[IDX_DCD]
                 fdm_state.dcm = dcl_dcd_dcm_dalpha[IDX_DCM]
@@ -741,10 +739,10 @@ if __name__ == "__main__":
                 # height above terrain
                 if USE_FG_AS_TERRAIN_DB:
                     # use FlightGear as a terrain database...
-                    current_AGL_m = current_alt_m - terrain_shared_data['ground_alt'] # this in meters. subtracting landing gear height
+                    fdm_state.h = current_alt_m - terrain_shared_data['ground_alt'] # this in meters. subtracting landing gear height
                 else:
                     # alternate: use SRTM instead...
-                    current_AGL_m = env.get_AGL(current_latlon_rad*RAD2DEG, current_alt_m, SIM_VISUAL_OFFSET)
+                    fdm_state.h = env.get_AGL(current_latlon_rad*RAD2DEG, current_alt_m, SIM_VISUAL_OFFSET) # in meters as well
                 
 
                 # SEMAPHORES TRIGGER CHECKS
@@ -762,7 +760,7 @@ if __name__ == "__main__":
                             current_latlon_rad, 
                             current_alt_m,
                             body_accels,
-                            current_AGL_m)
+                            fdm_state.h)
                     my_pack = my_fgFDM.pack()
                     try:
                         fdm_packet_queue.put_nowait(my_pack)
@@ -779,7 +777,7 @@ if __name__ == "__main__":
                 # so we only trigger engine deck calc at a much slower frame rate
                 if calc_eng_trigger:
                     # Trigger Engine Deck Calculation
-                    on_ground = physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], current_AGL_m, acp))
+                    on_ground = physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], fdm_state.h, acp))
                     if jobs_queue.empty():
                         new_job = (current_alt_m*M2FT, ISA.Vt2M(fdm_state.Va*MS2KT, current_alt_m*M2FT), inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2], on_ground, time.perf_counter())
                         try:
@@ -819,7 +817,7 @@ if __name__ == "__main__":
 
                 # print out stuff every so often
                 if (frame_count % 100) == 0:
-                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {inceptor_cmd[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpArmed={int(trim_point[IDX_GNDSP])},Elev={trim_point[IDX_ELE]:.3f}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={-body_accels[2]/G:.2f}, RADALT={current_AGL_m*M2FT:.0f}ft')
+                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {inceptor_cmd[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpArmed={int(trim_point[IDX_GNDSP])},Elev={trim_point[IDX_ELE]:.3f}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={-body_accels[2]/G:.2f}, RADALT={fdm_state.h*M2FT:.0f}ft')
                 #################################################################################################################################################################
 
                 # reset integrator timestep counter
