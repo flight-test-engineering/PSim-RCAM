@@ -335,11 +335,21 @@ if __name__ == "__main__":
 ##########################################################################
     # header for saving data to disk
 
-    signals_header = ['u', 'v', 'w', 'p', 'q', 'r', 'phi', 'theta', 'psi', 'lat', 'lon', 'Alt', 'V_N', 'V_E', 'V_D', 'dA_actual', 
-                        'dE_actual', 'dR_actual', 'dT1_actual', 'dT2_actual','flap_pos_actual', 'gear_pos_actual', 'dgsp_actual', 'brake_actual',
-                        'dA_cmd', 'dE_cmd', 'dR_cmd', 'dT1_cmd', 'dT2_cmd', 'flap_pos_cmd', 'gear_pos', 'dgsp', 'brake']
+    signals_header = ['u [m/s]', 'v [m/s]', 'w [m/s]', 
+                      'p [rad/s]', 'q [rad/s]', 'r [rad/s]', 
+                      'phi [rad]', 'theta [rad]', 'psi [rad]', 
+                      'lat [deg]', 'lon [deg]', 'Alt [m]', 
+                      'V_N [m/s]', 'V_E [m/s]', 'V_D [m/s]',
+                      'dA_actual [%]', 'dE_actual [%]', 'dR_actual [%]',
+                      'dT1_actual [N]', 'dT2_actual [N]',
+                      'flap_pos_actual', 'gear_pos_actual', 'dgsp_actual', 'brake_actual',
+                      'dA_cmd [%]', 'dE_cmd [%]', 'dR_cmd [%]', 
+                      'dT1_cmd [%]', 'dT2_cmd [%]', 
+                      'flap_pos_cmd', 'gear_pos', 'dgsp', 'brake']
     
-    internals_header = ['Va', 'alpha_deg', 'beta_deg', 'CL', 'CD', 'CY', 'Gnd_Fx', 'Gnd_Fy', 'Gnd_Fz'] # internal FDM states
+    internals_header = ['Va [m/s]', 'alpha [rad]', 'beta [rad]',
+                        'CL', 'CD', 'CY',
+                        'Gnd_Fx [N]', 'Gnd_Fy [N]', 'Gnd_Fz [N]'] # internal FDM states
     engine_header = []
     for eng_prefix in ['E1', 'E2']:
         for param in ENG_LOG_PARAMETERS:
