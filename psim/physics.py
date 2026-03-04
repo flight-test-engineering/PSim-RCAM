@@ -45,6 +45,7 @@ state_spec =[
     
     # Body Accelerations for FlightGear
     ('body_accels', float64[:]),
+    ('load_factor', float64),
 ]
 
 @jitclass(state_spec)
@@ -391,6 +392,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     
     dcl, dcd, dcm, dalpha = state.dcl, state.dcd, state.dcm, state.dalpha
 
+    # step 2
     #----------------- intermediate variables ---------------------------
     # airspeed
     state.Va = np.sqrt(u**2 + v**2 + w**2) # m/s
@@ -411,6 +413,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     wbe_b = np.array([p, q, r])
     V_b = np.array([u, v, w])
     
+    # step 3
     #----------------- aerodynamic force coefficients ---------------------
         # this is only available in the newer RCAM document (rev Feb 1997)
     # which is not availble to the public
@@ -449,6 +452,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     # Total side force CY (stability frame)
     CY = acp.CY_BETA * beta + acp.CY_DR * dr
 
+    # Step 4
     #------------------- dimensional aerodynamic forces --------------------
     # forces in F_s
     FA_s = np.array([-CD * Q * acp.S, CY * Q * acp.S, -CL * Q * acp.S])
@@ -460,6 +464,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
 
     FA_b = np.dot(C_bs, FA_s)   
     
+    # Step 5
     #------------------ aerodynamic moment coefficients about AC -----------
     # moments in F_b
     eta11 = acp.C_l_BETA * beta
@@ -481,16 +486,19 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     # CM about AC in Fb
     CMac_b = eta + np.dot(dCMdx, wbe_b) + np.dot(dCMdu, np.array([da, de, dr])) # RCAM original
 
+    # Step 6
     #------------------- aerodynamic moment about AC -------------------------
     # normalize to aerodynamic moment
     MAac_b = CMac_b * Q * acp.S * acp.CBAR
 
+    # Step 7
     #-------------------- aerodynamic moment about CG ------------------------
     rcg_b = np.array([acp.XCG, acp.YCG, acp.ZCG])
     rac_b = np.array([acp.XAC, acp.YAC, acp.ZAC])
 
     MAcg_b = MAac_b + np.cross(FA_b, rcg_b - rac_b)
     
+    # Step 8
     #---------------------- engine force and moment --------------------------
     # thrust
     #F1 = dt1 * M * G # orginal RCAM
@@ -513,6 +521,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
 
     MEcg_b = MEcg1_b + MEcg2_b
     
+    # Step 9
     #---------------------- gravity effects ----------------------------------
     g_b = np.array([-G * np.sin(theta), G * np.cos(theta) * np.sin(phi), G * np.cos(theta) * np.cos(phi)])
 
@@ -548,6 +557,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     # Specific Force = (Total Forces excluding Gravity) / Mass
     # OR simply: u_v_w_dot + g_b (matches your current calculation perfectly)
     state.body_accels = u_v_w_dot + g_b 
+    state.load_factor = (g_b[2] - (u_v_w_dot[IDX_W]+ p *v - q * u)) / G
     
     # Store outputs to the state object
     state.dX = np.concatenate((u_v_w_dot, p_q_r_dot, phi_theta_psi_dot))
