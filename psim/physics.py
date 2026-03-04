@@ -557,13 +557,13 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     # Specific Force = (Total Forces excluding Gravity) / Mass
     # OR simply: u_v_w_dot + g_b (matches your current calculation perfectly)
     state.body_accels = u_v_w_dot + g_b 
-    state.load_factor = (g_b[2] - (u_v_w_dot[IDX_W]+ p *v - q * u)) / G
+    state.load_factor = (g_b[2] - (u_v_w_dot[IDX_W]+ p * v - q * u)) / G
     
     # Store outputs to the state object
     state.dX = np.concatenate((u_v_w_dot, p_q_r_dot, phi_theta_psi_dot))
     
-    state.alpha = alpha * RAD2DEG
-    state.beta = beta * RAD2DEG
+    state.alpha = alpha
+    state.beta = beta
     state.CL = CL
     state.CD = CD
     state.CY = CY

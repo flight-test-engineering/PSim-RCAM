@@ -814,7 +814,7 @@ if __name__ == "__main__":
 
                 # print out stuff every so often
                 if (frame_count % 100) == 0:
-                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {inceptor_cmd[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpArmed={int(trim_point[IDX_GNDSP])},Elev={trim_point[IDX_ELE]:.3f}, ALPHA={internals[1]:.1f}, CL={internals[3]:.2f}, Nz={fdm_state.load_factor:.2f}, RADALT={fdm_state.h*M2FT:.0f}ft')
+                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {inceptor_cmd[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpArmed={int(trim_point[IDX_GNDSP])},Elev={trim_point[IDX_ELE]:.3f}, ALPHA={internals[1]*RAD2DEG:.1f}, CL={internals[3]:.2f}, Nz={fdm_state.load_factor:.2f}, RADALT={fdm_state.h*M2FT:.0f}ft')
                 #################################################################################################################################################################
 
                 # reset integrator timestep counter
