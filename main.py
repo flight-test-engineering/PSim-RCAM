@@ -100,9 +100,9 @@ def initialize(VA_t, gamma_t, latlon, altitude, psi_t, height, flap_pos, gear_po
     inputs:
         VA_t: true airspeed at trim (m/s)
         gamma_t: flight path angle at trim (rad)
-        latlon: initial lat and long (rad)
+        latlon: initial lat and long (deg)
         altitude: trim altitude (ft)
-        psi_t: initial heading (rad)
+        psi_t: initial heading (deg)
         height: height above ground (m) for air/ground purposes
         flap: flap position
         gear: gear position (0=up, 1=dn)
@@ -718,7 +718,7 @@ if __name__ == "__main__":
                 # -------------------------------------------------------
                 fdm_state.rho = env.get_rho(current_alt_m)
 
-                # 2. Update environmental/control inputs into the state object
+                # Update environmental/control inputs into the state object
                 fdm_state.U = U_actual
                 fdm_state.dcl = dcl_dcd_dcm_dalpha[IDX_DCL]
                 fdm_state.dcd = dcl_dcd_dcm_dalpha[IDX_DCD]
@@ -727,13 +727,13 @@ if __name__ == "__main__":
 
                 # -- Integrate Physics
                 this_AC_int.integrate(this_AC_int.t + dt)
-                # 4. CRITICAL: Re-sync state observables to the final step
-                fdm_state.X = this_AC_int.y
-                _ = physics.RCAM_model(fdm_state, acp)
+                # CRITICAL: Re-sync state observables to the final step
+                fdm_state.X = this_AC_int.y.copy()
+                
 
 
                 # -- Integrate navigation equations
-                current_NED = env.NED(this_AC_int.y[:3], this_AC_int.y[6:])
+                current_NED = env.NED(fdm_state.X[:3], fdm_state.X[6:])
                 this_wind = env.add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
 
                 this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon_rad[0], current_alt_m)
@@ -762,7 +762,7 @@ if __name__ == "__main__":
                     body_accels[2] = -body_accels[2] # FG expects Z-up
 
                     # set values and send frames
-                    net.set_FDM(my_fgFDM, this_AC_int.y, 
+                    net.set_FDM(my_fgFDM, fdm_state.X, 
                             physics.control_norm(U_actual, acp), 
                             current_latlon_rad, 
                             current_alt_m,
@@ -784,7 +784,7 @@ if __name__ == "__main__":
                 # so we only trigger engine deck calc at a much slower frame rate
                 if calc_eng_trigger:
                     # Trigger Engine Deck Calculation
-                    on_ground = physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], fdm_state.h, acp))
+                    on_ground = physics.get_air_ground_state(physics.calculate_gear_compression(fdm_state.X[:9], fdm_state.h, acp))
                     if jobs_queue.empty():
                         new_job = (current_alt_m*M2FT, ISA.Vt2M(fdm_state.Va*MS2KT, current_alt_m*M2FT), inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2], on_ground, time.perf_counter())
                         try:
@@ -801,6 +801,7 @@ if __name__ == "__main__":
                 
                 # -- Data logging
                 if datalog_trigger:
+                    _ = physics.RCAM_model(fdm_state, acp) # re-sync internal states before storing
                     internals = np.array([
                             fdm_state.Va, fdm_state.alpha, fdm_state.beta,
                             fdm_state.CL, fdm_state.CD, fdm_state.CY,
@@ -811,7 +812,7 @@ if __name__ == "__main__":
                         for idx, p in enumerate(ENG_LOG_PARAMETERS):
                             eng1_states[idx] = eng_vals[0][p]
                             eng2_states[idx] = eng_vals[1][p]
-                    data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED, U_actual, inceptor_cmd, internals, eng1_states, eng2_states)))
+                    data_collector.append(np.concatenate((fdm_state.X, this_latlonh_int.y, current_NED, U_actual, inceptor_cmd, internals, eng1_states, eng2_states)))
                     t_vector_collector.append(this_AC_int.t)
                     datalog_trigger = False
 
@@ -824,6 +825,7 @@ if __name__ == "__main__":
 
                 # print out stuff every so often
                 if (frame_count % 100) == 0:
+                    _ = physics.RCAM_model(fdm_state, acp) # re-sync internal states
                     print(f'time: {this_AC_int.t:0.1f}s, TLA: {inceptor_cmd[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpArmed={int(trim_point[IDX_GNDSP])},Elev={trim_point[IDX_ELE]:.3f}, ALPHA={internals[1]*RAD2DEG:.1f}, CL={internals[3]:.2f}, Nz={fdm_state.load_factor:.2f}, RADALT={fdm_state.h*M2FT:.0f}ft')
                 #################################################################################################################################################################
 
