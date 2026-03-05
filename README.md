@@ -17,7 +17,7 @@ The excellent tutorials by Christopher Lum (for Matlab/Simulink) were used as a 
 In addition to what prof. Lum implements, the following features are added here:  
 1 - Ground reactions (landing gear), to allow for takeoff and landing  
 2 - Actuator dynamics  
-3 - Turbofan engine deck (with parallel processing/multi-core), based on: [Turbofan Palylist](https://www.youtube.com/playlist?list=PLqJt-rNo8TZ1Y5Pzlk4S1205NUt2t-t22)  
+3 - Turbofan engine deck (with parallel processing/multi-core), based on: [Turbofan Playlist](https://www.youtube.com/playlist?list=PLqJt-rNo8TZ1Y5Pzlk4S1205NUt2t-t22)  
 4 - Terrain database based in SRTM data, if FlightGear not available  
 5 - Terrain database from FlightGear  
 6 - FlightGear visualization via UDP (with parallel threading)  
@@ -51,18 +51,18 @@ The code is split in module files for better organization:
 The aircraft parameters are defined in file *rcam_parameters.json*  
 You are encouraged to create other aircraft models and add additional files.  
 
-In **main.py**  
-Select the trim condition, if on ground or in air: TRIM_ON_GROUND  
+In **main.py**, these are some options to be selected:  
+Select starting point, if on ground or in air: TRIM_ON_GROUND  
 Intial altitude: INIT_ALT_FT  
 Trim speed: V_TRIM_MPS  
 Postion: INIT_LATLON_DEG  
 Flaps position: FLAPS_INIT  
 Gear position: INIT_GEAR  
 Flight path angle: GAMMA_TRIM_RAD  
-Heading: INIT_HDG_DEG  
+Initial heading: INIT_HDG_DEG  
 Wind: WIND_NED_MPS  
 Wind Std Dev: WIND_STDDEV_MPS  
-Engine Deck file: (set in propulsion.py)  
+*Note:* Engine Deck file is set in propulsion.py  
 ### Simulation
 Total simulation time: SIM_TOTAL_TIME_S  
 Main simulation loop frame rate: SIM_LOOP_HZ  
@@ -75,7 +75,9 @@ Selected engine parameters to be output/logged: ENG_LOG_PARAMETERS
 
 Results file (CSV): RESULTS_FILE  
 Select time interval to save to disk: LOG2DISK_INTERVAL_S  
+Results plot file for quick view (png): RESULTS_PLOT_FILE  
 
+In the multi threading / multi processing session:  
 ### FlightGear comms
 Main instance for visual: UDP_IP1  
 Second instance for visual: UDP_IP2  
