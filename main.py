@@ -834,7 +834,7 @@ if __name__ == "__main__":
                 # if you want to check for dropped frames, uncomment below
                 #if dt > simdt:
                     #actual_fps = 1.0 / dt
-                    #print(f"[WARNING] Sim Loop Lag: Target {SIM_LOOP_HZ}Hz | Actual {actual_fps:.1f}Hz | Calc Time {calc_duration*1000:.2f}ms")
+                    #logger.warning(f"[Main Process] Simulation Loop took longer than planned:Target {SIM_LOOP_HZ}Hz | Actual {actual_fps:.1f}Hz | Calc Time {calc_duration*1000:.2f}ms")
             
             
             # TIMERS CHECKS

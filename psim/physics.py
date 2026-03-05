@@ -476,10 +476,10 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     # Prevent divide by zero in damping terms
     inv_Va = (acp.CBAR / state.Va) if state.Va > 0.1 else 0.0
 
-    dCMdx = inv_Va * np.array([[acp.C_l_P, acp.C_l_Q, acp.C_l_R], 
+    dCMdx = inv_Va * np.array([[acp.C_l_P, acp.C_l_Q, acp.C_l_R], # moment change with respect to states
                                     [acp.C_m_P, (acp.C_m_Q * (acp.ST * acp.LT**2) / (acp.S * acp.CBAR**2)), acp.C_m_R], 
                                     [acp.C_n_P, acp.C_n_Q, acp.C_n_R]], dtype=np.dtype('f8'))
-    dCMdu = np.array([[acp.C_l_DA , acp.C_l_DE, acp.C_l_DR],
+    dCMdu = np.array([[acp.C_l_DA , acp.C_l_DE, acp.C_l_DR], # control authority/effectiveness matrix
                       [acp.C_m_DA, (acp.C_m_DE * (acp.ST * acp.LT) / (acp.S * acp.CBAR)), acp.C_m_DR],
                       [acp.C_n_DA, acp.C_n_DE, acp.C_n_DR]], dtype=np.dtype('f8'))
     
@@ -533,8 +533,9 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     F_gnd_b = Gnd_Reac[:3]
     M_gnd_b = Gnd_Reac[3:]
     
+    # Step 10
     #---------------------- state derivatives --------------------------------
-        # form F_b and calculate u, v, w dot
+    # form F_b and calculate u, v, w dot
     # Added F_gnd_b to the sum
     F_b = Fg_b + FE_b + FA_b + F_gnd_b
     
@@ -546,7 +547,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     
     p_q_r_dot = np.dot(acp.INV_INERTIA_TENSOR_b, (Mcg_b - np.cross(wbe_b, np.dot(acp.INERTIA_TENSOR_b , wbe_b))))
     
-    # phi, theta, psi dot
+    # phi, theta, psi dot -> Euler
     H_phi = np.array([[1.0, np.sin(phi) * np.tan(theta), np.cos(phi) * np.tan(theta)],
                       [0.0, np.cos(phi), -np.sin(phi)],
                       [0.0, np.sin(phi) / np.cos(theta), np.cos(phi) / np.cos(theta)]], dtype=np.dtype('f8'))
@@ -556,8 +557,8 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     # Calculate Body Accelerations for FlightGear natively!
     # Specific Force = (Total Forces excluding Gravity) / Mass
     # OR simply: u_v_w_dot + g_b (matches your current calculation perfectly)
-    state.body_accels = u_v_w_dot + g_b 
-    state.load_factor = (g_b[2] - (u_v_w_dot[IDX_W]+ p * v - q * u)) / G
+    state.body_accels = u_v_w_dot + np.dot(np.array([[0, -r, q],[r, 0, -p],[-q, p, 0]]), np.array([u, v, w]))
+    state.load_factor =  (g_b[IDX_W] - state.body_accels[IDX_W]) / G
     
     # Store outputs to the state object
     state.dX = np.concatenate((u_v_w_dot, p_q_r_dot, phi_theta_psi_dot))
