@@ -349,7 +349,8 @@ if __name__ == "__main__":
     
     internals_header = ['Va [m/s]', 'alpha [rad]', 'beta [rad]',
                         'CL', 'CD', 'CY',
-                        'Gnd_Fx [N]', 'Gnd_Fy [N]', 'Gnd_Fz [N]'] # internal FDM states
+                        'Gnd_Fx [N]', 'Gnd_Fy [N]', 'Gnd_Fz [N]',
+                        'Radalt [m]'] # internal FDM states
     engine_header = []
     for eng_prefix in ['E1', 'E2']:
         for param in ENG_LOG_PARAMETERS:
@@ -805,7 +806,8 @@ if __name__ == "__main__":
                     internals = np.array([
                             fdm_state.Va, fdm_state.alpha, fdm_state.beta,
                             fdm_state.CL, fdm_state.CD, fdm_state.CY,
-                            fdm_state.F_gnd_x, fdm_state.F_gnd_y, fdm_state.F_gnd_z
+                            fdm_state.F_gnd_x, fdm_state.F_gnd_y, fdm_state.F_gnd_z,
+                            fdm_state.h
                         ])
                     # engine parameters:
                     if eng_vals:
