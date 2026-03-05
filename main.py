@@ -322,7 +322,7 @@ if __name__ == "__main__":
         if joy_name == None:
             logger.info('[main] Will run OFFLINE simulation, no joystick detected!')
         else:
-            logger.warning(f'[main] Will run OFFLINE simulation, joystick model {joy_name} not in JSON config file!')
+            logger.info(f'[main] Will run OFFLINE simulation, joystick model {joy_name} not in JSON config file!')
     else:
         logger.info(f'[main] found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
 
@@ -551,7 +551,7 @@ if __name__ == "__main__":
         
         # single step integrate through each time step
         for idx, t in enumerate(t_vector):
-            current_rho = env.get_rho(current_alt_m)
+            fdm_state.rho = env.get_rho(current_alt_m)
 
             # add actuator dynamics to control inputs:
             U_actual = physics.update_actuators(sim_U[:,idx], U_actual, simdt, acp.ACT_TAU)
@@ -560,11 +560,17 @@ if __name__ == "__main__":
             dcl_dcd_dcm_dalpha = np.zeros(4)
             
             # integrate 6-DOF
-            this_AC_int.set_f_params(U_actual, current_rho, fdm_state.h, dcl_dcd_dcm_dalpha[IDX_DCL], dcl_dcd_dcm_dalpha[IDX_DCD], dcl_dcd_dcm_dalpha[IDX_DCM], dcl_dcd_dcm_dalpha[IDX_DALPHA], acp)
+            fdm_state.U = U_actual
+            fdm_state.dcl = dcl_dcd_dcm_dalpha[IDX_DCL]
+            fdm_state.dcd = dcl_dcd_dcm_dalpha[IDX_DCD]
+            fdm_state.dcm = dcl_dcd_dcm_dalpha[IDX_DCM]
+            fdm_state.dalpha = dcl_dcd_dcm_dalpha[IDX_DALPHA]
+
             this_AC_int.integrate(this_AC_int.t + simdt)
+            fdm_state.X = this_AC_int.y.copy()
 
             # integrate navigation equations
-            current_NED = env.NED(this_AC_int.y[:3], this_AC_int.y[6:])
+            current_NED = env.NED(fdm_state.X[:3], fdm_state.X[6:])
             this_wind = env.add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
             this_latlonh_int.set_f_params(current_NED + this_wind, current_latlon_rad[0], current_alt_m)
             this_latlonh_int.integrate(this_latlonh_int.t + simdt) #in radians and alt in meters

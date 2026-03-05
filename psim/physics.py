@@ -20,6 +20,7 @@ from numba.experimental import jitclass
 from numba import float64
 
 # Define the data and types for the FDM State
+# see RCAM_model() for details on each quantity
 state_spec =[
     # Inputs / Configurations
     ('X', float64[:]),
@@ -339,7 +340,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     https://www.youtube.com/watch?v=m5sEln5bWuM
 
     inputs:
-        X: states (TP-088-3, p. 6, para 2.2, table 2.2)
+        FDMState.X: states (TP-088-3, p. 6, para 2.2, table 2.2)
             0: u (m/s)
             1: v (m/s)
             2: w (m/s)
@@ -349,7 +350,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
             6: phi (rad)
             7: theta (rad)
             8: psi (rad)
-        U: controls (TP-088-3, p. 6, para 2.2, table 2.1)
+        FDMState.U: controls (TP-088-3, p. 6, para 2.2, table 2.1)
             0: aileron (rad)
             1: stabilator (rad)
             2: rudder (rad)
@@ -359,14 +360,25 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
             6: Landing gear position (0=up / 1=dn)
             7: spoilers (%) (not included in original RCAM)
             8: wheel brakes (%) (not included in original RCAM)
-        rho: density for current altitude (kg/m3)
-        h: height above ground (m)
-        dcl: Delta CL (High Lift / Ldg / Gnd Spoiler)
-        dcd: Delta CD (High Lift / Ldg / Gnd Spoiler)
-        dcm: Delta CM (High Lift / Ldg / Gnd Spoiler)
-        dalpha: Delta alpha (High Lift / Ldg / Gnd Spoiler)
+        FDMState.rho: density for current altitude (kg/m3)
+        FDMState.h: height above ground (m)
+        FDMState.dcl: Delta CL (High Lift / Ldg / Gnd Spoiler)
+        FDMState.dcd: Delta CD (High Lift / Ldg / Gnd Spoiler)
+        FDMState.dcm: Delta CM (High Lift / Ldg / Gnd Spoiler)
+        FDMState.dalpha: Delta alpha (High Lift / Ldg / Gnd Spoiler)
     outputs:
-        X_dot: derivatives of states (same order)
+        FDMState.dX: derivatives of states (same order)
+        FDMState.Va: true airspeed (m/s)
+        FDMState.alpha (rad)
+        FDMState.beta (rad)
+        FDMState.CL
+        FDMState.CD
+        FDMState.CY
+        FDMState.F_gnd_x: ground force x direction (N)
+        FDMState.F_gnd_y: ground force y direction (N)
+        FDMState.F_gnd_z: ground force z direction (N)
+        FDMState.body_accels: in body frame, (m/s2)
+        FDMState.load_factor
     '''
    
     # --------------- extract data from dataclass, to local variables ----
