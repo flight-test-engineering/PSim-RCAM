@@ -16,9 +16,6 @@ def initialize_constants(params: dict)->None:
     """
     globals().update(params)
 
-from numba.experimental import jitclass
-from numba import float64
-
 # Define the data and types for the FDM State
 # see RCAM_model() for details on each quantity
 state_spec =[
