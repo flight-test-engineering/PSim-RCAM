@@ -819,7 +819,7 @@ if __name__ == "__main__":
                             fdm_state.Va, fdm_state.alpha, fdm_state.beta,
                             fdm_state.CL, fdm_state.CD, fdm_state.CY,
                             fdm_state.F_gnd_x, fdm_state.F_gnd_y, fdm_state.F_gnd_z,
-                            fdm_state.h
+                            fdm_state.h - acp.LG_MAIN_R_POS[2]
                         ])
                     # engine parameters:
                     if eng_vals:
