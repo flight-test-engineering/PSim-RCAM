@@ -224,6 +224,10 @@ if __name__ == "__main__":
 
 
 ############################################################################
+# SIMULATION CONFIGURATION IN THIS SECTION                                 #
+#                                                                          #
+############################################################################
+
     # SELECT AIRCRAFT CONFIGURATION FILE
     AIRCRAFT_CONFIG_FILE = 'rcam_parameters.json'
     
@@ -235,9 +239,10 @@ if __name__ == "__main__":
         # ON GROUND  
         INIT_ALT_FT = 586.0 * M2FT #ft
         V_TRIM_MPS = 0 * KT2MS # m/s
-        INIT_LATLON_DEG = np.array([.8248243303439*RAD2DEG, 0.1977872426444*RAD2DEG]) #LOWI, RWY 08
+        INIT_LATLON_DEG = np.array([47.258953, 11.332374]) #LOWI, RWY 08
         FLAPS_INIT = 0
         INIT_GEAR = 1
+        GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
     else:
         # FLYING
         INIT_ALT_FT = 2400 #ft
@@ -245,22 +250,19 @@ if __name__ == "__main__":
         INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
         FLAPS_INIT = 0
         INIT_GEAR = 0
+        GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
 
     
-    GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
+    
     INIT_HDG_DEG = 82.0 # DEG
 
-    # Lat/Lon - alternate locations
-    #INIT_LATLON_DEG = np.array([37.6213, -122.3790]) #in degrees - the func initialize transforms to radians internally
-    #INIT_LATLON_DEG = np.array([-21.7632, -48.4051]) #in degrees - SBGP
-    #INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
 
     # wind
     WIND_NED_MPS = np.array([0, 0, 0]) # average wind (m/s), NED
     WIND_STDDEV_MPS = np.array([1, 1, 0]) # wind standard deviation, NED
 
-###########################################################################
-    # SIMULATION OPTIONS
+
+    # SIMULATION TIMING OPTIONS
     SIM_TOTAL_TIME_S = 10 * 60  # (s) total simulation time
     SIM_LOOP_HZ = 400           # (Hz) simulation loop frame rate throttling
     FG_OUTPUT_LOOP_HZ = 60      # (Hz) frames per second to be sent out to FlightGear AND for recording data
@@ -274,9 +276,13 @@ if __name__ == "__main__":
     LOG2DISK_INTERVAL_S = 30.0                  # interval in seconds to save data to disk
     RESULTS_PLOT_FILE = 'test_data_plot.png'    # name of file of quick plot
 
-    
+############################################################################
+# END OF SIMULATION CONFIGURATION SECTION                                  #
+#                                                                          #
+############################################################################
 
-###########################################################################
+
+
     # Load Aircraft Parameters into Global Scope
     #
     # we first need the joystick name, to load the correct parameters...
@@ -834,7 +840,7 @@ if __name__ == "__main__":
                 # print out stuff every so often
                 if (frame_count % 100) == 0:
                     _ = physics.RCAM_model(fdm_state, acp) # re-sync internal states
-                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {inceptor_cmd[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpArmed={int(trim_point[IDX_GNDSP])},Elev={trim_point[IDX_ELE]:.3f}, ALPHA={internals[1]*RAD2DEG:.1f}, CL={internals[3]:.2f}, Nz={fdm_state.load_factor:.2f}, RADALT={fdm_state.h*M2FT:.0f}ft')
+                    print(f'time: {this_AC_int.t:0.1f}s, TLA: {inceptor_cmd[IDX_THR1]:.3f}, E12T={U_actual[IDX_THR1]:0.0f}/{U_actual[IDX_THR2]:0.0f} N, FLAP={U_actual[IDX_FLAP]:.1f}, GEAR={U_actual[IDX_GEAR]:.1f}, GndSpArmed={int(trim_point[IDX_GNDSP])},Elev={trim_point[IDX_ELE]:.3f}, ALPHA={internals[1]*RAD2DEG:.1f}, CL={internals[3]:.2f}, Nz={fdm_state.load_factor:.2f}, RADALT={(fdm_state.h - acp.LG_MAIN_R_POS[2])*M2FT:.0f}ft')
                 #################################################################################################################################################################
 
                 # reset integrator timestep counter
