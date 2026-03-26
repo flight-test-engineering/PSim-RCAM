@@ -224,7 +224,8 @@ if __name__ == "__main__":
 
 
 ############################################################################
-# SIMULATION CONFIGURATION IN THIS SECTION                                 #
+#                                                                          #
+#              SIMULATION CONFIGURATION IN THIS SECTION                    #
 #                                                                          #
 ############################################################################
 
@@ -232,7 +233,7 @@ if __name__ == "__main__":
     AIRCRAFT_CONFIG_FILE = 'rcam_parameters.json'
     
     # SELECT STARTING POINT: ON GROUND OR IN AIR
-    TRIM_ON_GROUND = False
+    TRIM_ON_GROUND = True
 
     # INITIAL CONDITIONS (for trim)
     if TRIM_ON_GROUND:
