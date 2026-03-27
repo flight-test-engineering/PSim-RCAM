@@ -82,7 +82,7 @@ def get_joy_inputs(joystick: pygame.joystick, joy_events: pygame.event, trim_poi
     inceptor_cmd[IDX_AIL] = trim_point[IDX_AIL] + joystick.get_axis(JOY_ROLL_AXIS) * joy_factors['aileron']
     inceptor_cmd[IDX_ELE] = trim_point[IDX_ELE] + joystick.get_axis(JOY_PITCH_AXIS) * joy_factors['elevator']
     inceptor_cmd[IDX_RUD] = trim_point[IDX_RUD] + joystick.get_axis(JOY_YAW_AXIS) * joy_factors['rudder']
-    throttle_cmd = joystick.get_axis(3) * joy_factors['throttle_m'] + joy_factors['throttle_b'] # linearly map joystick inputs to RCAM
+    throttle_cmd = joystick.get_axis(JOY_THROTTLE_AXIS) * joy_factors['throttle_m'] + joy_factors['throttle_b'] # linearly map joystick inputs to RCAM
     inceptor_cmd[IDX_THR1] = trim_point[IDX_THR1] + throttle_cmd
     inceptor_cmd[IDX_THR2] = trim_point[IDX_THR2] + throttle_cmd
     inceptor_cmd[IDX_FLAP] = max(0, min(acp.MAX_FLAP, trim_point[IDX_FLAP] + flap_cmd_dn - flap_cmd_up))

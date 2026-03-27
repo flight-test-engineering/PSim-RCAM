@@ -141,6 +141,7 @@
     "roll_axis": 0,
     "pitch_axis": 1,
     "yaw_axis": 2,
+    "throttle_axis": 3,
     "zero_ail_rud_thr": 3,
     "pitch_dn": 4,
     "pitch_up": 2,
