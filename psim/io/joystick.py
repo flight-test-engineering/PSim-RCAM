@@ -28,46 +28,32 @@ def get_joy_inputs(joystick: pygame.joystick, joy_n_buttons:int, joy_events: pyg
     throttle_trim_step = trim_params['throttle'] / fr
 
     # read joystick button states for trimming
-    button_states = [0] * 12 # 12 is the max number of buttons for now
-    for i in range(joy_n_buttons):
-        button_states[i] = joystick.get_button(JOY_BUTTONS_MAP[i])
-
-
-    exit_signal = button_states[0] #
-    brake = button_states[1] #
-    pitch_dn = button_states[2] #
-    pitch_up = button_states[3] #
-    # we do not need these button states because we will look at the events queue instead
-    #E1_cycle_cut = button_states[4]
-    #ldg_cycle = button_states[5]
-    #flaps_command_dn = button_states[6]
-    #flaps_command_up = button_states[7]
-    #arm_disarm_gnd_spoiler = button_states[8]
-    T1_fd = button_states[9] #
-    T1_af = button_states[10] #
-    zero_ail_rud_thr = button_states[11] #
+    button_states = {}
+    for k in JOY_BUTTONS_MAP.keys():
+        button_states[k] = joystick.get_button(JOY_BUTTONS_MAP[k])
     
+
     # joystick button events for discretes
     flap_cmd_dn = 0
     flap_cmd_up = 0
 
     for event in joy_events:
         if event.type == pygame.JOYBUTTONDOWN:
-            if event.button == JOY_FLAP_CMD_UP:
+            if event.button == JOY_BUTTONS_MAP['flaps_command_up']:
                 flap_cmd_up = 1
-            if event.button == JOY_FLAP_CMD_DN:
+            if event.button == JOY_BUTTONS_MAP['flaps_command_dn']:
                 flap_cmd_dn = 1
-            if event.button == JOY_ARM_DIS_GND_SPOILER:
+            if event.button == JOY_BUTTONS_MAP['arm_disarm_gnd_spoiler']:
                 if trim_point[IDX_GNDSP] > 0.5: 
                     trim_point[IDX_GNDSP] = 0
                 else:
                     trim_point[IDX_GNDSP] = 1
-            if event.button == JOY_LDG_CYCLE:
+            if event.button == JOY_BUTTONS_MAP['ldg_cycle']:
                 if trim_point[IDX_GEAR] > 0.5: 
                     trim_point[IDX_GEAR] = 0
                 else:
                     trim_point[IDX_GEAR] = 1
-            if event.button == JOY_E1_CYCLE_CUT:
+            if event.button == JOY_BUTTONS_MAP['E1_cycle_cut']:
                 if trim_point[IDX_THR1] > -0.5: 
                     trim_point[IDX_THR1] = -1
                     # because we have only one throttle lever,
@@ -78,14 +64,16 @@ def get_joy_inputs(joystick: pygame.joystick, joy_n_buttons:int, joy_events: pyg
 
 
     # if trigger is pressed, then zero out aileron, rudder states and make thrust equal on both sides
-    if zero_ail_rud_thr == 1:
+    if button_states['zero_ail_rud_thr'] == 1:
         trim_point[IDX_AIL] = 0.0
         trim_point[IDX_RUD] = 0.0
         trim_point[IDX_THR2] = trim_point[IDX_THR1]
     
     # apply new trim
-    trim_point[IDX_ELE] += pitch_trim_step * pitch_dn - pitch_trim_step * pitch_up
-    trim_point[IDX_THR1] += throttle_trim_step * T1_fd - throttle_trim_step * T1_af
+    trim_point[IDX_ELE] += pitch_trim_step * button_states['pitch_dn'] - \
+                           pitch_trim_step * button_states['pitch_up']
+    trim_point[IDX_THR1] += throttle_trim_step * button_states['T1_fd'] - \
+                           throttle_trim_step * button_states['T1_af']
 
 
     # # # JOYSTICK COMMAND
@@ -98,8 +86,8 @@ def get_joy_inputs(joystick: pygame.joystick, joy_n_buttons:int, joy_events: pyg
     inceptor_cmd[IDX_THR2] = trim_point[IDX_THR2] + throttle_cmd
     inceptor_cmd[IDX_FLAP] = max(0, min(acp.MAX_FLAP, trim_point[IDX_FLAP] + flap_cmd_dn - flap_cmd_up))
     trim_point[IDX_FLAP] = inceptor_cmd[IDX_FLAP]
-    inceptor_cmd[IDX_BRAKE] = float(brake)
+    inceptor_cmd[IDX_BRAKE] = float(button_states['brake'])
     inceptor_cmd[IDX_GEAR] = trim_point[IDX_GEAR] # gear command is lever state
 
 
-    return inceptor_cmd, trim_point, exit_signal
+    return inceptor_cmd, trim_point, button_states['exit_signal']

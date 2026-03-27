@@ -162,7 +162,7 @@
       "joy_throttle_limits": [1, -1],
       "partial_joy_factors": {"aileron": -0.7, "elevator": -0.5, "rudder": -0.52}
     },
-    "Simple_joystick":{
+    "simple_joystick":{
       "axes":{
         "roll_axis": 0,
         "pitch_axis": 1,
