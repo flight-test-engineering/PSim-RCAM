@@ -104,7 +104,7 @@ class AircraftParams:
 # JIT version
 # ############################################################################
 
-def load_aircraft_parameters(filepath: str, joy_name: str|None) -> (dict, jitclass):
+def load_aircraft_parameters(filepath: str, joy_name: str|None, joy_n_buttons: int) -> (dict, jitclass):
     """
     Loads aircraft parameters from a JSON file, processes them, and returns
     them as a dictionary of constants ready for the simulation.
@@ -272,32 +272,53 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None) -> (dict, jitcla
                                   act_dyn["tau_brakes"]])
 
     # Joystick Mappings
+    # the function order is has the sequence of functions
+    # that will be checked for button presses
+    consts['BUTTON_FUNCTION_ORDER'] = ['exit_signal',
+                      'brake',
+                      'pitch_dn',
+                      'pitch_up',
+                      'E1_cycle_cut',
+                      'ldg_cycle',
+                      'flaps_command_dn',
+                      'flaps_command_up',
+                      'arm_disarm_gnd_spoiler',
+                      'T1_fd',
+                      'T1_af',
+                      'zero_ail_rud_thr']
     # available models:
     # - Logitech Extreme 3D
     joystick_library = params['joystick_maps']
     if joy_name in joystick_library.keys():
         logger.info(f'[load_aircraft_parameters] joystick {joy_name} in database/JSON config file...will run online loop.')
         joy_map = joystick_library[joy_name]
-        consts['JOY_ROLL_AXIS'] = joy_map["roll_axis"] # axis number that controls roll
-        consts['JOY_PITCH_AXIS'] = joy_map["pitch_axis"] # axis number that controls pitch
-        consts['JOY_YAW_AXIS'] = joy_map["yaw_axis"]  # axis number for yaw
-        consts['JOY_THROTTLE_AXIS'] = joy_map["throttle_axis"] # axis number for throttle control
-        consts['JOY_ZERO_AIL_RUD_THR'] = joy_map["zero_ail_rud_thr"] # convenience function to zero ail,rud and thrust trim points
-        consts['JOY_ARM_DIS_GND_SPOILER'] = joy_map["arm_disarm_gnd_spoiler"] # toggles ARM/DISARM of ground spoilers
-        consts['JOY_PITCH_TRIM_DN'] = joy_map["pitch_dn"] # pitch trim nose down button
-        consts['JOY_PITCH_TRIM_UP'] = joy_map["pitch_up"] # pitch trim nose up button
-        #consts['JOY_ROLL_TRIM_RH'] = joy_map["roll_rt"] # roll trim right wing down button
-        #consts['JOY_ROLL_TRIM_LH'] = joy_map["roll_lt"] # roll trim left wing down button
-        consts['JOY_E1_CYCLE_CUT'] = joy_map["E1_cycle_cut"] # cut/restart engine 1
-        consts['JOY_LDG_CYCLE'] = joy_map["ldg_cycle"] # cycle landing gear down/up (default is up)
-        consts['JOY_E1_THR_TRIM_FWD'] = joy_map["T1_fd"] # E1 trim forward (adds incremental thrust)
-        consts['JOY_E1_THR_TRIM_AFT'] = joy_map["T1_af"] # E1 trim aft (subtracts incremental thrust)
-        #consts['JOY_E2_THR_TRIM_FWD'] = joy_map["T2_fd"] # same for E2
-        #consts['JOY_E2_THR_TRIM_AFT'] = joy_map["T2_af"] # same for E2
-        consts['JOY_FLAP_CMD_UP'] = joy_map['flaps_command_up'] # command flaps one notch up
-        consts['JOY_FLAP_CMD_DN'] = joy_map['flaps_command_dn'] # command flaps one notch down
-        consts['JOY_EXIT_SIGNAL'] = joy_map["exit_signal"] # ends the simulation
-        consts['JOY_BRAKE'] = joy_map["brake"] # applies brakes
+        # axes config
+        joy_map_axes = joy_map["axes"]
+        consts['JOY_ROLL_AXIS'] = joy_map_axes["roll_axis"] # axis number that controls roll
+        consts['JOY_PITCH_AXIS'] = joy_map_axes["pitch_axis"] # axis number that controls pitch
+        consts['JOY_YAW_AXIS'] = joy_map_axes["yaw_axis"]  # axis number for yaw
+        consts['JOY_THROTTLE_AXIS'] = joy_map_axes["throttle_axis"] # axis number for throttle control
+        # buttons config
+        consts['JOY_BUTTONS_MAP'] = [0] * joy_n_buttons
+        joy_map_buttons = joy_map["buttons"]
+        for i in range(joy_n_buttons):
+            consts['JOY_BUTTONS_MAP'][i] = joy_map_buttons[consts['BUTTON_FUNCTION_ORDER'][i]]
+        consts['JOY_ZERO_AIL_RUD_THR'] = joy_map_buttons["zero_ail_rud_thr"] # convenience function to zero ail,rud and thrust trim points
+        consts['JOY_ARM_DIS_GND_SPOILER'] = joy_map_buttons["arm_disarm_gnd_spoiler"] # toggles ARM/DISARM of ground spoilers
+        consts['JOY_PITCH_TRIM_DN'] = joy_map_buttons["pitch_dn"] # pitch trim nose down button
+        consts['JOY_PITCH_TRIM_UP'] = joy_map_buttons["pitch_up"] # pitch trim nose up button
+        #consts['JOY_ROLL_TRIM_RH'] = joy_map_buttons["roll_rt"] # roll trim right wing down button
+        #consts['JOY_ROLL_TRIM_LH'] = joy_map_buttons["roll_lt"] # roll trim left wing down button
+        consts['JOY_E1_CYCLE_CUT'] = joy_map_buttons["E1_cycle_cut"] # cut/restart engine 1
+        consts['JOY_LDG_CYCLE'] = joy_map_buttons["ldg_cycle"] # cycle landing gear down/up (default is up)
+        consts['JOY_E1_THR_TRIM_FWD'] = joy_map_buttons["T1_fd"] # E1 trim forward (adds incremental thrust)
+        consts['JOY_E1_THR_TRIM_AFT'] = joy_map_buttons["T1_af"] # E1 trim aft (subtracts incremental thrust)
+        #consts['JOY_E2_THR_TRIM_FWD'] = joy_map_buttons["T2_fd"] # same for E2
+        #consts['JOY_E2_THR_TRIM_AFT'] = joy_map_buttons["T2_af"] # same for E2
+        consts['JOY_FLAP_CMD_UP'] = joy_map_buttons['flaps_command_up'] # command flaps one notch up
+        consts['JOY_FLAP_CMD_DN'] = joy_map_buttons['flaps_command_dn'] # command flaps one notch down
+        consts['JOY_EXIT_SIGNAL'] = joy_map_buttons["exit_signal"] # ends the simulation
+        consts['JOY_BRAKE'] = joy_map_buttons["brake"] # applies brakes
         consts['JOY_TRIM_PARAMS'] = joy_map["trim_params"]  # Trim rate adjustment (amount per second)
         consts['JOY_THROTTLE_LIMITS'] = joy_map["joy_throttle_limits"] # these are the limits for the throttle input for this specific joystick - full fwd = -1
         

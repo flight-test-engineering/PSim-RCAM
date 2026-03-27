@@ -296,9 +296,11 @@ if __name__ == "__main__":
     joystick_count = pygame.joystick.get_count()
     if joystick_count == 0:
         joy_name = None
+        joy_n_buttons = 0
     else:
         this_joy = pygame.joystick.Joystick(0)
         this_joy.init()
+        joy_n_buttons = this_joy.get_numbuttons() # checks how many buttons this joystick has
         # flush ghost inputs
         # Pump the event loop multiple times to clear buffered events 
         logger.info("[main] Flushing Joystick Buffer...")
@@ -311,7 +313,7 @@ if __name__ == "__main__":
     try:
         # Unpack the dictionary into global variables
         
-        consts, acp = load_aircraft_parameters(AIRCRAFT_CONFIG_FILE, joy_name)
+        consts, acp = load_aircraft_parameters(AIRCRAFT_CONFIG_FILE, joy_name, joy_n_buttons)
 
         globals().update(consts)
 
@@ -660,7 +662,7 @@ if __name__ == "__main__":
                 joy_events = pygame.event.get()
                 
                 current_throttle = [inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2]] # keep track of throttle to zero-out the trim bias
-                inceptor_cmd, trim_point, exit_signal = joy.get_joy_inputs(this_joy, joy_events, trim_point, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS, acp)
+                inceptor_cmd, trim_point, exit_signal = joy.get_joy_inputs(this_joy, joy_n_buttons, joy_events, trim_point, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS, acp)
 
                 # inceptor_cmd is the manual control inputs (as the joystick is moved)
                 # trim_point is the trim state for each control.

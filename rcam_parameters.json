@@ -138,25 +138,44 @@
   },
   "joystick_maps":{
     "Logitech Extreme 3D":{
-    "roll_axis": 0,
-    "pitch_axis": 1,
-    "yaw_axis": 2,
-    "throttle_axis": 3,
-    "zero_ail_rud_thr": 3,
-    "pitch_dn": 4,
-    "pitch_up": 2,
-    "arm_disarm_gnd_spoiler": 5,
-    "E1_cycle_cut": 6,
-    "ldg_cycle": 7,
-    "T1_fd": 8,
-    "T1_af": 10,
-    "flaps_command_up": 9,
-    "flaps_command_dn": 11,
-    "exit_signal": 1,
-    "brake": 0,
-    "trim_params": {"pitch": 0.01, "aileron": 0.003, "throttle": 0.01},
-    "joy_throttle_limits": [1, -1],
-    "partial_joy_factors": {"aileron": -0.7, "elevator": -0.5, "rudder": -0.52}
+      "axes":{
+        "roll_axis": 0,
+        "pitch_axis": 1,
+        "yaw_axis": 2,
+        "throttle_axis": 3
+      },
+      "buttons":{
+        "zero_ail_rud_thr": 3,
+        "pitch_dn": 4,
+        "pitch_up": 2,
+        "arm_disarm_gnd_spoiler": 5,
+        "E1_cycle_cut": 6,
+        "ldg_cycle": 7,
+        "T1_fd": 8,
+        "T1_af": 10,
+        "flaps_command_up": 9,
+        "flaps_command_dn": 11,
+        "exit_signal": 1,
+        "brake": 0
+      },
+      "trim_params": {"pitch": 0.01, "aileron": 0.003, "throttle": 0.01},
+      "joy_throttle_limits": [1, -1],
+      "partial_joy_factors": {"aileron": -0.7, "elevator": -0.5, "rudder": -0.52}
+    },
+    "Simple_joystick":{
+      "axes":{
+        "roll_axis": 0,
+        "pitch_axis": 1,
+        "yaw_axis": 2,
+        "throttle_axis": 3
+      },
+      "buttons":{
+        "exit_signal": 1,
+        "brake": 0
+      },
+      "trim_params": {"pitch": 0.01, "aileron": 0.003, "throttle": 0.01},
+      "joy_throttle_limits": [1, -1],
+      "partial_joy_factors": {"aileron": -0.7, "elevator": -0.5, "rudder": -0.52}
     }
   }
 }
