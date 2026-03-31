@@ -1,11 +1,6 @@
 import struct
 import time
 
-import struct
-import time
-
-
-
 
 class fgFDM:
     """
