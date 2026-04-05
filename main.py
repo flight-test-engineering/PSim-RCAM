@@ -492,7 +492,7 @@ if __name__ == "__main__":
         altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG, height=100.0, 
         flap_pos=FLAPS_INIT, gear_pos=INIT_GEAR, acp=acp, fdm_state=fdm_state
     )
-    trim_point[IDX_GEAR] = INIT_GEAR # controls for the trimmed state
+    #trim_point[IDX_GEAR] = INIT_GEAR # controls for the trimmed state
     inceptor_cmd = trim_point.copy() # we set inceptor_cmd as a copy of the trimmed control states first.
 
 
