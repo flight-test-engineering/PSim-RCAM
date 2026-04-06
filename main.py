@@ -233,7 +233,7 @@ if __name__ == "__main__":
     AIRCRAFT_CONFIG_FILE = 'rcam_parameters.json'
     
     # SELECT STARTING POINT: ON GROUND OR IN AIR
-    TRIM_ON_GROUND = True
+    TRIM_ON_GROUND = False
 
     # INITIAL CONDITIONS (for trim)
     if TRIM_ON_GROUND:
@@ -627,8 +627,10 @@ if __name__ == "__main__":
 
         # run deck preemptively, so we have data when we need it shortly...
         logger.info('[main] Adding engine deck initial job...')
-        new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
-        jobs_queue.put(new_job, block=False)
+        for i in range(10):
+            new_job = (current_alt_m*M2FT, ISA.Vt2M(V_TRIM_MPS*MS2KT, current_alt_m*M2FT), inceptor_cmd[IDX_THR1], inceptor_cmd[IDX_THR2], TRIM_ON_GROUND, time.perf_counter())
+            jobs_queue.put(new_job, block=False)
+            time.sleep(1)
 
 
         # pygame sometimes does not initialize the joystick correctly and
@@ -856,13 +858,15 @@ if __name__ == "__main__":
             # TIMERS CHECKS
 
             # parking lot
-            # it will keep off the simulation loop until time does not catch up with the desired "simdt".
-            # continuously adds time until that point, then releases the semaphore to run the sim
+            
+            # physics loop trigger
             if sim_time_adder >= simdt:
+            # it will keep off the simulation loop until time catches up with the desired "simdt",
+            # then releases the semaphore to run the sim
                 dt = sim_time_adder
                 sim_time_adder = 0
                 run_sim_loop = True
-                
+
             # FlightGear send frame trigger
             if fg_time_adder >= fgdt:
                 fg_time_adder = 0
