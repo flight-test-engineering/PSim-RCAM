@@ -854,7 +854,16 @@ if __name__ == "__main__":
             
             
             # TIMERS CHECKS
-            # physics loop trigger
+
+            # parking lot
+            # it will keep off the simulation loop until time does not catch up with the desired "simdt".
+            # continuously adds time until that point, then releases the semaphore to run the sim
+            if sim_time_adder >= simdt:
+                dt = sim_time_adder
+                sim_time_adder = 0
+                run_sim_loop = True
+                
+            # FlightGear send frame trigger
             if fg_time_adder >= fgdt:
                 fg_time_adder = 0
                 send_frame_trigger = True
@@ -877,15 +886,6 @@ if __name__ == "__main__":
                 data_collector = []
                 log2disk_time_adder = 0.0
 
-
-
-            # parking lot
-            # it will keep off the simulation loop until time does not catch up with the desired "simdt".
-            # continuously adds time until that point, then releases the semaphore to run the sim
-            if sim_time_adder >= simdt:
-                dt = sim_time_adder
-                sim_time_adder = 0
-                run_sim_loop = True
 
             # end-of-frame 
             end = time.perf_counter()
