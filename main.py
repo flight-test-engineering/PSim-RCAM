@@ -492,7 +492,6 @@ if __name__ == "__main__":
         altitude=INIT_ALT_FT, psi_t=INIT_HDG_DEG, height=100.0, 
         flap_pos=FLAPS_INIT, gear_pos=INIT_GEAR, acp=acp, fdm_state=fdm_state
     )
-    #trim_point[IDX_GEAR] = INIT_GEAR # controls for the trimmed state
     inceptor_cmd = trim_point.copy() # we set inceptor_cmd as a copy of the trimmed control states first.
 
 
@@ -514,9 +513,9 @@ if __name__ == "__main__":
     frame_count = 0
 
     fgdt = 1.0 / FG_OUTPUT_LOOP_HZ # (s) fg frame OUTPUT period
-    simdt = 1 / SIM_LOOP_HZ # (s) desired simulation time step
-    deckdt = 1 / DECK_LOOP_HZ # (s) engine deck call interval
-    datalogdt = 1 / DATA_LOGGING_HZ # (s) data logging time interval
+    simdt = 1.0 / SIM_LOOP_HZ # (s) desired simulation time step
+    deckdt = 1.0 / DECK_LOOP_HZ # (s) engine deck call interval
+    datalogdt = 1.0 / DATA_LOGGING_HZ # (s) data logging time interval
 
     
     # semaphores
