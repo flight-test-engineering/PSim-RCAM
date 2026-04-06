@@ -854,22 +854,22 @@ if __name__ == "__main__":
             
             
             # TIMERS CHECKS
-            #check/set frame triggers
+            # physics loop trigger
             if fg_time_adder >= fgdt:
                 fg_time_adder = 0
                 send_frame_trigger = True
 
-            # check/set engine calc trigger
+            # engine deck trigger
             if eng_time_adder >= deckdt:
                 eng_time_adder = 0
                 calc_eng_trigger = True
 
-            # check/set datalog trigger
+            # data log to memory trigger
             if datalog_time_adder >= datalogdt:
                 datalog_time_adder = 0
                 datalog_trigger = True
 
-            # check/set log2disk trigger
+            # data log to disk trigger
             if log2disk_time_adder >= LOG2DISK_INTERVAL_S:
                 disk_log_queue.put((np.array(t_vector_collector), np.array(data_collector)))
                 # zero out variables
@@ -884,8 +884,6 @@ if __name__ == "__main__":
             # continuously adds time until that point, then releases the semaphore to run the sim
             if sim_time_adder >= simdt:
                 dt = sim_time_adder
-                # clamp dt if the OS hangs
-                if dt > MAX_INTEG_TIMESTEP_S: dt = MAX_INTEG_TIMESTEP_S
                 sim_time_adder = 0
                 run_sim_loop = True
 
