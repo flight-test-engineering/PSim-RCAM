@@ -640,10 +640,15 @@ if __name__ == "__main__":
         logger.info('[main] waiting for joystick to be moved or return a valid value...')
         print('Move joystick to start sim -> ', end='')
         joy_not_moved = True
+        joy_check_axes = [JOY_ROLL_AXIS, JOY_PITCH_AXIS, JOY_YAW_AXIS]
         while joy_not_moved:
             pygame.event.pump()
-            dummy = this_joy.get_axis(JOY_PITCH_AXIS) 
-            if abs(dummy) < 0.1:
+            joy_mvmt_amount = 0
+            for axis in joy_check_axes:
+                joy_mvmt_amount += abs(this_joy.get_axis(axis))
+            
+            #dummy = this_joy.get_axis(JOY_PITCH_AXIS) 
+            if abs(joy_mvmt_amount) < (0.1 * len(joy_check_axes)):
                 joy_events = pygame.event.get()
                 dummy_inceptor_cmd, dummy_trim_point, _ = joy.get_joy_inputs(this_joy, joy_n_buttons, joy_events, trim_point, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS, acp)
                 if (trim_point[IDX_THR1] - (dummy_inceptor_cmd[IDX_THR1] - dummy_trim_point[IDX_THR1])) < 0:
@@ -680,14 +685,8 @@ if __name__ == "__main__":
                 # if engine trim state is negative, it means engine is OFF
                 delta_throttle_1 = inceptor_cmd[IDX_THR1] - current_throttle[0] #we look only at #1 engine for simplicity
                 if delta_throttle_1 < 0 and trim_point[IDX_THR1] > 0: # if we retard throttle and have positive trim bias
-                    if delta_throttle_1 > trim_point[IDX_THR1]: # if we move the throttle a lot, limit washout to zero
-                        trim_point[IDX_THR1] = 0
-                        trim_point[IDX_THR2] = 0
-                    else: #washout from the trim bias, the amount we moved the throttle lever
-                        trim_point[IDX_THR1] += delta_throttle_1
-                        trim_point[IDX_THR2] += delta_throttle_1
-                        if trim_point[IDX_THR1] < 0 : trim_point[IDX_THR1] = 0 # ensure it is never less than zero
-                        if trim_point[IDX_THR2] < 0 : trim_point[IDX_THR2] = 0
+                    trim_point[IDX_THR1] = max(0.0, (trim_point[IDX_THR1] + delta_throttle_1))
+                    trim_point[IDX_THR2] = trim_point[IDX_THR1]
 
                 # toggle ground spoilers armed if button is pressed -> this is done in joystick submodule
                 # ground spoiler arm/disarm state is passaed through inceptor_cmd[IDX_GNDSP]
