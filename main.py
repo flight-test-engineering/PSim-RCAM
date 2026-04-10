@@ -638,18 +638,26 @@ if __name__ == "__main__":
         # even with stick in neutral.
         # here we ask for user help by moving the stick...
         logger.info('[main] waiting for joystick to be moved or return a valid value...')
-        print('Move joystick to start sim...')
-        print('.', end='')
+        print('Move joystick to start sim -> ', end='')
         joy_not_moved = True
         while joy_not_moved:
-            dummy = this_joy.get_axis(JOY_PITCH_AXIS) 
             pygame.event.pump()
+            dummy = this_joy.get_axis(JOY_PITCH_AXIS) 
             if abs(dummy) < 0.1:
-                joy_not_moved = False
-                print('movement detecte! OK!') # now we can proceed
+                joy_events = pygame.event.get()
+                dummy_inceptor_cmd, dummy_trim_point, _ = joy.get_joy_inputs(this_joy, joy_n_buttons, joy_events, trim_point, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS, acp)
+                if (trim_point[IDX_THR1] - (dummy_inceptor_cmd[IDX_THR1] - dummy_trim_point[IDX_THR1])) < 0:
+                    print(f'move throttle back: {(trim_point[IDX_THR1] - (dummy_inceptor_cmd[IDX_THR1] - dummy_trim_point[IDX_THR1])):.4f}')
+                    time.sleep(0.5)
+                else: 
+                    trim_point[IDX_THR1] = (trim_point[IDX_THR1] - (dummy_inceptor_cmd[IDX_THR1] - dummy_trim_point[IDX_THR1])) # set bias according to throttle position
+                    # note that we need to assume some bias will be left in
+                    trim_point[IDX_THR2] = trim_point[IDX_THR1] # set both engines to same throttle
+                    joy_not_moved = False # let program continue
             else:
                 print(".", end='')
-                time.sleep(0.1)
+                time.sleep(0.5)
+        print('movement detecte! OK!') # now we can proceed
 
 
         ##### SIMULATION LOOP #####
