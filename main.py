@@ -640,15 +640,17 @@ if __name__ == "__main__":
         logger.info('[main] waiting for joystick to be moved or return a valid value...')
         print('Move joystick to start sim -> ', end='')
         joy_not_moved = True
-        joy_check_axes = [JOY_ROLL_AXIS, JOY_PITCH_AXIS, JOY_YAW_AXIS]
+        joy_check_axes = [JOY_ROLL_AXIS, JOY_PITCH_AXIS, JOY_YAW_AXIS] # main joystick axes we want to check
+
         while joy_not_moved:
             pygame.event.pump()
             joy_mvmt_amount = 0
             for axis in joy_check_axes:
-                joy_mvmt_amount += abs(this_joy.get_axis(axis))
+                joy_mvmt_amount += abs(this_joy.get_axis(axis)) # sum up all axes movements
             
-            #dummy = this_joy.get_axis(JOY_PITCH_AXIS) 
             if abs(joy_mvmt_amount) < (0.1 * len(joy_check_axes)):
+                # if we get some movement...
+                # then check if throttle position is OK:
                 joy_events = pygame.event.get()
                 dummy_inceptor_cmd, dummy_trim_point, _ = joy.get_joy_inputs(this_joy, joy_n_buttons, joy_events, trim_point, SIM_LOOP_HZ, JOY_TRIM_PARAMS, JOY_FACTORS, acp)
                 if (trim_point[IDX_THR1] - (dummy_inceptor_cmd[IDX_THR1] - dummy_trim_point[IDX_THR1])) < 0:
@@ -660,8 +662,10 @@ if __name__ == "__main__":
                     trim_point[IDX_THR2] = trim_point[IDX_THR1] # set both engines to same throttle
                     joy_not_moved = False # let program continue
             else:
+                # if there is no movement... sleep a little
                 print(".", end='')
                 time.sleep(0.5)
+
         print('movement detecte! OK!') # now we can proceed
 
 
