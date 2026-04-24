@@ -396,10 +396,10 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     # ----------------------- controls & env ----------------------------
     da, de, dr = state.U[IDX_AIL], state.U[IDX_ELE], state.U[IDX_RUD]
     dt1, dt2 = state.U[IDX_THR1], state.U[IDX_THR2]
-    flap_pos, gear_pos = state.U[IDX_FLAP], state.U[IDX_GEAR]
-    dgsp, brake = state.U[IDX_GNDSP], state.U[IDX_BRAKE]
+    flap_pos, gear_pos = state.U[IDX_FLAP], state.U[IDX_GEAR] # not part of RCAM original doc
+    dgsp, brake = state.U[IDX_GNDSP], state.U[IDX_BRAKE] # not part of RCAM original doc
     
-    dcl, dcd, dcm, dalpha = state.dcl, state.dcd, state.dcm, state.dalpha
+    dcl, dcd, dcm, dalpha = state.dcl, state.dcd, state.dcm, state.dalpha # not part of RCAM original doc
 
     # step 2
     #----------------- intermediate variables ---------------------------
@@ -424,23 +424,22 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     
     # step 3
     #----------------- aerodynamic force coefficients ---------------------
-        # this is only available in the newer RCAM document (rev Feb 1997)
-    # which is not availble to the public
+    # this is only available in the newer RCAM document (rev Feb 1997)
     # CL - wing + body
-    # RCAM modified to include dalpha and dcl and dgsp
+    # dalpha and dcl and dgsp - not part of RCAM original doc
     if (alpha + dalpha) <= acp.ALPHA_SWITCH:
         CL_wb = acp.N * (alpha - acp.ALPHA_L0 + dalpha) * (1 - dgsp) + dcl
     else: 
         CL_wb = (acp.A3 * (alpha + dalpha)**3 + acp.A2 * (alpha + dalpha)**2 + acp.A1 * (alpha + dalpha) + acp.A0) * (1 - dgsp) + dcl
 
-    # clip CL_wb (not original from RCAM)
+    # clip CL_wb # not part of RCAM original doc
     if CL_wb < -1.0: CL_wb = -1.0
 
 
-    # Ground Effect # not original from RCAM
+    # Ground Effect # not part of RCAM original doc
     GE_cl_mult, GE_cd_mult = calc_ground_effect(state.h - acp.LG_MAIN_L_POS[IDX_MLG_Z], acp) # subtracting landing gear nominal height - might need adjustments
     # multiply wing-body calculated CL by ground effect factor
-    CL_wb *= GE_cl_mult # not origincal from RCAM
+    CL_wb *= GE_cl_mult
 
 
     # CL thrust
@@ -454,9 +453,9 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     CL = CL_wb + CL_t
 
     # Total CD (in stability frame)
-    CD = acp.CDMIN + acp.D1 * (acp.N * alpha + acp.D0)**2 + dcd # RCAM modified to include dcd
+    CD = acp.CDMIN + acp.D1 * (acp.N * alpha + acp.D0)**2 + dcd # dcd - not part of RCAM original doc
     # add ground effect to drag
-    CD *= GE_cd_mult # not original from RCAM
+    CD *= GE_cd_mult # not part of RCAM original doc
 
     # Total side force CY (stability frame)
     CY = acp.CY_BETA * beta + acp.CY_DR * dr
@@ -493,7 +492,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
                       [acp.C_n_DA, acp.C_n_DE, acp.C_n_DR]], dtype=np.dtype('f8'))
     
     # CM about AC in Fb
-    CMac_b = eta + np.dot(dCMdx, wbe_b) + np.dot(dCMdu, np.array([da, de, dr])) # RCAM original
+    CMac_b = eta + np.dot(dCMdx, wbe_b) + np.dot(dCMdu, np.array([da, de, dr]))
 
     # Step 6
     #------------------- aerodynamic moment about AC -------------------------
@@ -537,7 +536,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     Fg_b = acp.M * g_b
 
     #---------------------- GROUND REACTION ----------------------------------
-    # This is extra to RCAM model
+    # not part of RCAM original doc
     Gnd_Reac = calculate_ground_forces(X, h, brake, acp)
     F_gnd_b = Gnd_Reac[:3]
     M_gnd_b = Gnd_Reac[3:]
@@ -563,7 +562,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     
     phi_theta_psi_dot = np.dot(H_phi, wbe_b)
 
-    # Calculate Body Accelerations for FlightGear natively!
+    # Calculate Body Accelerations for FlightGear natively
     # Specific Force = (Total Forces excluding Gravity) / Mass
     # OR simply: u_v_w_dot + g_b (matches your current calculation perfectly)
     state.body_accels = u_v_w_dot + np.dot(np.array([[0, -r, q],[r, 0, -p],[-q, p, 0]]), np.array([u, v, w]))

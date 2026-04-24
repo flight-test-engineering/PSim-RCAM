@@ -166,7 +166,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None, joy_n_buttons: i
     acp.EPSILON_DOT = ac['htail_coeffs']['epsilon_dot'] # adm multiplier for tail dynamic downwash response wrt pitch rate
 
     # ... high lift coefficients ...
-    # key: delta_CD, delta_CD, delta_CM, delta_alpha
+    # key: delta_CL, delta_CD, delta_CM, delta_alpha
     high_lift_dict = ac['high_lift_coeffs']
     acp.HIGH_LIFT_COEFFS = np.array([high_lift_dict[str(i)] for i in range(len(high_lift_dict))])
     
