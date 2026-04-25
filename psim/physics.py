@@ -28,6 +28,7 @@ state_spec =[
     ('dcd', float64),
     ('dcm', float64),
     ('dalpha', float64),
+    ('dN', float64),
     
     # Outputs / Intermediates (previously from RCAM_observe)
     ('dX', float64[:]),
@@ -58,6 +59,7 @@ class FDMState:
         self.dcd = 0.0
         self.dcm = 0.0
         self.dalpha = 0.0
+        self.dN = 0.0
         
         self.dX = np.zeros(9)
         self.body_accels = np.zeros(3)
@@ -363,6 +365,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
         FDMState.dcd: Delta CD (High Lift / Ldg / Gnd Spoiler)
         FDMState.dcm: Delta CM (High Lift / Ldg / Gnd Spoiler)
         FDMState.dalpha: Delta alpha (High Lift / Ldg / Gnd Spoiler)
+        FDMState.dN: Delta lift curve slope
     outputs:
         FDMState.dX: derivatives of states (same order)
         FDMState.Va: true airspeed (m/s)
@@ -379,14 +382,8 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     '''
    
     # --------------- extract data from dataclass, to local variables ----
-    X = state.X
-    U = state.U
     rho = state.rho
     h = state.h
-    dcl = state.dcl
-    dcd = state.dcd
-    dcm = state.dcm
-    dalpha = state.dalpha
 
     # ------------------------- states ----------------------------------
     u, v, w = state.X[IDX_U], state.X[IDX_V], state.X[IDX_W]
@@ -399,7 +396,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     flap_pos, gear_pos = state.U[IDX_FLAP], state.U[IDX_GEAR] # not part of RCAM original doc
     dgsp, brake = state.U[IDX_GNDSP], state.U[IDX_BRAKE] # not part of RCAM original doc
     
-    dcl, dcd, dcm, dalpha = state.dcl, state.dcd, state.dcm, state.dalpha # not part of RCAM original doc
+    dcl, dcd, dcm, dalpha, dN = state.dcl, state.dcd, state.dcm, state.dalpha, state.dN # not part of RCAM original doc
 
     # step 2
     #----------------- intermediate variables ---------------------------
@@ -425,12 +422,15 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     # step 3
     #----------------- aerodynamic force coefficients ---------------------
     # this is only available in the newer RCAM document (rev Feb 1997)
+    # however this version is modified to include high lift devices
     # CL - wing + body
-    # dalpha and dcl and dgsp - not part of RCAM original doc
-    if (alpha + dalpha) <= acp.ALPHA_SWITCH:
-        CL_wb = acp.N * (alpha - acp.ALPHA_L0 + dalpha) * (1 - dgsp) + dcl
-    else: 
-        CL_wb = (acp.A3 * (alpha + dalpha)**3 + acp.A2 * (alpha + dalpha)**2 + acp.A1 * (alpha + dalpha) + acp.A0) * (1 - dgsp) + dcl
+    # dalpha, dcl, dN and dgsp - not part of RCAM original doc
+    alpha_corr = alpha - dalpha # correct alpha for high lift devices
+    if alpha_corr <= acp.ALPHA_SWITCH:
+        CL_wb = ((acp.N + dN) * (alpha_corr - acp.ALPHA_L0) + dcl) * (1 - dgsp)
+    else:
+        CL_wb = ((acp.A3 * alpha_corr**3 + acp.A2 * alpha_corr**2 + acp.A1 * alpha_corr + acp.A0)
+                  + dcl + (dN) * (acp.ALPHA_SWITCH - acp.ALPHA_L0)) * (1 - dgsp)
 
     # clip CL_wb # not part of RCAM original doc
     if CL_wb < -1.0: CL_wb = -1.0
@@ -537,7 +537,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
 
     #---------------------- GROUND REACTION ----------------------------------
     # not part of RCAM original doc
-    Gnd_Reac = calculate_ground_forces(X, h, brake, acp)
+    Gnd_Reac = calculate_ground_forces(state.X, h, brake, acp)
     F_gnd_b = Gnd_Reac[:3]
     M_gnd_b = Gnd_Reac[3:]
     

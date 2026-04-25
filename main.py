@@ -152,6 +152,7 @@ def initialize(VA_t, gamma_t, latlon, altitude, psi_t, height, flap_pos, gear_po
     fdm_state.dcd = dcl_dcd_dcm_dalpha[IDX_DCD]
     fdm_state.dcm = dcl_dcd_dcm_dalpha[IDX_DCM]
     fdm_state.dalpha = dcl_dcd_dcm_dalpha[IDX_DALPHA]
+    fdm_state.dN = dcl_dcd_dcm_dalpha[IDX_DN]
 
     # 2. Call the updated integrator with just 4 arguments
     AC_integrator = physics.ss_integrator(t0, X0, fdm_state, acp)
@@ -173,15 +174,16 @@ def compile_numba_functions(acp:jitclass)->None:
         # Dummy Data
         t = 0.0
         dummy_state = physics.FDMState()
-        X = np.zeros(9)
-        U = np.zeros(9)
+        #X = np.zeros(9)
+        #U = np.zeros(9)
         NED = np.zeros(3)
-        rho = 1.225
+        #rho = 1.225
         h = 0.0
-        dcl = 0.0
-        dcd = 0.0
-        dcm = 0.0
-        dalpha = 0.0
+        #dcl = 0.0
+        #dcd = 0.0
+        #dcm = 0.0
+        #dalpha = 0.0
+        #dN = 0.0
         lat = 0.59
         lon = 0.59
         latlonh0 = np.array([lat, lon, h])
@@ -189,16 +191,16 @@ def compile_numba_functions(acp:jitclass)->None:
         
         # 1. Physics Core
         _ = physics.array_interp(0, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
-        _ = physics.control_sat(U, acp)
-        _ = physics.update_actuators(U, U, 0.01, np.ones(9))
-        _ = physics.calculate_gear_compression(X, h, acp)
+        _ = physics.control_sat(dummy_state.U, acp)
+        _ = physics.update_actuators(dummy_state.U, dummy_state.U, 0.01, np.ones(9))
+        _ = physics.calculate_gear_compression(dummy_state.X, h, acp)
         _ = physics.get_air_ground_state(np.ones(3))
-        _ = physics.calculate_ground_forces(X, h, 0.0, acp)
+        _ = physics.calculate_ground_forces(dummy_state.X, h, 0.0, acp)
         _ = physics.RCAM_model(dummy_state, acp) 
-        _ = physics.RCAM_model_wrapper(t, X, dummy_state, acp)
-        _ = physics.NED_wrapper(t, X, NED)
-        _ = physics.latlonh_dot_wrapper(t, X, NED, lat, h)
-        _ = physics.ss_integrator(t, X, dummy_state, acp)
+        _ = physics.RCAM_model_wrapper(t, dummy_state.X, dummy_state, acp)
+        _ = physics.NED_wrapper(t, dummy_state.X, NED)
+        _ = physics.latlonh_dot_wrapper(t, dummy_state.X, NED, lat, h)
+        _ = physics.ss_integrator(t, dummy_state.X, dummy_state, acp)
         _ = physics.latlonh_int(t, latlonh0, NED)
         _ = physics.calc_ground_effect(h, acp)
 
@@ -573,6 +575,7 @@ if __name__ == "__main__":
             fdm_state.dcd = dcl_dcd_dcm_dalpha[IDX_DCD]
             fdm_state.dcm = dcl_dcd_dcm_dalpha[IDX_DCM]
             fdm_state.dalpha = dcl_dcd_dcm_dalpha[IDX_DALPHA]
+            fdm_state.dN = dcl_dcd_dcm_dalpha[IDX_DN]
 
             this_AC_int.integrate(this_AC_int.t + simdt)
             fdm_state.X = this_AC_int.y.copy()
@@ -752,14 +755,13 @@ if __name__ == "__main__":
                 fdm_state.dcd = dcl_dcd_dcm_dalpha[IDX_DCD]
                 fdm_state.dcm = dcl_dcd_dcm_dalpha[IDX_DCM]
                 fdm_state.dalpha = dcl_dcd_dcm_dalpha[IDX_DALPHA]
+                fdm_state.dN = dcl_dcd_dcm_dalpha[IDX_DN]
 
                 # -- Integrate Physics
                 this_AC_int.integrate(this_AC_int.t + dt)
                 # CRITICAL: Re-sync state observables to the final step
                 fdm_state.X = this_AC_int.y.copy()
                 
-
-
                 # -- Integrate navigation equations
                 current_NED = env.NED(fdm_state.X[:3], fdm_state.X[6:])
                 this_wind = env.add_wind(WIND_NED_MPS, WIND_STDDEV_MPS)
