@@ -51,7 +51,7 @@ spec = [
     ('GND_SPOILERS_DCL', float64),
     ('CDMIN', float64), ('D1', float64), ('D0', float64),
     ('CY_BETA', float64), ('CY_DR', float64),
-    ('C_l_BETA', float64), ('C_m_ALPHA', float64), ('C_n_BETA', float64),
+    ('C_l_BETA', float64), ('C_m_ZERO', float64), ('C_m_ALPHA', float64), ('C_n_BETA', float64),
     
     # Rate & Control Derivatives (Matrix/Array would be cleaner, but scalars are faster)
     ('C_l_P', float64), ('C_l_Q', float64), ('C_l_R', float64),
@@ -149,7 +149,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None, joy_n_buttons: i
 
     # .. aerodynamic properties 
     # ... wing lift ...
-    ac = params['aerodynamic_coeffs']
+    ac = params['lift_coeffs']
     acp.DEPSDA = ac['depsda'] # rad/rad - change in downwash wrt alpha # (TP-088-3, p. 14, para 2.3.4, eq 2.30)
     acp.ALPHA_L0 = ac['alpha_l0_deg'] * DEG2RAD # rad - zero lift AOA
     acp.ALPHA_SWITCH = ac['alpha_switch_deg'] * DEG2RAD # rad - kink point of lift slope
@@ -200,6 +200,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None, joy_n_buttons: i
     # (TP-088-3, p. 14, para 2.3.4, eq 2.33)
     moment_coeffs = params['moment_coeffs']
     acp.C_l_BETA = moment_coeffs['c_l_beta'] # adm - roll moment due to beta
+    acp.C_m_ZERO = moment_coeffs['c_m_zero'] # adm - pitch moment at zero alpha
     acp.C_m_ALPHA = moment_coeffs['c_m_alpha'] # adm - pitch moment due to alpha
     acp.C_n_BETA = moment_coeffs['c_n_beta'] * RAD2DEG # per RCAM doc, need to mult by 180/pi
 

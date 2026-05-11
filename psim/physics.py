@@ -476,7 +476,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     #------------------ aerodynamic moment coefficients about AC -----------
     # moments in F_b
     eta11 = acp.C_l_BETA * beta
-    eta21 = acp.C_m_ALPHA - (acp.NT * (acp.ST * acp.LT) / (acp.S * acp.CBAR)) * (alpha - epsilon) + dcm # RCAM Modified
+    eta21 = acp.C_m_ZERO + (acp.C_m_ALPHA * (acp.ST * acp.LT) / (acp.S * acp.CBAR)) * (alpha - epsilon) + dcm # RCAM Modified
     eta31 = (1 - alpha * acp.C_n_BETA) * beta
 
     eta = np.array([eta11, eta21, eta31])

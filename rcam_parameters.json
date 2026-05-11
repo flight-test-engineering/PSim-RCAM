@@ -29,7 +29,7 @@
       "z": -1.9
     }
   ],
-  "aerodynamic_coeffs": {
+  "lift_coeffs": {
     "depsda": 0.25,
     "alpha_l0_deg": -11.5,
     "alpha_switch_deg": 14.5,
@@ -69,7 +69,8 @@
   },
     "moment_coeffs": {
     "c_l_beta": -1.4,
-    "c_m_alpha": -0.59,
+    "c_m_zero": -0.59,
+    "c_m_alpha": -3.1,
     "c_n_beta": 0.06666
   },
   "pqr_moment_coeffs": {

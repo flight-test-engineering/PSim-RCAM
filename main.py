@@ -567,7 +567,7 @@ if __name__ == "__main__":
             U_actual = physics.update_actuators(sim_U[:,idx], U_actual, simdt, acp.ACT_TAU)
 
             # set highlift deltas (setting to zero for now)
-            dcl_dcd_dcm_dalpha = np.zeros(4)
+            dcl_dcd_dcm_dalpha = np.zeros(5)
             
             # integrate 6-DOF
             fdm_state.U = U_actual
