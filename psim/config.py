@@ -176,7 +176,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None, joy_n_buttons: i
     
     acp.MAX_FLAP = int(acp.HIGH_LIFT_COEFFS.shape[0] - 1) # maximum flap setting (note: integer)
     
-    # ... landing gear drag increase ...
+    # ... landing gear aerodynamics ...
     ldg_drag_dict = ac['landing_gear_drag']
     acp.LDG_DCD = np.array([ldg_drag_dict[str(i)] for i in range(len(ldg_drag_dict))])   
     acp.MAX_LDG = int(acp.LDG_DCD.shape[0] - 1)
