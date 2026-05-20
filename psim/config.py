@@ -180,6 +180,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None, joy_n_buttons: i
     ldg_drag_dict = ac['landing_gear_drag']
     acp.LDG_DCD = np.array([ldg_drag_dict[str(i)] for i in range(len(ldg_drag_dict))])   
     acp.MAX_LDG = int(acp.LDG_DCD.shape[0] - 1)
+    
     # ... ground spoilers lift dump ...
     acp.GND_SPOILERS_DCL = ac['gnd_spoilers_dcl']
 
