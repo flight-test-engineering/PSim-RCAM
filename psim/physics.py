@@ -78,7 +78,7 @@ class FDMState:
 
 
 # ############################################################################
-# High Lift Devices Interpolator
+# General Array Interpolator
 # ############################################################################
 
 @jit(nopython=True)
