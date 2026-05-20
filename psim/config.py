@@ -46,7 +46,7 @@ spec = [
     ('EPSILON_DOT', float64),
     ('HIGH_LIFT_COEFFS', float64[:,:]),
     ('MAX_FLAP', int32),
-    ('LDG_DCD', float64[:,:]),
+    ('LDG_DCD_DCM', float64[:,:]),
     ('MAX_LDG', int32),
     ('GND_SPOILERS_DCL', float64),
     ('CDMIN', float64), ('D1', float64), ('D0', float64),
@@ -177,9 +177,10 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None, joy_n_buttons: i
     acp.MAX_FLAP = int(acp.HIGH_LIFT_COEFFS.shape[0] - 1) # maximum flap setting (note: integer)
     
     # ... landing gear aerodynamics ...
-    ldg_drag_dict = ac['landing_gear_drag']
-    acp.LDG_DCD = np.array([ldg_drag_dict[str(i)] for i in range(len(ldg_drag_dict))])   
-    acp.MAX_LDG = int(acp.LDG_DCD.shape[0] - 1)
+    # key: delta_CD, delta_CM
+    ldg_drag_dict = ac['landing_gear_aero']
+    acp.LDG_DCD_DCM = np.array([ldg_drag_dict[str(i)] for i in range(len(ldg_drag_dict))])   
+    acp.MAX_LDG = int(acp.LDG_DCD_DCM.shape[0] - 1)
     
     # ... ground spoilers lift dump ...
     acp.GND_SPOILERS_DCL = ac['gnd_spoilers_dcl']

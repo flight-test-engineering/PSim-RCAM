@@ -707,9 +707,10 @@ def trim_functional3(Z:np.ndarray, VA_trim:float, gamma_trim:float, side_speed_t
     # add CL, CD, CM and delta Alpha modifiers due to gear and flaps
     dcl_dcd_dcm_dalpha = array_interp(flap_pos, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
 
-    # interpolate for landing gear delta CD
-    ldg_dcd = array_interp(gear_pos, acp.LDG_DCD, acp.MAX_LDG)
-    dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
+    # interpolate for landing gear delta CD and delta CM
+    ldg_dcd_dcm = array_interp(gear_pos, acp.LDG_DCD_DCM, acp.MAX_LDG)
+    dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd_dcm[0] # add additional cd from landing gear
+    dcl_dcd_dcm_dalpha[IDX_DCM] += ldg_dcd_dcm[1] # add additional cm from landing gear
     
     trim_state.X = X
     trim_state.U = U

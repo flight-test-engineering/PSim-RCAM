@@ -139,9 +139,10 @@ def initialize(VA_t, gamma_t, latlon, altitude, psi_t, height, flap_pos, gear_po
     # interpolate high lift devices effects
     dcl_dcd_dcm_dalpha = physics.array_interp(flap_pos, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
 
-    # interpolate for landing gear delta CD
-    ldg_dcd = physics.array_interp(gear_pos, acp.LDG_DCD, acp.MAX_LDG)
-    dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
+    # interpolate for landing gear delta CD and delta CM
+    ldg_dcd_dcm = physics.array_interp(gear_pos, acp.LDG_DCD_DCM, acp.MAX_LDG)
+    dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd_dcm[0] # add additional CD from landing gear
+    dcl_dcd_dcm_dalpha[IDX_DCM] += ldg_dcd_dcm[1] # add additional CM from landing gear
 
     # initialize integrators
     fdm_state.X = X0
@@ -718,9 +719,10 @@ if __name__ == "__main__":
                 # Interpolate for high lift devices influence
                 dcl_dcd_dcm_dalpha = physics.array_interp(U_actual[IDX_FLAP], acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
 
-                # interpolate for landing gear delta CD
-                ldg_dcd = physics.array_interp(U_actual[IDX_GEAR], acp.LDG_DCD, acp.MAX_LDG)
-                dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd[0] # add additional drag from landing gear
+                # interpolate for landing gear delta CD and delta CM
+                ldg_dcd_dcm = physics.array_interp(U_actual[IDX_GEAR], acp.LDG_DCD_DCM, acp.MAX_LDG)
+                dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd_dcm[0] # add additional CD from landing gear
+                dcl_dcd_dcm_dalpha[IDX_DCM] += ldg_dcd_dcm[1] # add additional CM from landing gear
 
 
                 # -- Engines - multiprocessing
