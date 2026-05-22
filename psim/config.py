@@ -165,7 +165,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None, joy_n_buttons: i
     # (TP-088-3, p. 15, eq 2.28)
     acp.EPSILON_DOT = ac['htail_coeffs']['epsilon_dot'] # adm multiplier for tail dynamic downwash response wrt pitch rate
 
-    # ... high lift coefficients ...
+    # ... high lift aero delta coefficients ...
     # key: delta_CL, delta_CD, delta_CM, delta_alpha, delta_N (lift curve slope)
     high_lift_dict = ac['high_lift_coeffs']
     acp.HIGH_LIFT_COEFFS = np.array([high_lift_dict[str(i)] for i in range(len(high_lift_dict))])
@@ -176,7 +176,7 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None, joy_n_buttons: i
     
     acp.MAX_FLAP = int(acp.HIGH_LIFT_COEFFS.shape[0] - 1) # maximum flap setting (note: integer)
     
-    # ... landing gear aerodynamics ...
+    # ... landing gear aerodynamics delta coefficients...
     # key: delta_CD, delta_CM
     ldg_drag_dict = ac['landing_gear_aero']
     acp.LDG_DCD_DCM = np.array([ldg_drag_dict[str(i)] for i in range(len(ldg_drag_dict))])   

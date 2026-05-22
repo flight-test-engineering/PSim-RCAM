@@ -338,7 +338,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     Christopher Lum - Matlab implementation
     https://www.youtube.com/watch?v=m5sEln5bWuM
 
-    inputs:
+    inputs (via dataclass):
         FDMState.X: states (TP-088-3, p. 6, para 2.2, table 2.2)
             0: u (m/s)
             1: v (m/s)
@@ -366,7 +366,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
         FDMState.dcm: Delta CM (High Lift / Ldg / Gnd Spoiler)
         FDMState.dalpha: Delta alpha (High Lift / Ldg / Gnd Spoiler)
         FDMState.dN: Delta lift curve slope
-    outputs:
+    outputs (via dataclass)
         FDMState.dX: derivatives of states (same order)
         FDMState.Va: true airspeed (m/s)
         FDMState.alpha (rad)

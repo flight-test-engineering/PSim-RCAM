@@ -132,7 +132,7 @@
     "tau_elevator": 0.15,
     "tau_rudder": 0.30,
     "tau_engine": 0.0000001,
-    "tau_flaps": 0.95,
+    "tau_flaps": 2.0,
     "tau_gear": 2.5,
     "tau_gnd_spoiler": 0.50,
     "tau_brakes": 0.03
