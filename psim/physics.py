@@ -705,21 +705,21 @@ def trim_functional3(Z:np.ndarray, VA_trim:float, gamma_trim:float, side_speed_t
     U[Z.shape[0] -9 + 3] = brakes_pos
 
     # add CL, CD, CM and delta Alpha modifiers due to gear and flaps
-    dcl_dcd_dcm_dalpha = array_interp(flap_pos, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
+    aero_delta_coeffs = array_interp(flap_pos, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
 
     # interpolate for landing gear delta CD and delta CM
     ldg_dcd_dcm = array_interp(gear_pos, acp.LDG_DCD_DCM, acp.MAX_LDG)
-    dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd_dcm[0] # add additional cd from landing gear
-    dcl_dcd_dcm_dalpha[IDX_DCM] += ldg_dcd_dcm[1] # add additional cm from landing gear
+    aero_delta_coeffs[IDX_DCD] += ldg_dcd_dcm[0] # add additional cd from landing gear
+    aero_delta_coeffs[IDX_DCM] += ldg_dcd_dcm[1] # add additional cm from landing gear
     
     trim_state.X = X
     trim_state.U = U
     trim_state.rho = rho_trim
     trim_state.h = h_trim
-    trim_state.dcl = dcl_dcd_dcm_dalpha[IDX_DCL]
-    trim_state.dcd = dcl_dcd_dcm_dalpha[IDX_DCD]
-    trim_state.dcm = dcl_dcd_dcm_dalpha[IDX_DCM]
-    trim_state.dalpha = dcl_dcd_dcm_dalpha[IDX_DALPHA]
+    trim_state.dcl = aero_delta_coeffs[IDX_DCL]
+    trim_state.dcd = aero_delta_coeffs[IDX_DCD]
+    trim_state.dcm = aero_delta_coeffs[IDX_DCM]
+    trim_state.dalpha = aero_delta_coeffs[IDX_DALPHA]
     
     # calculate model (mutates trim_state in place)
     RCAM_model(trim_state, acp)

@@ -137,23 +137,23 @@ def initialize(VA_t, gamma_t, latlon, altitude, psi_t, height, flap_pos, gear_po
         U0=np.array([0.0, 0.0, 0.0, 0.0, 0.0, flap_pos, gear_pos, 0.0, 0.0])
 
     # interpolate high lift devices effects
-    dcl_dcd_dcm_dalpha = physics.array_interp(flap_pos, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
+    aero_delta_coeffs = physics.array_interp(flap_pos, acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
 
     # interpolate for landing gear delta CD and delta CM
     ldg_dcd_dcm = physics.array_interp(gear_pos, acp.LDG_DCD_DCM, acp.MAX_LDG)
-    dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd_dcm[0] # add additional CD from landing gear
-    dcl_dcd_dcm_dalpha[IDX_DCM] += ldg_dcd_dcm[1] # add additional CM from landing gear
+    aero_delta_coeffs[IDX_DCD] += ldg_dcd_dcm[0] # add additional CD from landing gear
+    aero_delta_coeffs[IDX_DCM] += ldg_dcd_dcm[1] # add additional CM from landing gear
 
     # initialize integrators
     fdm_state.X = X0
     fdm_state.U = U0
     fdm_state.rho = rho_trim
     fdm_state.h = height
-    fdm_state.dcl = dcl_dcd_dcm_dalpha[IDX_DCL]
-    fdm_state.dcd = dcl_dcd_dcm_dalpha[IDX_DCD]
-    fdm_state.dcm = dcl_dcd_dcm_dalpha[IDX_DCM]
-    fdm_state.dalpha = dcl_dcd_dcm_dalpha[IDX_DALPHA]
-    fdm_state.dN = dcl_dcd_dcm_dalpha[IDX_DN]
+    fdm_state.dcl = aero_delta_coeffs[IDX_DCL]
+    fdm_state.dcd = aero_delta_coeffs[IDX_DCD]
+    fdm_state.dcm = aero_delta_coeffs[IDX_DCM]
+    fdm_state.dalpha = aero_delta_coeffs[IDX_DALPHA]
+    fdm_state.dN = aero_delta_coeffs[IDX_DN]
 
     # 2. Call the updated integrator with just 4 arguments
     AC_integrator = physics.ss_integrator(t0, X0, fdm_state, acp)
@@ -568,15 +568,15 @@ if __name__ == "__main__":
             U_actual = physics.update_actuators(sim_U[:,idx], U_actual, simdt, acp.ACT_TAU)
 
             # set highlift deltas (setting to zero for now)
-            dcl_dcd_dcm_dalpha = np.zeros(5)
+            aero_delta_coeffs = np.zeros(5)
             
             # integrate 6-DOF
             fdm_state.U = U_actual
-            fdm_state.dcl = dcl_dcd_dcm_dalpha[IDX_DCL]
-            fdm_state.dcd = dcl_dcd_dcm_dalpha[IDX_DCD]
-            fdm_state.dcm = dcl_dcd_dcm_dalpha[IDX_DCM]
-            fdm_state.dalpha = dcl_dcd_dcm_dalpha[IDX_DALPHA]
-            fdm_state.dN = dcl_dcd_dcm_dalpha[IDX_DN]
+            fdm_state.dcl = aero_delta_coeffs[IDX_DCL]
+            fdm_state.dcd = aero_delta_coeffs[IDX_DCD]
+            fdm_state.dcm = aero_delta_coeffs[IDX_DCM]
+            fdm_state.dalpha = aero_delta_coeffs[IDX_DALPHA]
+            fdm_state.dN = aero_delta_coeffs[IDX_DN]
 
             this_AC_int.integrate(this_AC_int.t + simdt)
             fdm_state.X = this_AC_int.y.copy()
@@ -717,12 +717,13 @@ if __name__ == "__main__":
 
 
                 # Interpolate for high lift devices influence
-                dcl_dcd_dcm_dalpha = physics.array_interp(U_actual[IDX_FLAP], acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
+                # key: delta_CL, delta_CD, delta_CM, delta_alpha, delta_N
+                aero_delta_coeffs = physics.array_interp(U_actual[IDX_FLAP], acp.HIGH_LIFT_COEFFS, acp.MAX_FLAP)
 
                 # interpolate for landing gear delta CD and delta CM
                 ldg_dcd_dcm = physics.array_interp(U_actual[IDX_GEAR], acp.LDG_DCD_DCM, acp.MAX_LDG)
-                dcl_dcd_dcm_dalpha[IDX_DCD] += ldg_dcd_dcm[0] # add additional CD from landing gear
-                dcl_dcd_dcm_dalpha[IDX_DCM] += ldg_dcd_dcm[1] # add additional CM from landing gear
+                aero_delta_coeffs[IDX_DCD] += ldg_dcd_dcm[0] # add additional CD from landing gear
+                aero_delta_coeffs[IDX_DCM] += ldg_dcd_dcm[1] # add additional CM from landing gear
 
 
                 # -- Engines - multiprocessing
@@ -753,11 +754,11 @@ if __name__ == "__main__":
 
                 # Update environmental/control inputs into the state object
                 fdm_state.U = U_actual
-                fdm_state.dcl = dcl_dcd_dcm_dalpha[IDX_DCL]
-                fdm_state.dcd = dcl_dcd_dcm_dalpha[IDX_DCD]
-                fdm_state.dcm = dcl_dcd_dcm_dalpha[IDX_DCM]
-                fdm_state.dalpha = dcl_dcd_dcm_dalpha[IDX_DALPHA]
-                fdm_state.dN = dcl_dcd_dcm_dalpha[IDX_DN]
+                fdm_state.dcl = aero_delta_coeffs[IDX_DCL]
+                fdm_state.dcd = aero_delta_coeffs[IDX_DCD]
+                fdm_state.dcm = aero_delta_coeffs[IDX_DCM]
+                fdm_state.dalpha = aero_delta_coeffs[IDX_DALPHA]
+                fdm_state.dN = aero_delta_coeffs[IDX_DN]
 
                 # -- Integrate Physics
                 this_AC_int.integrate(this_AC_int.t + dt)
