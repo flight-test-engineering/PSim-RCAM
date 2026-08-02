@@ -436,12 +436,6 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     if CL_wb < -1.0: CL_wb = -1.0
 
 
-    # Ground Effect # not part of RCAM original doc
-    GE_cl_mult, GE_cd_mult = calc_ground_effect(state.h - acp.LG_MAIN_L_POS[IDX_MLG_Z], acp) # subtracting landing gear nominal height - might need adjustments
-    # multiply wing-body calculated CL by ground effect factor
-    CL_wb *= GE_cl_mult
-
-
     # CL thrust
     epsilon = acp.DEPSDA * (alpha - acp.ALPHA_L0)
     # Prevent divide by zero in q_term, if speed is too low
@@ -454,8 +448,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
 
     # Total CD (in stability frame)
     CD = acp.CDMIN + acp.D1 * (acp.N * alpha + acp.D0)**2 + dcd # dcd - not part of RCAM original doc
-    # add ground effect to drag
-    CD *= GE_cd_mult # not part of RCAM original doc
+
 
     # Total side force CY (stability frame)
     CY = acp.CY_BETA * beta + acp.CY_DR * dr
@@ -493,6 +486,13 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     
     # CM about AC in Fb
     CMac_b = eta + np.dot(dCMdx, wbe_b) + np.dot(dCMdu, np.array([da, de, dr]))
+
+    # Step 5A
+    # Add ground effect
+    ground_effect_deltas = calc_ground_effect(state.h * FT2M , acp)
+    CL_wb += ground_effect_deltas[0]
+    CD += ground_effect_deltas[1]
+    CMac_b += ground_effect_deltas[2]
 
     # Step 6
     #------------------- aerodynamic moment about AC -------------------------
@@ -808,13 +808,19 @@ def trim_model(VA_trim=85.0, gamma_trim=0.0, side_speed_trim=0.0, phi_trim=0.0, 
     return result.x, result.message #remember that the control vector is missing flaps position, gear position, gnd spoiler, brake now
 
 @jit(nopython=True)
-def calc_ground_effect(h_agl: float, acp:jitclass) -> tuple[float, float]:
+def calc_ground_effect(h_agl: float, acp:jitclass) -> np.ndarray:
     '''
     Calculates aerodynamic multipliers for Ground Effect.
     Based on relative height to wingspan (h/b).
+    Inputs:
+        h_agl : [m] - height above terrain
+        acp: aircraft parameters dataclass
     
     Returns:
-        (CL_mult, CD_mult)
+        np.array with:
+            delta_CL_IGE: delta CL in ground effect
+            delta_CD_IGE: ...
+            delta_CM_IGE: ...
     '''
     # 1. Calculate Ratio
     # We use max(h, 0) to handle slight underground numeric errors
@@ -822,21 +828,10 @@ def calc_ground_effect(h_agl: float, acp:jitclass) -> tuple[float, float]:
     
     # 2. Check Range (Effect vanishes above 1.0 span)
     if ratio >= 1.0:
-        return 1.0, 1.0
+        return np.zeros(3)
         
-    # 3. Calculate Intensity Factor (0.0 to 1.0)
-    # Using a squared falloff curve: (1 - ratio)^2
-    # This provides a smooth onset as we descend.
-    # At h=0 (ground): factor = 1.0
-    # At h=b (1 span): factor = 0.0
-    factor = (1.0 - ratio) * (1.0 - ratio)
-    
-    # 4. Apply Multipliers
-    # Tuning constants:
-    # Lift increases by up to 25% near ground
-    # Drag decreases by up to 30% near ground
-    
-    cl_mult = 1.0 + (0.25 * factor)
-    cd_mult = 1.0 - (0.30 * factor)
-    
-    return cl_mult, cd_mult
+    # 3. Calculate Exponential values
+    accel_factor = 8
+    deltas = np.array([acp.delta_CL_IGE, acp.delta_CD_IGE, acp.delta_CM_IGE])
+
+    return np.exp(accel_factor * (1 - ratio)) * deltas / np.exp(accel_factor) 

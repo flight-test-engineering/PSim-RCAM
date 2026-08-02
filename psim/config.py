@@ -52,6 +52,7 @@ spec = [
     ('CDMIN', float64), ('D1', float64), ('D0', float64),
     ('CY_BETA', float64), ('CY_DR', float64),
     ('C_l_BETA', float64), ('C_m_ZERO', float64), ('C_m_ALPHA', float64), ('C_n_BETA', float64),
+    ('delta_CL_IGE', float64), ('delta_CD_IGE', float64), ('delta_CM_IGE', float64),
     
     # Rate & Control Derivatives (Matrix/Array would be cleaner, but scalars are faster)
     ('C_l_P', float64), ('C_l_Q', float64), ('C_l_R', float64),
@@ -184,6 +185,12 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None, joy_n_buttons: i
     
     # ... ground spoilers lift dump ...
     acp.GND_SPOILERS_DCL = ac['gnd_spoilers_dcl']
+
+    # ... ground effect coefficients ...
+    IGE = params['IGE_coeffs']
+    acp.delta_CL_IGE = IGE['delta_CL_IGE'] # maximum delta CL at ground level
+    acp.delta_CD_IGE = IGE['delta_CD_IGE'] # maximum delta CD at ground level 
+    acp.delta_CM_IGE = IGE['delta_CM_IGE'] # maximum delta CM at ground level
 
     # .. aerodynamic properties - drag ..
     drag_coeffs = params['drag_coeffs']
