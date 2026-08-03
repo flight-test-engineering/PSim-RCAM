@@ -211,7 +211,7 @@ def compile_numba_functions(acp:jitclass)->None:
         _ = env.fpa(np.ones(3))
         _ = env.add_wind(np.ones(3), np.ones(3))
         _ = env.NED(np.array([10.,0.,0.]), np.array([0.,0.,0.]))
-        _ = env.latlonh_dot(np.array([10.,0.,0.]), 0.0, 0.0)
+        _ = env.latlonh_dot(np.array([ 10.,0.,0.]), 0.0, 0.0)
         _ = env.WGS84_MN(lat)
         _ = env.get_rho(h)
         
