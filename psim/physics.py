@@ -489,7 +489,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
 
     # Step 5A
     # Add ground effect
-    ground_effect_deltas = calc_ground_effect(state.h * FT2M , acp)
+    ground_effect_deltas = calc_ground_effect((state.h - acp.LG_MAIN_R_POS[2]) , acp) # state.h and gear are in meters
     CL_wb += ground_effect_deltas[0]
     CD += ground_effect_deltas[1]
     CMac_b += ground_effect_deltas[2]
@@ -814,7 +814,7 @@ def calc_ground_effect(h_agl: float, acp:jitclass) -> np.ndarray:
     Based on relative height to wingspan (h/b).
     Inputs:
         h_agl : [m] - height above terrain
-        acp: aircraft parameters dataclass
+        acp: aircraft parameters dataclass (wingspan is stored in [m])
     
     Returns:
         np.array with:
