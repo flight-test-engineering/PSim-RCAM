@@ -834,4 +834,4 @@ def calc_ground_effect(h_agl: float, acp:jitclass) -> np.ndarray:
     accel_factor = 8
     deltas = np.array([acp.delta_CL_IGE, acp.delta_CD_IGE, acp.delta_CM_IGE])
 
-    return np.exp(accel_factor * (1 - ratio)) * deltas / np.exp(accel_factor) 
+    return np.exp(accel_factor * (1 - ratio) - accel_factor) * deltas 
