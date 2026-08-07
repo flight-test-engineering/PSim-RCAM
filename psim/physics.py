@@ -831,7 +831,11 @@ def calc_ground_effect(h_agl: float, acp:jitclass) -> np.ndarray:
         return np.zeros(3)
         
     # 3. Calculate Exponential values
-    accel_factor = 8
+    accel_factors = np.array([8, 8, 4]) # accel factors for CL, CD ad CM respectively, 
+    # matched from "Flight Measurements of Ground Effect on Lift and Pitching Moment of a Large Transport Aircraft"
+
     deltas = np.array([acp.delta_CL_IGE, acp.delta_CD_IGE, acp.delta_CM_IGE])
 
-    return np.exp(accel_factor * (1 - ratio) - accel_factor) * deltas 
+
+
+    return np.exp(accel_factors * (1 - ratio) - accel_factors) * deltas 
