@@ -290,7 +290,7 @@ def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float, acp:jitclass)
             # Friction
             # A simple "stiffness" approach to friction to stop sliding
             # Side force
-            F_y = -V_gear[1] * 50000.0 
+            F_y = -V_gear[1] * 5 * acp.LG_FRICTION_STIFFNESS # set F_y to an initially high value
             raw_fy = -V_gear[1] * acp.LG_FRICTION_STIFFNESS
             # for longitudinal force, we have the brakes
             F_x = F_normal * (acp.LG_MU_BRAKE * brake + acp.LG_ROLLING_FRICTION_MU)
