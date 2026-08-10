@@ -233,6 +233,7 @@ def get_air_ground_state(compressions:np.ndarray) -> bool:
 def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float, acp:jitclass) -> np.ndarray:
     '''
     Calculates total Forces and Moments (Body Frame) from all 3 landing gears.
+    X is the state vector with 3 velocities and 3 angular rates
     h_cg is height AGL (RADALT) in (m)
     brake is a float between 0 and 1 - represents brake percent
     Returns: 6-element array [Fx, Fy, Fz, Mx, My, Mz]
