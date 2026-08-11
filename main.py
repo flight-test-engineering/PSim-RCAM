@@ -697,6 +697,9 @@ if __name__ == "__main__":
                     trim_point[IDX_THR2] = trim_point[IDX_THR1]
 
                 # toggle ground spoilers armed if button is pressed -> this is done in joystick submodule
+                
+                # CHANGE: make trim_point become inceptor command and do logic inside physics
+
                 # ground spoiler arm/disarm state is passaed through inceptor_cmd[IDX_GNDSP]
                 # if spoilers are armed and we are on ground, set ground spoilers to open
                 if (physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], fdm_state.h, acp)) and (trim_point[IDX_GNDSP] == 1)):
@@ -752,7 +755,7 @@ if __name__ == "__main__":
                 # -------------------------------------------------------
                 fdm_state.rho = env.get_rho(current_alt_m)
 
-                # Update environmental/control inputs into the state object
+                # Update control inputs into the state object
                 fdm_state.U = U_actual
                 fdm_state.dcl = aero_delta_coeffs[IDX_DCL]
                 fdm_state.dcd = aero_delta_coeffs[IDX_DCD]
