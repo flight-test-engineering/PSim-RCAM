@@ -703,7 +703,7 @@ if __name__ == "__main__":
 
                 # ground spoiler arm/disarm state is passaed through inceptor_cmd[IDX_GNDSP]
                 # if spoilers are armed and we are on ground, set ground spoilers to open
-                if (physics.get_air_ground_state(physics.calculate_gear_compression(this_AC_int.y[:9], fdm_state.h, acp)) and (trim_point[IDX_GNDSP] == 1)):
+                if ((fdm_state.AG) and (trim_point[IDX_GNDSP] == 1)):
                     inceptor_cmd[IDX_GNDSP] = acp.GND_SPOILERS_DCL # % lift dump
                 else:
                     inceptor_cmd[IDX_GNDSP] = 0.0 # closed, no lift dump

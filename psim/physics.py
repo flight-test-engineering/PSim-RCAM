@@ -497,10 +497,9 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     CMac_b += ground_effect_deltas[2]
 
     # Step 5B
-    # ground spoiler
+    # air/ground state and gear compression
     gear_compression = calculate_gear_compression(state.X, h, acp)
     state.AG = bool(np.any(gear_compression))
-    #calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float, acp:jitclass) -> np.ndarray: (state.X, h, brake, acp)
 
     # Step 6
     #------------------- aerodynamic moment about AC -------------------------
