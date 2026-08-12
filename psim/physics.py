@@ -29,7 +29,6 @@ state_spec =[
     ('dcm', float64),
     ('dalpha', float64),
     ('dN', float64),
-    ('dclgs', float64),
     
     # Outputs / Intermediates (previously from RCAM_observe)
     ('dX', float64[:]),
@@ -62,7 +61,6 @@ class FDMState:
         self.dcm = 0.0
         self.dalpha = 0.0
         self.dN = 0.0
-        self.dclgs = 0.0
         
         self.dX = np.zeros(9)
         self.body_accels = np.zeros(3)
