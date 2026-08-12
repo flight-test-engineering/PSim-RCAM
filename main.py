@@ -188,6 +188,7 @@ def compile_numba_functions(acp:jitclass)->None:
         lat = 0.59
         lon = 0.59
         latlonh0 = np.array([lat, lon, h])
+        gear_compression = np.zeros(3)
 
         
         # 1. Physics Core
@@ -196,7 +197,7 @@ def compile_numba_functions(acp:jitclass)->None:
         _ = physics.update_actuators(dummy_state.U, dummy_state.U, 0.01, np.ones(9))
         _ = physics.calculate_gear_compression(dummy_state.X, h, acp)
         _ = physics.get_air_ground_state(np.ones(3))
-        _ = physics.calculate_ground_forces(dummy_state.X, h, 0.0, acp)
+        _ = physics.calculate_ground_forces(dummy_state.X, gear_compression, 0.0, acp)
         _ = physics.RCAM_model(dummy_state, acp) 
         _ = physics.RCAM_model_wrapper(t, dummy_state.X, dummy_state, acp)
         _ = physics.NED_wrapper(t, dummy_state.X, NED)

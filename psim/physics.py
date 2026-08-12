@@ -4,7 +4,7 @@
 import numpy as np
 from scipy import integrate
 from scipy.optimize import minimize # for trimming routine
-from numba import jit, float64, int32
+from numba import jit, float64, int32, boolean
 from numba.experimental import jitclass
 from .constants import *
 import psim.environment as env
@@ -29,6 +29,7 @@ state_spec =[
     ('dcm', float64),
     ('dalpha', float64),
     ('dN', float64),
+    ('dclgs', float64),
     
     # Outputs / Intermediates (previously from RCAM_observe)
     ('dX', float64[:]),
@@ -41,6 +42,7 @@ state_spec =[
     ('F_gnd_x', float64),
     ('F_gnd_y', float64),
     ('F_gnd_z', float64),
+    ('AG', boolean),
     
     # Body Accelerations for FlightGear
     ('body_accels', float64[:]),
@@ -60,6 +62,7 @@ class FDMState:
         self.dcm = 0.0
         self.dalpha = 0.0
         self.dN = 0.0
+        self.dclgs = 0.0
         
         self.dX = np.zeros(9)
         self.body_accels = np.zeros(3)
@@ -72,6 +75,7 @@ class FDMState:
         self.F_gnd_x = 0.0
         self.F_gnd_y = 0.0
         self.F_gnd_z = 0.0
+        self.AG = False
 
 
 
@@ -230,19 +234,16 @@ def get_air_ground_state(compressions:np.ndarray) -> bool:
 
 
 @jit(nopython=True)
-def calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float, acp:jitclass) -> np.ndarray:
+def calculate_ground_forces(X:np.ndarray, compressions:np.ndarray, brake:float, acp:jitclass) -> np.ndarray:
     '''
     Calculates total Forces and Moments (Body Frame) from all 3 landing gears.
     X is the state vector with 3 velocities and 3 angular rates
-    h_cg is height AGL (RADALT) in (m)
+    compressions are the gear compressions calculated externally. np.array, 3x1, in [m]
     brake is a float between 0 and 1 - represents brake percent
     Returns: 6-element array [Fx, Fy, Fz, Mx, My, Mz]
 
     '''
     
-    # Get current compressions
-    compressions = calculate_gear_compression(X, h_cg, acp)
-
     
     # State extractions for velocity calc
     u, v, w = X[IDX_U], X[IDX_V], X[IDX_W]
@@ -495,6 +496,12 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     CD += ground_effect_deltas[1]
     CMac_b += ground_effect_deltas[2]
 
+    # Step 5B
+    # ground spoiler
+    gear_compression = calculate_gear_compression(state.X, h, acp)
+    state.AG = bool(np.any(gear_compression))
+    #calculate_ground_forces(X:np.ndarray, h_cg:float, brake:float, acp:jitclass) -> np.ndarray: (state.X, h, brake, acp)
+
     # Step 6
     #------------------- aerodynamic moment about AC -------------------------
     # normalize to aerodynamic moment
@@ -538,7 +545,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
 
     #---------------------- GROUND REACTION ----------------------------------
     # not part of RCAM original doc
-    Gnd_Reac = calculate_ground_forces(state.X, h, brake, acp)
+    Gnd_Reac = calculate_ground_forces(state.X, gear_compression, brake, acp)
     F_gnd_b = Gnd_Reac[:3]
     M_gnd_b = Gnd_Reac[3:]
     
