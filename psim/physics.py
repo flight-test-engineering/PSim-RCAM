@@ -213,7 +213,7 @@ def calculate_gear_compression(X:np.ndarray, h_cg:float, acp:jitclass) -> np.nda
     compressions = np.maximum(-h_tips, 0.0)
     
     # Clip max compression
-    max_travel = np.array([acp.LG_NOSE_POS[2], acp.LG_MAIN_L_POS[2], acp.LG_MAIN_R_POS[2]])
+    max_travel = np.array([acp.LG_NOSE_POS[IDX_LG_Z], acp.LG_MAIN_L_POS[IDX_LG_Z], acp.LG_MAIN_R_POS[IDX_LG_Z]])
     compressions = np.minimum(compressions, max_travel)
     
     return compressions
@@ -225,7 +225,7 @@ def get_air_ground_state(compressions:np.ndarray) -> bool:
     Returns True (Ground) if ANY gear is compressed, False (Air) otherwise.
     This acts as the requested 'air_ground' variable.
     '''
-    if compressions[0] > 0 or compressions[1] > 0 or compressions[2] > 0:
+    if np.any(compressions):
         return True
     else:
         return False
@@ -265,7 +265,7 @@ def calculate_ground_forces(X:np.ndarray, compressions:np.ndarray, brake:float, 
             V_gear = V_cg_b + np.cross(wbe_b, r_gear)
             
             # Vertical Velocity of the gear (Positive = Moving Down/Compressing)
-            v_z_gear = V_gear[2] 
+            v_z_gear = V_gear[IDX_LG_Z] 
             
             # --- ASYMMETRIC DAMPING LOGIC ---
             if v_z_gear > 0: 
@@ -289,12 +289,12 @@ def calculate_ground_forces(X:np.ndarray, compressions:np.ndarray, brake:float, 
             
             # Friction
             # A simple "stiffness" approach to friction to stop sliding
-            # Side force
-            F_y = -V_gear[1] * 5 * acp.LG_FRICTION_STIFFNESS # set F_y to an initially high value
-            raw_fy = -V_gear[1] * acp.LG_FRICTION_STIFFNESS
-            # for longitudinal force, we have the brakes
+            #     for longitudinal force, we have the brakes
             F_x = F_normal * (acp.LG_MU_BRAKE * brake + acp.LG_ROLLING_FRICTION_MU)
-            raw_fx = -V_gear[0] * acp.LG_FRICTION_STIFFNESS
+            raw_fx = -V_gear[IDX_LG_X] * acp.LG_FRICTION_STIFFNESS
+            #     Side force
+            F_y = -V_gear[IDX_LG_Y] * 5 * acp.LG_FRICTION_STIFFNESS # set F_y to an initially high value
+            raw_fy = -V_gear[IDX_LG_Y] * acp.LG_FRICTION_STIFFNESS
 
             
             # Cap friction so it doesn't exceed mu * Normal Force (Coulomb friction)
@@ -489,10 +489,10 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
 
     # Step 5A
     # Add ground effect
-    ground_effect_deltas = calc_ground_effect((state.h - acp.LG_MAIN_R_POS[2]) , acp) # state.h and gear are in meters
-    CL_wb += ground_effect_deltas[0]
-    CD += ground_effect_deltas[1]
-    CMac_b += ground_effect_deltas[2]
+    ground_effect_deltas = calc_ground_effect((state.h - acp.LG_MAIN_R_POS[IDX_LG_Z]) , acp) # state.h and gear are in meters
+    CL_wb += ground_effect_deltas[IDX_DCL]
+    CD += ground_effect_deltas[IDX_DCD]
+    CMac_b[IDX_CMPITCH] += ground_effect_deltas[IDX_DCM]
 
     # Step 5B
     # air/ground state and gear compression
@@ -581,9 +581,9 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
     state.CL = CL
     state.CD = CD
     state.CY = CY
-    state.F_gnd_x = F_gnd_b[0]
-    state.F_gnd_y = F_gnd_b[1]
-    state.F_gnd_z = F_gnd_b[2]
+    state.F_gnd_x = F_gnd_b[IDX_LG_X]
+    state.F_gnd_y = F_gnd_b[IDX_LG_Y]
+    state.F_gnd_z = F_gnd_b[IDX_LG_Z]
         
     return None
 
