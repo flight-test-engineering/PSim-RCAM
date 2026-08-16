@@ -697,11 +697,9 @@ if __name__ == "__main__":
                     trim_point[IDX_THR1] = max(0.0, (trim_point[IDX_THR1] + delta_throttle_1))
                     trim_point[IDX_THR2] = trim_point[IDX_THR1]
 
-                # toggle ground spoilers armed if button is pressed -> this is done in joystick submodule
-                
-                # CHANGE: make trim_point become inceptor command and do logic inside physics
-
-                # ground spoiler arm/disarm state is passaed through inceptor_cmd[IDX_GNDSP]
+                # to toggle ground spoilers armed/disarmed (if button is pressed) -> done in joystick submodule
+                # ground spoiler arm/disarm state comes in from trim_point[IDX_GNDSP]
+                # the actual inceptor command is inserted here:
                 # if spoilers are armed and we are on ground, set ground spoilers to open
                 if ((fdm_state.AG) and (trim_point[IDX_GNDSP] == 1)):
                     inceptor_cmd[IDX_GNDSP] = acp.GND_SPOILERS_DCL # % lift dump
