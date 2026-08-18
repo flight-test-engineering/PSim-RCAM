@@ -248,18 +248,28 @@ if __name__ == "__main__":
         FLAPS_INIT = 0
         INIT_GEAR = 1
         GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
+        INIT_HDG_DEG = 82.0 # DEG
     else:
         # FLYING
+        '''
         INIT_ALT_FT = 2400 #ft
         V_TRIM_MPS = 160 * KT2MS # m/s
         INIT_LATLON_DEG = np.array([47.2548, 11.2963]) #in degrees - LOWI short final TFB
         FLAPS_INIT = 0
         INIT_GEAR = 0
         GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
-
+        INIT_HDG_DEG = 82.0 # DEG
+        '''
+        INIT_ALT_FT = 3000 #ft
+        V_TRIM_MPS = 160 * KT2MS # m/s
+        INIT_LATLON_DEG = np.array([47.27, 11.43]) #in degrees - LOWI short final TFB
+        FLAPS_INIT = 0
+        INIT_GEAR = 0
+        GAMMA_TRIM_RAD = -3.0 * DEG2RAD # RAD
+        INIT_HDG_DEG = 260.0 # DEG
     
     
-    INIT_HDG_DEG = 82.0 # DEG
+    
 
 
     # wind
@@ -274,7 +284,7 @@ if __name__ == "__main__":
     DECK_LOOP_HZ = 10           # (Hz) fra1me rate to calculate engine deck
     SIM_VISUAL_OFFSET = 0       # Simulator Z-Axis Visual offset so that landing is on the runway. Difference in Sim and SRTM values for ground elevation
     USE_FG_AS_TERRAIN_DB = True # if False, use SRTM database instead
-    DATA_LOGGING_HZ = 10        # frames per second to be logged
+    DATA_LOGGING_HZ = 30        # frames per second to be logged
     ENG_LOG_PARAMETERS = ['Fn', 'Fg', 'F_ram', 'TSFC', 'Wf', 'N1','N2']
 
     RESULTS_FILE = 'test_data.csv'              # name of file where data will be saved
