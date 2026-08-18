@@ -312,8 +312,8 @@ if __name__ == "__main__":
         joy_name = None
         joy_n_buttons = 0
     else:
+        pygame.joystick.init()
         this_joy = pygame.joystick.Joystick(0)
-        this_joy.init()
         joy_n_buttons = this_joy.get_numbuttons() # checks how many buttons this joystick has
         # flush ghost inputs
         # Pump the event loop multiple times to clear buffered events 
@@ -403,6 +403,7 @@ if __name__ == "__main__":
         UDP_IP2 = "192.168.0.26" # set to a remote computer, for additional visuals
         UDP_PORT2 = 5501
 
+
         sock1 = socket.socket(socket.AF_INET, # Internet
                             socket.SOCK_DGRAM) # UDP
         sock2 = socket.socket(socket.AF_INET, # Internet
@@ -426,6 +427,14 @@ if __name__ == "__main__":
             logging.error(f"[main]...Error in network thread: {e}")
             exit()
 
+        # OUTGOING data (from Python to Telemetry Viewer)
+        UDP_IP3 = "127.0.0.1" # set to localhost, but you can change
+        UDP_PORT3 = 5555
+
+        telemetry_thread = net.TelemetrySender(ip=UDP_IP3, port=UDP_PORT3)
+        telemetry_thread.start()
+        
+
         # INCOMING DATA (from FG to Python)
         # ... UDP RX Setup ...
         # --- TERRAIN UDP RECEIVER ---
@@ -441,7 +450,6 @@ if __name__ == "__main__":
             daemon=True
         )
         rx_thread.start()
-
 
 
         # instantiate FG comms object and initialize it
@@ -859,9 +867,16 @@ if __name__ == "__main__":
                         for idx, p in enumerate(ENG_LOG_PARAMETERS):
                             eng1_states[idx] = eng_vals[0][p]
                             eng2_states[idx] = eng_vals[1][p]
-                    data_collector.append(np.concatenate((fdm_state.X, this_latlonh_int.y, current_NED, U_actual, inceptor_cmd, internals, eng1_states, eng2_states)))
+
+                    tm_data = np.block([this_AC_int.t, fdm_state.X, this_latlonh_int.y, current_NED, U_actual, inceptor_cmd, internals, eng1_states, eng2_states])
+                    
+                    data_collector.append(tm_data[1:])
                     t_vector_collector.append(this_AC_int.t)
                     datalog_trigger = False
+
+                    # send data out to telemetry
+
+                    telemetry_thread.send_data(tm_data)
 
                 
                 # -- Next frame setup
@@ -938,6 +953,8 @@ if __name__ == "__main__":
         tx_thread.join(timeout=1.0) # Wait for the thread to finish
         for s in socks:
             s.close()
+        telemetry_thread.running = False
+        telemetry_thread.join(timeout=1.0)
                 
         # -- Stop RX thread
         terrain_shutdown_queue.put(True)

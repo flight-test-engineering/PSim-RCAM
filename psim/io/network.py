@@ -3,6 +3,8 @@ import queue
 import time
 import threading
 import numpy as np
+import struct
+import logging
 
 import ISA_module as ISA
 from psim.constants import *
@@ -182,3 +184,46 @@ def set_FDM(this_fgFDM, X:np.ndarray, U_norm:np.ndarray, latlon:np.ndarray, alt:
     # --- TIME ---
     # Use time.time() for Unix Epoch, likely preferred by FG over perf_counter
     this_fgFDM.set('cur_time', int(time.time()))
+
+
+# logger = logging.getLogger(__name__)
+
+class TelemetrySender(threading.Thread):
+    def __init__(self, ip="127.0.0.1", port=5555):
+        super().__init__(daemon=True) # Daemon thread exits automatically when main.py closes
+        self.ip = ip
+        self.port = port
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.q = queue.Queue(maxsize=1)
+        self.running = True
+
+    def run(self):
+        logger.info(f"[Telemetry Sender] Telemetry Sender thread started on {self.ip}:{self.port}")
+        while self.running:
+            try:
+                # Wait for data. Timeout allows the thread to check self.running gracefully
+                data = self.q.get(timeout=0.1) 
+                
+                # Pack the list of floats into a fast binary C-struct.
+                # '<' means little-endian, 'd' means double precision float (8 bytes each).
+                packed_data = struct.pack('<' + 'd' * len(data), *data)
+                
+                self.sock.sendto(packed_data, (self.ip, self.port))
+            except queue.Empty:
+                pass
+            except Exception as e:
+                logger.error(f"[Telemetry Sender]  sender error: {e}")
+                logger.debug(data)
+
+    def send_data(self, data_list):
+        """Called by the main simulation loop to push new data."""
+        try:
+            # Try to push new data immediately
+            self.q.put_nowait(data_list)
+        except queue.Full:
+            # If the queue is full, discard the old frame and put the new one
+            try:
+                self.q.get_nowait()
+                self.q.put_nowait(data_list)
+            except queue.Empty:
+                pass
