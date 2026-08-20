@@ -396,13 +396,12 @@ if __name__ == "__main__":
     ############################################################################
         # FLIGHTGEAR
 
-        # OUTGOING data (from Python to FG)
+        # OUTGOING data (from Python to FG) for Visuals
         UDP_IP1 = "127.0.0.1" # set to localhost
         UDP_PORT1 = 5500
         
         UDP_IP2 = "192.168.0.26" # set to a remote computer, for additional visuals
         UDP_PORT2 = 5501
-
 
         sock1 = socket.socket(socket.AF_INET, # Internet
                             socket.SOCK_DGRAM) # UDP
@@ -413,7 +412,7 @@ if __name__ == "__main__":
 
         fdm_packet_queue = queue.Queue() # async queue that will send the packets
 
-        # THREADING: Create and start the network worker thread.
+        # THREADING: Create and start the FG network worker thread.
         # It's a daemon thread, so it will exit automatically if the main program exits.
         tx_thread = threading.Thread(
             target=net.network_worker,
@@ -424,18 +423,24 @@ if __name__ == "__main__":
             tx_thread.start()
             logger.info('[main]...started')
         except Exception as e:
-            logging.error(f"[main]...Error in network thread: {e}")
+            logging.error(f"[main]...Error in FG/outbound network thread: {e}")
             exit()
 
-        # OUTGOING data (from Python to Telemetry Viewer)
+        # OUTGOING data2 (from Python to Telemetry Viewer)
         UDP_IP3 = "127.0.0.1" # set to localhost, but you can change
         UDP_PORT3 = 5555
 
         telemetry_thread = net.TelemetrySender(ip=UDP_IP3, port=UDP_PORT3)
-        telemetry_thread.start()
+        try:
+            telemetry_thread.start()
+            logger.info('[main]...started')
+        except Exception as e:
+            logging.error(f"[main]...Error in TM network thread: {e}")
+            exit()
+        
         
 
-        # INCOMING DATA (from FG to Python)
+        # INCOMING DATA (from FG to Python) - for height above ground data
         # ... UDP RX Setup ...
         # --- TERRAIN UDP RECEIVER ---
         TERRAIN_RX_IP = "127.0.0.1" 
@@ -449,7 +454,13 @@ if __name__ == "__main__":
             args=(TERRAIN_RX_IP, TERRAIN_RX_PORT, terrain_shared_data, terrain_shutdown_queue),
             daemon=True
         )
-        rx_thread.start()
+        try:
+            rx_thread.start()
+            logger.info('[main]...started')
+        except Exception as e:
+            logging.error(f"[main]...Error in FG/inbound network thread: {e}")
+            exit()
+        
 
 
         # instantiate FG comms object and initialize it
@@ -506,7 +517,6 @@ if __name__ == "__main__":
     fdm_state = physics.FDMState()
 
     data_collector, t_vector_collector = [], [] # data collectors, for saving data to disk
-    
 
     # aircraft initialization (includes trimming)
     this_AC_int, X_trim, trim_point, this_latlonh_int = initialize(
@@ -852,7 +862,7 @@ if __name__ == "__main__":
                     calc_eng_trigger = False
 
                 
-                # -- Data logging
+                # -- Data logging and Telemetry (they will run at same frequency)
                 if datalog_trigger:
                     _ = physics.RCAM_model(fdm_state, acp) # re-sync internal states before storing
                     internals = np.array([
@@ -868,15 +878,24 @@ if __name__ == "__main__":
                             eng1_states[idx] = eng_vals[0][p]
                             eng2_states[idx] = eng_vals[1][p]
 
-                    tm_data = np.block([this_AC_int.t, fdm_state.X, this_latlonh_int.y, current_NED, U_actual, inceptor_cmd, internals, eng1_states, eng2_states])
-                    
-                    data_collector.append(tm_data[1:])
+                    datalog_data = np.block([fdm_state.X, this_latlonh_int.y, current_NED, U_actual, inceptor_cmd, internals, eng1_states, eng2_states])
+                    data_collector.append(datalog_data)
                     t_vector_collector.append(this_AC_int.t)
-                    datalog_trigger = False
+                    
 
                     # send data out to telemetry
-
+                    tm_data = [
+                        this_AC_int.t,
+                        fdm_state.Va * MS2KT,
+                        fdm_state.h * M2FT,
+                        fdm_state.X[physics.IDX_THETA] * RAD2DEG,
+                        fdm_state.alpha * RAD2DEG,
+                        fdm_state.X[physics.IDX_THETA] * RAD2DEG - fdm_state.alpha * RAD2DEG, # gamma
+                        fdm_state.AG
+                    ]
                     telemetry_thread.send_data(tm_data)
+
+                    datalog_trigger = False
 
                 
                 # -- Next frame setup
