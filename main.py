@@ -441,8 +441,6 @@ if __name__ == "__main__":
         
 
         # INCOMING DATA (from FG to Python) - for height above ground data
-        # ... UDP RX Setup ...
-        # --- TERRAIN UDP RECEIVER ---
         TERRAIN_RX_IP = "127.0.0.1" 
         TERRAIN_RX_PORT = 5502 # Port we listen ON
 
