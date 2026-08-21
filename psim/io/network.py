@@ -10,46 +10,13 @@ import ISA_module as ISA
 from psim.constants import *
 import psim.environment as env
 from psim.helpers import logger
+from psim.io.fgFDM import fgFDM
 
 
 
 
 
 # Threads for communication with FlightGear
-def network_worker(socks:list[socket.socket], packet_queue:queue.Queue, fg_addresses:list[str]):
-    '''
-    This function runs in a separate thread. It waits for FDM packets to appear
-    in the queue and sends them over UDP.
-    Inputs:
-        socks: list with network open socks
-        packet_queue: a Python multithread queue that received the packets to be sent
-        fg_addresses: list of tuples with IP address and port
-    '''
-    logger.info('[network_worker] Starting FlightGear output network thread')
-    while True:
-        try:
-            # Block until a packet is available in the queue.
-            # A timeout is added to allow for graceful shutdown checks if needed,
-            # though using a sentinel value is cleaner.
-            packet = packet_queue.get()
-
-            # THREADING: Check for the sentinel value (None) to signal shutdown.
-            if packet is None:
-                logger.info('[network_worker]Network thread received shutdown signal.')
-                break
-
-            # Send the packet to FlightGear.
-            for idx, s in enumerate(socks):
-                s.sendto(packet, fg_addresses[idx])
-
-        except queue.Empty:
-            # This will only happen if a timeout is used in get()
-            continue
-        except Exception as e:
-            logger.error(f'[network_worker] Error in network thread: {e}')
-            break
-    logger.info("[network_worker] Network thread finished.")
-
 
 def terrain_udp_worker(ip, port, shared_data, shutdown_queue):
     '''
@@ -186,44 +153,64 @@ def set_FDM(this_fgFDM, X:np.ndarray, U_norm:np.ndarray, latlon:np.ndarray, alt:
     this_fgFDM.set('cur_time', int(time.time()))
 
 
-# logger = logging.getLogger(__name__)
-
-class TelemetrySender(threading.Thread):
-    def __init__(self, ip="127.0.0.1", port=5555):
-        super().__init__(daemon=True) # Daemon thread exits automatically when main.py closes
-        self.ip = ip
-        self.port = port
+    
+class BaseUDPSender(threading.Thread):
+    def __init__(self, destinations: list[tuple[str, int]], max_queue_size=1):
+        super().__init__(daemon=True)
+        self.destinations = destinations  # Now accepts multiple IPs!
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.q = queue.Queue(maxsize=1)
+        self.q = queue.Queue(maxsize=max_queue_size)
         self.running = True
 
     def run(self):
-        logger.info(f"[Telemetry Sender] Telemetry Sender thread started on {self.ip}:{self.port}")
+        logger.info(f"{self.__class__.__name__} started. Targets: {self.destinations}")
         while self.running:
             try:
-                # Wait for data. Timeout allows the thread to check self.running gracefully
+                # Wait for data from the main thread
                 data = self.q.get(timeout=0.1) 
                 
-                # Pack the list of floats into a fast binary C-struct.
-                # '<' means little-endian, 'd' means double precision float (8 bytes each).
-                packed_data = struct.pack('<' + 'd' * len(data), *data)
+                # Convert the data into binary bytes
+                payload = self.pack_data(data)
                 
-                self.sock.sendto(packed_data, (self.ip, self.port))
+                if payload:
+                    for ip, port in self.destinations:
+                        self.sock.sendto(payload, (ip, port))
             except queue.Empty:
                 pass
             except Exception as e:
-                logger.error(f"[Telemetry Sender]  sender error: {e}")
-                logger.debug(data)
+                logger.error(f"{self.__class__.__name__} error: {e}")
 
-    def send_data(self, data_list):
+    def send_data(self, data):
         """Called by the main simulation loop to push new data."""
         try:
-            # Try to push new data immediately
-            self.q.put_nowait(data_list)
+            self.q.put_nowait(data)
         except queue.Full:
-            # If the queue is full, discard the old frame and put the new one
             try:
                 self.q.get_nowait()
-                self.q.put_nowait(data_list)
+                self.q.put_nowait(data)
             except queue.Empty:
                 pass
+
+    def pack_data(self, data) -> bytes:
+        raise NotImplementedError("Subclasses must implement pack_data()")
+
+
+class TelemetrySender(BaseUDPSender):
+    def pack_data(self, data):
+        # Pack the list of floats into a double precision C-struct
+        return struct.pack('<' + 'd' * len(data), *data)
+
+
+class FlightGearSender(BaseUDPSender):
+    def __init__(self, destinations: list[tuple[str, int]], max_queue_size=1):
+        super().__init__(destinations, max_queue_size)
+        self.fg = fgFDM() # The thread gets its own private FDM object!
+        self.fg.set('num_engines', 2)
+        self.fg.set('num_tanks', 1)
+        self.fg.set('num_wheels', 3)
+
+    def pack_data(self, data):
+        # Unpack the tuple provided by main.py
+        X, U_norm, latlon, alt, body_accels, agl_m = data
+        set_FDM(self.fg, X, U_norm, latlon, alt, body_accels, agl_m)
+        return self.fg.pack()

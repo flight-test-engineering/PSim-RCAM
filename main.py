@@ -403,40 +403,19 @@ if __name__ == "__main__":
         UDP_IP2 = "192.168.0.26" # set to a remote computer, for additional visuals
         UDP_PORT2 = 5501
 
-        sock1 = socket.socket(socket.AF_INET, # Internet
-                            socket.SOCK_DGRAM) # UDP
-        sock2 = socket.socket(socket.AF_INET, # Internet
-                            socket.SOCK_DGRAM) # UDP
-        socks = [sock1, sock2]
-        fg_addresses = [(UDP_IP1, UDP_PORT1), (UDP_IP2, UDP_PORT2)]
-
-        fdm_packet_queue = queue.Queue() # async queue that will send the packets
-
-        # THREADING: Create and start the FG network worker thread.
-        # It's a daemon thread, so it will exit automatically if the main program exits.
-        tx_thread = threading.Thread(
-            target=net.network_worker,
-            args=(socks, fdm_packet_queue, fg_addresses),
-            daemon=True
-        )
-        try:
-            tx_thread.start()
-            logger.info('[main]...started')
-        except Exception as e:
-            logging.error(f"[main]...Error in FG/outbound network thread: {e}")
-            exit()
+        fg_destinations = [(UDP_IP1, UDP_PORT1), (UDP_IP2, UDP_PORT2)]
+        
+        # Instantiate and start the FG Sender
+        fg_thread = net.FlightGearSender(destinations=fg_destinations)
+        fg_thread.start()
 
         # OUTGOING data2 (from Python to Telemetry Viewer)
         UDP_IP3 = "127.0.0.1" # set to localhost, but you can change
         UDP_PORT3 = 5555
 
-        telemetry_thread = net.TelemetrySender(ip=UDP_IP3, port=UDP_PORT3)
-        try:
-            telemetry_thread.start()
-            logger.info('[main]...started')
-        except Exception as e:
-            logging.error(f"[main]...Error in TM network thread: {e}")
-            exit()
+        telemetry_thread = net.TelemetrySender(destinations=[(UDP_IP3, UDP_PORT3)])
+        telemetry_thread.start()
+
         
         
 
@@ -461,15 +440,6 @@ if __name__ == "__main__":
         
 
 
-        # instantiate FG comms object and initialize it
-        my_fgFDM = fgFDM()
-        my_fgFDM.set('latitude', INIT_LATLON_DEG[0] * DEG2RAD) # in rad
-        my_fgFDM.set('longitude', INIT_LATLON_DEG[1] * DEG2RAD) # in rad
-        my_fgFDM.set('altitude', INIT_ALT_FT * FT2M) # in m
-        my_fgFDM.set('num_engines', 2)
-        my_fgFDM.set('num_tanks', 1)
-        my_fgFDM.set('num_wheels', 3)
-        my_fgFDM.set('cur_time', int(time.perf_counter())) # in seconds
 
 
 
@@ -823,19 +793,18 @@ if __name__ == "__main__":
                     body_accels[2] = -body_accels[2] # FG expects Z-up
 
                     # set values and send frames
-                    net.set_FDM(my_fgFDM, fdm_state.X, 
-                            physics.control_norm(U_actual, acp), 
-                            current_latlon_rad, 
-                            current_alt_m,
-                            body_accels,
-                            fdm_state.h)
-                    my_pack = my_fgFDM.pack()
-                    try:
-                        fdm_packet_queue.put_nowait(my_pack)
-                    except queue.Full:
-                        # This should rarely happen unless the network thread
-                        # is completely stalled. We can just drop the frame.
-                        pass
+                    fg_data = (
+                        fdm_state.X.copy(), # .copy() ensures thread-safety if states change mid-pack
+                        physics.control_norm(U_actual, acp), 
+                        current_latlon_rad, 
+                        current_alt_m,
+                        body_accels,
+                        fdm_state.h
+                    )
+
+                    # Offload to background thread
+                    fg_thread.send_data(fg_data)
+
                     send_frame_trigger = False
 
                 
@@ -964,14 +933,14 @@ if __name__ == "__main__":
 
     if OFFLINE == False:
         # close threads
-        # -- Stop TX threads
         logger.info("[main] Shutting down network threads...")
-        fdm_packet_queue.put(None)  # Send the shutdown signal
-        tx_thread.join(timeout=1.0) # Wait for the thread to finish
-        for s in socks:
-            s.close()
+        # -- Stop FG TX threads
+        fg_thread.running = False
+        fg_thread.join(timeout=1.0)
+        # -- Stop TM threads
         telemetry_thread.running = False
         telemetry_thread.join(timeout=1.0)
+
                 
         # -- Stop RX thread
         terrain_shutdown_queue.put(True)
