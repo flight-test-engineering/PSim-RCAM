@@ -250,7 +250,7 @@ if __name__ == "__main__":
         GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
         INIT_HDG_DEG = 82.0 # DEG
     else:
-        # FLYING
+        # FLYING - select condition by changing commented section
         '''
         INIT_ALT_FT = 2400 #ft
         V_TRIM_MPS = 160 * KT2MS # m/s
@@ -259,20 +259,41 @@ if __name__ == "__main__":
         INIT_GEAR = 0
         GAMMA_TRIM_RAD = 0.0 * DEG2RAD # RAD
         INIT_HDG_DEG = 82.0 # DEG
-        '''
+        
+
         INIT_ALT_FT = 3000 #ft
         V_TRIM_MPS = 160 * KT2MS # m/s
-        INIT_LATLON_DEG = np.array([47.27, 11.43]) #in degrees - LOWI short final TFB
+        INIT_LATLON_DEG = np.array([47.27, 11.43]) #in degrees - LOWI final TFB
         FLAPS_INIT = 0
         INIT_GEAR = 0
         GAMMA_TRIM_RAD = -3.0 * DEG2RAD # RAD
         INIT_HDG_DEG = 260.0 # DEG
+        
+
+        #ILS Innsbruck - 111.10
+        INIT_ALT_FT = 3100 #ft
+        V_TRIM_MPS = 160 * KT2MS # m/s
+        INIT_LATLON_DEG = np.array([47.2509, 11.2577]) #in degrees - LOWI
+        FLAPS_INIT = 0
+        INIT_GEAR = 0
+        GAMMA_TRIM_RAD = -3.0 * DEG2RAD # RAD
+        INIT_HDG_DEG = 80.0 # DEG
+        '''
+
+        #ILS YYZ (Toronto 24R - 109.30 / 24L - 111.95)
+        INIT_ALT_FT = 3100 #ft
+        V_TRIM_MPS = 160 * KT2MS # m/s
+        INIT_LATLON_DEG = np.array([43.722, -79.535]) #in degrees
+        FLAPS_INIT = 0
+        INIT_GEAR = 0
+        GAMMA_TRIM_RAD = -3.0 * DEG2RAD # RAD
+        INIT_HDG_DEG = 226.0 # DEG
     
     
     
 
 
-    # wind
+    # wind - simple implementation (NOT RCAM compliant)
     WIND_NED_MPS = np.array([0, 0, 0]) # average wind (m/s), NED
     WIND_STDDEV_MPS = np.array([1, 1, 0]) # wind standard deviation, NED
 
@@ -298,7 +319,7 @@ if __name__ == "__main__":
 
 
 
-    # Load Aircraft Parameters into Global Scope
+    # LOAD AIRCRAFT PARAMETERS FROM DISK
     #
     # we first need the joystick name, to load the correct parameters...
 
@@ -350,12 +371,6 @@ if __name__ == "__main__":
         logger.info(f'[main] found {joystick_count} joysticks connected: {joy_name}, axes={this_joy.get_numaxes()}')
 
 
-
-###########################################################################
-    # TERRAIN SHARED DATA
-    terrain_shared_data = {'ground_alt': 0.0} # this variable receives terrain height from the FG thread
-
-##########################################################################
     # header for saving data to disk
 
     signals_header = ['u [m/s]', 'v [m/s]', 'w [m/s]', 
@@ -389,14 +404,15 @@ if __name__ == "__main__":
 #### MULTI THREADING / MULTI PROCESSING ####
 ############################################
 
+
 ###########################################################################
     # FlightGear Threads and Engine Deck Process Initialization
     # we only start the network and multiprocessing if doing online sim
     if OFFLINE == False:
-    ############################################################################
-        # FLIGHTGEAR
+    #######################################################################
+        ## FLIGHTGEAR
 
-        # OUTGOING data (from Python to FG) for Visuals
+        ### OUTGOING data (from Python to FG) for Visuals
         UDP_IP1 = "127.0.0.1" # set to localhost
         UDP_PORT1 = 5500
         
@@ -409,17 +425,23 @@ if __name__ == "__main__":
         fg_thread = net.FlightGearSender(destinations=fg_destinations)
         fg_thread.start()
 
-        # OUTGOING data2 (from Python to Telemetry Viewer)
-        UDP_IP3 = "127.0.0.1" # set to localhost, but you can change
+
+        ### OUTGOING data2 (from Python to Telemetry Viewer)
+        UDP_IP3 = "192.168.0.26" # set to localhost, but you can change
         UDP_PORT3 = 5555
 
+        # Instantiate and start the TM Sender
         telemetry_thread = net.TelemetrySender(destinations=[(UDP_IP3, UDP_PORT3)])
         telemetry_thread.start()
 
         
-        
 
-        # INCOMING DATA (from FG to Python) - for height above ground data
+        ### INCOMING DATA (from FG to Python) - for height above ground data
+
+        ###########################################################################
+        # terrain shared data variable
+        terrain_shared_data = {'ground_alt': 0.0} # receives terrain height from the FG thread
+        ##########################################################################
         TERRAIN_RX_IP = "127.0.0.1" 
         TERRAIN_RX_PORT = 5502 # Port we listen ON
 
@@ -438,8 +460,6 @@ if __name__ == "__main__":
             logging.error(f"[main]...Error in FG/inbound network thread: {e}")
             exit()
         
-
-
 
 
 
