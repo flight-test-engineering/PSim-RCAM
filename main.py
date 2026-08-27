@@ -412,6 +412,8 @@ if __name__ == "__main__":
     #######################################################################
         ## FLIGHTGEAR
 
+
+
         ### OUTGOING data (from Python to FG) for Visuals
         UDP_IP1 = "127.0.0.1" # set to localhost
         UDP_PORT1 = 5500
@@ -438,14 +440,14 @@ if __name__ == "__main__":
 
         ### INCOMING DATA (from FG to Python) - for height above ground data
 
-        ###########################################################################
+
         # terrain shared data variable
         terrain_shared_data = {'ground_alt': 0.0} # receives terrain height from the FG thread
-        ##########################################################################
+
         TERRAIN_RX_IP = "127.0.0.1" 
         TERRAIN_RX_PORT = 5502 # Port we listen ON
 
-         # Queue used only for shutdown signal
+        # Queue used only for shutdown signal
         terrain_shutdown_queue = queue.Queue()
         
         rx_thread = threading.Thread(
@@ -499,6 +501,7 @@ if __name__ == "__main__":
     
     compile_numba_functions(acp)
 
+
 ###########################################################################
     # SIMULATION VARIABLES INITIALIZATION
     # instantiate the main dataclass that holds states and controls
@@ -514,14 +517,12 @@ if __name__ == "__main__":
     )
     inceptor_cmd = trim_point.copy() # we set inceptor_cmd as a copy of the trimmed control states first.
 
-
     # Initialize Actual Surface Positions
     # We start with actual = trimmed state (assuming stable trim)
     U_actual = trim_point.copy() # U_actual will be the controls vector after applying actuator dynamics
 
     e1_thrust = trim_point[IDX_THR1] # trimming routine returns thrust, not thrust lever position
     e2_thrust = trim_point[IDX_THR2]
-
 
     # aircraft position variables
     current_alt_m = INIT_ALT_FT * FT2M # m
@@ -531,19 +532,19 @@ if __name__ == "__main__":
     
     # frame variables
     frame_count = 0
-
     fgdt = 1.0 / FG_OUTPUT_LOOP_HZ # (s) fg frame OUTPUT period
     simdt = 1.0 / SIM_LOOP_HZ # (s) desired simulation time step
     deckdt = 1.0 / DECK_LOOP_HZ # (s) engine deck call interval
     datalogdt = 1.0 / DATA_LOGGING_HZ # (s) data logging time interval
 
-    
+
     # semaphores
     send_frame_trigger = False # send frame to FG
     run_sim_loop = False # main simulation semaphore. it will wait for the clock to reach the next "simdt" and run the simulation
     calc_eng_trigger = True
     datalog_trigger = True
     
+
     # time tracking
     sim_time_adder, fg_time_adder = 0.0, 0.0 # counts the time between integration steps to trigger next simulation frame and FG dispatch
     eng_time_adder = 0.0 # timer to calculate engine deck
@@ -554,6 +555,7 @@ if __name__ == "__main__":
     prev_dt = dt
 
     exit_signal = 0 # if joystick button #1 is pressed, end simulation
+    
     
 ###########################################################################
     # RUN SIMULATION
@@ -580,6 +582,9 @@ if __name__ == "__main__":
         # single step integrate through each time step
         for idx, t in enumerate(t_vector):
             fdm_state.rho = env.get_rho(current_alt_m)
+
+            if idx % 205650 == 0:
+                print(idx)
 
             # add actuator dynamics to control inputs:
             U_actual = physics.update_actuators(sim_U[:,idx], U_actual, simdt, acp.ACT_TAU)
