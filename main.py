@@ -278,8 +278,8 @@ if __name__ == "__main__":
         INIT_GEAR = 0
         GAMMA_TRIM_RAD = -3.0 * DEG2RAD # RAD
         INIT_HDG_DEG = 80.0 # DEG
+        
         '''
-
         #ILS YYZ (Toronto 24R - 109.30 / 24L - 111.95)
         INIT_ALT_FT = 3100 #ft
         V_TRIM_MPS = 160 * KT2MS # m/s
@@ -288,7 +288,7 @@ if __name__ == "__main__":
         INIT_GEAR = 0
         GAMMA_TRIM_RAD = -3.0 * DEG2RAD # RAD
         INIT_HDG_DEG = 226.0 # DEG
-    
+        
     
     
 
@@ -563,6 +563,9 @@ if __name__ == "__main__":
     if OFFLINE:
         # create time vector
         t_vector = np.arange(0, SIM_TOTAL_TIME_S, simdt)
+        n_steps = t_vector.shape[0]
+        report_at = 5 #percent
+        divisor = int(n_steps * report_at / 100)
         print(f'Offline sim time vector: {t_vector[0]:.2f}s to {t_vector[-1]:.2f}s')
 
         # create control inputs and set equal to trim
@@ -583,8 +586,9 @@ if __name__ == "__main__":
         for idx, t in enumerate(t_vector):
             fdm_state.rho = env.get_rho(current_alt_m)
 
-            if idx % 205650 == 0:
-                print(idx)
+            if idx % divisor == 0: #print every 5%
+                print(f'\rProcessed: {int(idx/n_steps * 100)}%                        ', end="", flush=True)
+    
 
             # add actuator dynamics to control inputs:
             U_actual = physics.update_actuators(sim_U[:,idx], U_actual, simdt, acp.ACT_TAU)
@@ -619,9 +623,15 @@ if __name__ == "__main__":
 
             data_collector.append(np.concatenate((this_AC_int.y, this_latlonh_int.y, current_NED + this_wind, U_actual)))
             current_alt_m = this_latlonh_int.y[2] # store altitude (m)
+            if fdm_state.AG:
+                print()
+                print(f'SIMULATION ABORTED - aircraft reached ground level at time: {this_AC_int.t}, step: {idx}')
+                print('Check initial trim condition...')
+                break
             
             t_vector_collector.append(this_AC_int.t)
 
+        print()
         print(f'Enf of simulation; {len(t_vector_collector)} time steps!')
             # save data to disk
         if len(t_vector_collector) > 0: # if we have data, send it out to disk:
