@@ -448,6 +448,7 @@ def RCAM_model(state: FDMState, acp: jitclass) -> None:
 
     # Total CD (in stability frame)
     CD = acp.CDMIN + acp.D1 * (acp.N * alpha + acp.D0)**2 + dcd # dcd - not part of RCAM original doc
+    CD = 0.01 if CD < 0.01 else CD # clamp CD to CD_min at clean config since the curve goes negative (not in RCAM)
 
 
     # Total side force CY (stability frame)
