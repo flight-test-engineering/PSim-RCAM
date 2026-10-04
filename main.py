@@ -281,7 +281,7 @@ if __name__ == "__main__":
         
         '''
         #ILS YYZ (Toronto 24R - 109.30 / 24L - 111.95)
-        INIT_ALT_FT = 3100 #ft
+        INIT_ALT_FT = 2100 #ft
         V_TRIM_MPS = 160 * KT2MS # m/s
         INIT_LATLON_DEG = np.array([43.722, -79.535]) #in degrees
         FLAPS_INIT = 0
@@ -429,7 +429,7 @@ if __name__ == "__main__":
 
 
         ### OUTGOING data2 (from Python to Telemetry Viewer)
-        UDP_IP3 = "192.168.0.26" # set to localhost, but you can change
+        UDP_IP3 = "127.0.0.1" #"192.168.0.26" # set to localhost, but you can change
         UDP_PORT3 = 5555
 
         # Instantiate and start the TM Sender

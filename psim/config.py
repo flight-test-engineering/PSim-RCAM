@@ -255,19 +255,19 @@ def load_aircraft_parameters(filepath: str, joy_name: str|None, joy_n_buttons: i
     # Landing Gear
     # .. Geometry
     ldg_geom = params['landing_gear_geometry']
-    acp.LG_NOSE_POS = np.array(ldg_geom['nose_pos']) # Nose Gear: ~10-12m forward of CG, centerline, ~2.5m below CG
-    acp.LG_MAIN_L_POS = np.array(ldg_geom['left_mains_pos']) # Main Gear Left: ~4-5m behind CG, ~4m left, ~3.5m below CG
-    acp.LG_MAIN_R_POS = np.array(ldg_geom['right_mains_pos'])
+    acp.LG_NOSE_POS = np.array(ldg_geom['nose_pos']) # [m] Nose Gear: ~10-12m forward of CG, centerline, ~2.5m below CG
+    acp.LG_MAIN_L_POS = np.array(ldg_geom['left_mains_pos']) # [m] Main Gear Left: ~4-5m behind CG, ~4m left, ~3.5m below CG
+    acp.LG_MAIN_R_POS = np.array(ldg_geom['right_mains_pos']) # [m]
 
     # .. Dynamics
     ldg_dynamics = params['landing_gear_dynamics']
-    acp.LG_SPRING_K = ldg_dynamics['lg_spring_k']
-    acp.LG_DAMP_COMPRESSION = ldg_dynamics['lg_damp_compression']
-    acp.LG_DAMP_REBOUND = ldg_dynamics['lg_damp_rebound']
-    acp.LG_FRICTION_STIFFNESS = ldg_dynamics['lg_friction_stiffness'] # "Virtual spring" to hold plane still when stopped
-    acp.LG_SIDE_FRICTION_MU = ldg_dynamics['lg_side_friction_mu']
-    acp.LG_ROLLING_FRICTION_MU = ldg_dynamics['lg_rolling_friction_mu'] * 10 # DEBUG
-    acp.LG_MU_BRAKE = ldg_dynamics['lg_mu_brake']
+    acp.LG_SPRING_K = ldg_dynamics['lg_spring_k'] # N/m
+    acp.LG_DAMP_COMPRESSION = ldg_dynamics['lg_damp_compression'] # N/(m/s)
+    acp.LG_DAMP_REBOUND = ldg_dynamics['lg_damp_rebound'] # N/(m/s)
+    acp.LG_FRICTION_STIFFNESS = ldg_dynamics['lg_friction_stiffness'] # N/(m/s) "Virtual spring" to hold plane still when stopped
+    acp.LG_SIDE_FRICTION_MU = ldg_dynamics['lg_side_friction_mu'] # [non-dimensional]
+    acp.LG_ROLLING_FRICTION_MU = ldg_dynamics['lg_rolling_friction_mu'] * 10 # [non-dimensional]
+    acp.LG_MU_BRAKE = ldg_dynamics['lg_mu_brake'] # [non-dimensional]
 
     # Actuator Dynamics
     act_dyn = params['actuator_dynamics']
