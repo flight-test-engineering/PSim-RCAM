@@ -279,7 +279,7 @@ if __name__ == "__main__":
         GAMMA_TRIM_RAD = -3.0 * DEG2RAD # RAD
         INIT_HDG_DEG = 80.0 # DEG
         
-        '''
+        
         #ILS YYZ (Toronto 24R - 109.30 / 24L - 111.95)
         INIT_ALT_FT = 2100 #ft
         V_TRIM_MPS = 160 * KT2MS # m/s
@@ -288,7 +288,18 @@ if __name__ == "__main__":
         INIT_GEAR = 0
         GAMMA_TRIM_RAD = -3.0 * DEG2RAD # RAD
         INIT_HDG_DEG = 226.0 # DEG
+        '''
+
+        #ILS YYZ (Toronto 15L)
+        INIT_ALT_FT = 23600 #ft
+        V_TRIM_MPS = 160 * KT2MS # m/s
+        INIT_LATLON_DEG = np.array([43.7593, -79.729176]) #in degrees
+        FLAPS_INIT = 0
+        INIT_GEAR = 0
+        GAMMA_TRIM_RAD = -3.0 * DEG2RAD # RAD
+        INIT_HDG_DEG = 150.0 # DEG
         
+
     
     
 
