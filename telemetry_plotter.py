@@ -5,9 +5,8 @@ import threading
 import queue
 import numpy as np
 import pyqtgraph as pg
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QPushButton, QButtonGroup)
-from PyQt5.QtCore import QTimer
+from pyqtgraph.Qt.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QButtonGroup)
+from pyqtgraph.Qt.QtCore import QTimer
 
 # ---------------- CONFIGURATION ----------------
 UDP_IP = "0.0.0.0" # Listen on all network interfaces
@@ -97,6 +96,15 @@ class RealTimePlotter(QMainWindow):
             if t_val == 10:
                 btn.setChecked(True)
 
+        # 3. Clear Data Button
+        self.clear_btn = QPushButton("Clear Data")
+        self.clear_btn.setStyleSheet("background-color: #8b0000; color: white; font-weight: bold;") # Dark red so it stands out
+        self.clear_btn.clicked.connect(self.clear_data)
+        btn_layout.addWidget(self.clear_btn)
+
+
+        main_layout.addLayout(btn_layout)
+
         main_layout.addLayout(btn_layout)
 
         # --- PLOT AREA ---
@@ -132,6 +140,19 @@ class RealTimePlotter(QMainWindow):
 
     def set_time_window(self, seconds):
         self.current_time_window = seconds
+        
+    def clear_data(self):
+        """Resets the buffers and clears the graphs."""
+        # 1. Reset the underlying data arrays
+        self.data_buffer.fill(0)
+        self.ptr = 0
+
+        # 2. Flush any old packets still waiting in the queue
+        while not self.data_queue.empty():
+            try:
+                self.data_queue.get_nowait()
+            except queue.Empty:
+                break
 
     def update_layout(self):
         """Hides or shows plots based on button toggles and fixes the X-axes."""
@@ -168,6 +189,9 @@ class RealTimePlotter(QMainWindow):
         self.data_buffer = np.roll(self.data_buffer, -n_new, axis=1)
         self.data_buffer[:, -n_new:] = new_data_arr
         self.ptr += n_new
+        
+        if self.ptr == 0:
+            return
 
         # Only plot the valid data we've received so far (prevents drawing zeros at startup)
         valid_points = min(self.ptr, BUFFER_SIZE)
@@ -190,4 +214,4 @@ if __name__ == '__main__':
     pg.setConfigOptions(antialias=True) # Makes the lines look smooth
     window = RealTimePlotter()
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
