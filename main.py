@@ -291,7 +291,7 @@ if __name__ == "__main__":
         '''
 
         #ILS YYZ (Toronto 15L)
-        INIT_ALT_FT = 23600 #ft
+        INIT_ALT_FT = 2360 #ft
         V_TRIM_MPS = 160 * KT2MS # m/s
         INIT_LATLON_DEG = np.array([43.7593, -79.729176]) #in degrees
         FLAPS_INIT = 0

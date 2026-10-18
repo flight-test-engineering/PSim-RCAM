@@ -39,6 +39,7 @@ ptyprocess
 pure-eval
 pygame-ce
 pygments
+pyqtgraph
 pyparsing
 python-dateutil
 pytz
