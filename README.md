@@ -3,6 +3,8 @@
 # PSim-RCAM
 Welcome to PSim-RCAM - short for Python Simulation - Research Civil Aircraft Model!
 
+Associated YouTube playlist: [PSim/RCAM playlist](https://www.youtube.com/playlist?list=PLF3daFfBkCZ0)
+
 This is a Python implementation of the non-linear flight dynamics model published by:  
 Group for Aeronautical Research and Technology Europe (GARTEUR) - [Research Civil Aircraft Model (RCAM) (rev Jun 1995)](http://garteur.org/wp-content/reports/FM/FM_AG-08_TP-088-3.pdf)  
 HOWEVER:  
@@ -16,12 +18,12 @@ The excellent tutorials by Christopher Lum (for Matlab/Simulink) were used as a 
 
 In addition to what prof. Lum implements, the following features are added here:  
 1 - Ground reactions (landing gear), to allow for takeoff and landing  
-2 - Actuator dynamics  
+2 - Actuator dynamics (first order)  
 3 - Turbofan engine deck (with parallel processing/multi-core), based on: [Turbofan Playlist](https://www.youtube.com/playlist?list=PLqJt-rNo8TZ1Y5Pzlk4S1205NUt2t-t22)  
 4 - Terrain database based in SRTM data, if FlightGear not available  
 5 - Terrain database from FlightGear  
 6 - FlightGear visualization via UDP (with parallel threading)  
-7 - Ground effect on CL and CD  
+7 - Ground effect on CL, CD and CM    
 
 ## Module:
 The code is split in module files for better organization:  
